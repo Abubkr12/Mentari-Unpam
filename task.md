@@ -1,9 +1,10 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif
-- [ ] Final verifikasi dan penyerahan update ke user
+*(Semua task utama telah selesai dikerjakan dan disinkronisasikan ke GitHub)*
 
 ## Arsip
+- [x] Final verifikasi bundle `dist/`, build 14 module via esbuild, dan sinkronisasi push ke GitHub fork (`main` & `feat/modern-v2-refactor`)
 - [x] Auto-Answer Cerdas Kuisioner: 3 mode otomatisasi terintegrasi (Auto Iya/Sangat Baik, Auto Tidak, dan Auto AI dengan Gemini analisis konteks & respon saran)
 - [x] Auto Jawab Cerdas Pre-Test & Post-Test: Deteksi instan kunci jawaban yang sudah terbuka/bocor pada DOM sebelum fallback ke Gemini AI berakurasi tinggi
 - [x] Penyempurnaan Filter Forum Aktif: Deteksi topik non-kosong via `api/forum/topic/{id}`, filter forum kosong, pengurutan belum dikerjakan, quick filter pills, verifikasi reply mahasiswa >= 2 kotak jawaban
