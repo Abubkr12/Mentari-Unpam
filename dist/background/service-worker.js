@@ -117,9 +117,28 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
     });
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
+      const errMsg = errData.error?.message || `Error ${response.status} dari Gemini API.`;
+      const isHighDemand = response.status === 503 || response.status === 429 || errMsg.toLowerCase().includes("high demand") || errMsg.toLowerCase().includes("quota");
+      if (isHighDemand && activeModel !== "gemini-2.5-flash") {
+        console.warn(`[Service Worker] Model ${activeModel} sedang padat/overload. Melakukan fallback otomatis ke gemini-2.5-flash...`);
+        const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyPayload)
+        });
+        if (fallbackRes.ok) {
+          const fbJson = await fallbackRes.json();
+          const fbText = fbJson.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          return {
+            success: true,
+            text: fbText,
+            model: "Gemini 2.5 Flash (Fallback Otomatis)"
+          };
+        }
+      }
       return {
         success: false,
-        error: errData.error?.message || `Error ${response.status} dari Gemini API.`
+        error: errMsg
       };
     }
     const resJson = await response.json();
