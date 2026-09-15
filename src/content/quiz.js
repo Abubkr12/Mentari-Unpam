@@ -287,6 +287,28 @@ class QuizAssistant {
       throw new Error('Gagal mengekstrak teks pertanyaan atau opsi pilihan.');
     }
 
+    // 1. Cek apakah ada indikator kunci jawaban yang sudah terbuka/bocor pada DOM
+    const revealedIndex = options.findIndex(o => {
+      const parent = o.element?.closest('.MuiFormControlLabel-root, label, .MuiPaper-root, tr, div');
+      if (!parent) return false;
+      const html = parent.outerHTML.toLowerCase();
+      const text = parent.textContent.toLowerCase();
+      return parent.classList.contains('correct') ||
+             parent.classList.contains('is-correct') ||
+             parent.classList.contains('jawaban-benar') ||
+             parent.getAttribute('data-correct') === 'true' ||
+             html.includes('green') ||
+             text.includes('(benar)') ||
+             text.includes('(kunci)');
+    });
+
+    if (revealedIndex !== -1) {
+      const targetElement = options[revealedIndex].element;
+      await Humanizer.naturalClick(targetElement);
+      Toast.success(`Kunci jawaban terdeteksi! Memilih [${options[revealedIndex].letter || revealedIndex + 1}]`);
+      return true;
+    }
+
     // Jeda membaca natural jika dalam mode otomatis (Anti-Deteksi)
     if (isAuto) {
       await Humanizer.readingPacing(questionText, 2500, 6000);
@@ -294,7 +316,7 @@ class QuizAssistant {
 
     // Bangun prompt untuk Gemini
     const prompt = this._buildPrompt(questionText, options);
-    const systemInstruction = `Kamu adalah asisten pintar untuk ujian akademik. Tugasmu adalah memilih SATU jawaban yang paling tepat. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa basa-basi, tanpa penjelasan panjang.`;
+    const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
 
     const selectModel = this.shadow?.getElementById('quiz-select-model');
     const chosenModel = selectModel ? selectModel.value : null;

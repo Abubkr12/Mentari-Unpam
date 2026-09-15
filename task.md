@@ -1,9 +1,14 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif
-- [ ] Dokumentasikan tautan kontribusi & panduan upstream ke user
+- [ ] Final verifikasi dan penyerahan update ke user
 
 ## Arsip
+- [x] Auto-Answer Cerdas Kuisioner: 3 mode otomatisasi terintegrasi (Auto Iya/Sangat Baik, Auto Tidak, dan Auto AI dengan Gemini analisis konteks & respon saran)
+- [x] Auto Jawab Cerdas Pre-Test & Post-Test: Deteksi instan kunci jawaban yang sudah terbuka/bocor pada DOM sebelum fallback ke Gemini AI berakurasi tinggi
+- [x] Penyempurnaan Filter Forum Aktif: Deteksi topik non-kosong via `api/forum/topic/{id}`, filter forum kosong, pengurutan belum dikerjakan, quick filter pills, verifikasi reply mahasiswa >= 2 kotak jawaban
+- [x] Implementasi Tab Baru "Kuis & Evaluasi": Pretest, Posttest, Kuisioner Tracker per mata kuliah dengan pembacaan pertemuan dinamis tanpa limit, summary statistik, filter pills, dan tombol Kerjakan navigasi langsung
+- [x] Dokumentasikan tautan kontribusi & panduan upstream ke user
 - [x] Eksekusi Push ke Fork `Abubkr12/Mentari-Unpam` & Persiapan Kontribusi Pull Request ke `lukman754/Mentari-Unpam`
 - [x] Dual Launcher Dashboard (Navbar & Floating): Injeksi header toggle tepat sebelum icon Dark Mode (`parentElement.insertBefore`) bebas DOMException, dilengkapi persistent MutationObserver dan floating launcher button di `bottom: 82px; left: 24px;` (tepat di atas tombol Gemini) dengan tooltip kustom dan SVG flame icon
 - [x] Eliminasi Intermiten Error 401 & Token Expiry: Safe Base64URL JWT decoding, validasi `payload.exp * 1000 <= Date.now() + 30000`, pembersihan token kedaluwarsa otomatis dari memory dan storage, serta pencegahan infinite ping-pong loop antara isolated world dan main world (`mentari-token-invalidated`)
@@ -33,4 +38,3 @@
 - [x] Identifikasi fungsi utama dan fitur otomatisasi (AI Quiz, Presensi, Forum Bot, Auto-Survey, Auto-Password)
 - [x] Audit keamanan: reverse engineering kode terobfuscasi, periksa indikasi malware, exfiltration, atau token stealing
 - [x] Susun laporan komprehensif, temuan risiko, dan rekomendasi teknis untuk user
-

@@ -640,7 +640,11 @@
       this.isOpen = false;
       this.courses = [];
       this.activeForums = [];
+      this.evaluations = [];
+      this.forumFilter = "all";
+      this.evalFilter = "all";
       this._currentFetchPromise = null;
+      this._studentName = "";
       this._init();
     }
     async _init() {
@@ -754,17 +758,19 @@
         padding: 0 22px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         background: rgba(0, 0, 0, 0.2);
+        overflow-x: auto;
       }
       .tab-btn {
         background: none;
         border: none;
-        padding: 12px 18px;
+        padding: 12px 16px;
         color: #888;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         position: relative;
         transition: color 0.2s;
+        white-space: nowrap;
       }
       .tab-btn:hover { color: #ccc; }
       .tab-btn.active {
@@ -786,6 +792,47 @@
         display: none;
       }
       .tab-content.active { display: block; }
+
+      /* Filter Pills */
+      .filter-pills {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .filter-pill {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #aaa;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .filter-pill:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #ddd;
+      }
+      .filter-pill.active {
+        background: rgba(212, 175, 55, 0.2);
+        border-color: rgba(212, 175, 55, 0.5);
+        color: #d4af37;
+      }
+      .filter-pill .pill-count {
+        background: rgba(255, 255, 255, 0.12);
+        padding: 1px 6px;
+        border-radius: 10px;
+        font-size: 10px;
+        margin-left: 4px;
+      }
+      .filter-pill.active .pill-count {
+        background: rgba(212, 175, 55, 0.35);
+      }
+
+      /* Forum Card */
       .forum-card {
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.06);
@@ -824,6 +871,145 @@
         cursor: pointer;
         white-space: nowrap;
       }
+
+      /* Status Badges */
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 6px;
+      }
+      .badge-done {
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.15);
+      }
+      .badge-pending {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.15);
+      }
+      .badge-locked {
+        color: #6b7280;
+        background: rgba(107, 114, 128, 0.15);
+      }
+
+      /* Evaluasi Tab */
+      .eval-course-header {
+        font-size: 14px;
+        font-weight: 700;
+        color: #d4af37;
+        padding: 12px 0 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .eval-course-header:not(:first-child) {
+        margin-top: 20px;
+      }
+      .eval-section-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #777;
+        padding: 6px 0 4px;
+        margin-top: 4px;
+      }
+      .eval-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        transition: all 0.2s;
+      }
+      .eval-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(212, 175, 55, 0.2);
+      }
+      .eval-item-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .eval-item-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .eval-item-meta {
+        font-size: 10px;
+        color: #777;
+        margin-top: 2px;
+      }
+      .eval-btn-action {
+        background: rgba(212, 175, 55, 0.15);
+        color: #d4af37;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+        padding: 5px 12px;
+        border-radius: 7px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .eval-btn-action:hover {
+        background: rgba(212, 175, 55, 0.3);
+      }
+      .eval-btn-done {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+        border-color: rgba(16, 185, 129, 0.3);
+        cursor: default;
+      }
+      .eval-btn-locked {
+        background: rgba(107, 114, 128, 0.1);
+        color: #6b7280;
+        border-color: rgba(107, 114, 128, 0.2);
+        cursor: not-allowed;
+      }
+      .eval-type-icon {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+      .eval-summary {
+        background: rgba(212, 175, 55, 0.08);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .eval-stat {
+        text-align: center;
+      }
+      .eval-stat-value {
+        font-size: 20px;
+        font-weight: 800;
+        color: #d4af37;
+      }
+      .eval-stat-label {
+        font-size: 10px;
+        color: #999;
+        margin-top: 2px;
+      }
+
+      /* Settings */
       .settings-group {
         display: flex;
         flex-direction: column;
@@ -864,6 +1050,23 @@
         white-space: nowrap;
       }
       .btn-config:hover { background: rgba(255, 255, 255, 0.15); }
+
+      /* Empty state */
+      .empty-state {
+        text-align: center;
+        padding: 40px 16px;
+        color: #888;
+      }
+      .empty-state-icon {
+        margin-bottom: 12px;
+        opacity: 0.4;
+      }
+      .loading-text {
+        text-align: center;
+        padding: 40px;
+        color: #888;
+        font-size: 13px;
+      }
     `;
       const overlay = document.createElement("div");
       overlay.className = "overlay";
@@ -886,19 +1089,29 @@
 
         <div class="tabs-bar">
           <button class="tab-btn active" data-tab="tab-forums">Forum Aktif</button>
+          <button class="tab-btn" data-tab="tab-evaluations">Kuis & Evaluasi</button>
           <button class="tab-btn" data-tab="tab-courses">Mata Kuliah</button>
           <button class="tab-btn" data-tab="tab-settings">Pengaturan</button>
         </div>
 
         <div class="tab-content active" id="tab-forums">
+          <div id="forum-filter-bar"></div>
           <div id="forum-list-container">
-            <div style="text-align:center; padding:40px; color:#888;">Memuat forum aktif...</div>
+            <div class="loading-text">Memuat forum aktif...</div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-evaluations">
+          <div id="eval-filter-bar"></div>
+          <div id="eval-summary-bar"></div>
+          <div id="eval-list-container">
+            <div class="loading-text">Memuat data kuis & evaluasi...</div>
           </div>
         </div>
 
         <div class="tab-content" id="tab-courses">
           <div id="course-list-container">
-            <div style="text-align:center; padding:40px; color:#888;">Memuat daftar mata kuliah...</div>
+            <div class="loading-text">Memuat daftar mata kuliah...</div>
           </div>
         </div>
 
@@ -991,6 +1204,7 @@
         Toast.info(`Auto finish kuis: ${toggleAutoFinish.checked ? "Aktif" : "Nonaktif"}`);
       });
     }
+    // ─── Cache ────────────────────────────────────────────────────────────────────
     async _renderFromCache() {
       try {
         const token = await UnpamAuth.getAuthToken();
@@ -1000,6 +1214,7 @@
         const userCache = stored[cacheKey];
         const cachedCourses = userCache?.courses || stored.mentari_cached_courses || [];
         const cachedForums = userCache?.forums || stored.mentari_cached_forums || [];
+        const cachedEvals = userCache?.evaluations || [];
         if (cachedCourses.length > 0) {
           this.courses = cachedCourses;
           this._renderCourses(cachedCourses);
@@ -1008,15 +1223,20 @@
           this.activeForums = cachedForums;
           this._renderForums(cachedForums, cachedCourses);
         }
+        if (cachedEvals.length > 0) {
+          this.evaluations = cachedEvals;
+          this._renderEvaluations(cachedEvals);
+        }
       } catch (e) {
         console.log("[Mentari Mod] Info cache status:", e.message);
       }
     }
+    // ─── Render: Courses ──────────────────────────────────────────────────────────
     _renderCourses(list) {
       const courseContainer = this.shadow?.getElementById("course-list-container");
       if (!courseContainer || !list) return;
       if (list.length === 0) {
-        courseContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">Tidak ada mata kuliah aktif.</div>';
+        courseContainer.innerHTML = '<div class="empty-state">Tidak ada mata kuliah aktif.</div>';
         return;
       }
       courseContainer.innerHTML = "";
@@ -1036,9 +1256,41 @@
         courseContainer.appendChild(item);
       });
     }
+    // ─── Render: Forums with Filter ───────────────────────────────────────────────
+    _renderForumFilterPills(forums) {
+      const filterBar = this.shadow?.getElementById("forum-filter-bar");
+      if (!filterBar) return;
+      const total = forums.length;
+      const pendingCount = forums.filter((f) => !f.answered).length;
+      const doneCount = forums.filter((f) => f.answered).length;
+      filterBar.innerHTML = "";
+      const pills = document.createElement("div");
+      pills.className = "filter-pills";
+      pills.innerHTML = `
+      <button class="filter-pill ${this.forumFilter === "all" ? "active" : ""}" data-filter="all">
+        Semua<span class="pill-count">${total}</span>
+      </button>
+      <button class="filter-pill ${this.forumFilter === "pending" ? "active" : ""}" data-filter="pending">
+        Belum Dijawab<span class="pill-count">${pendingCount}</span>
+      </button>
+      <button class="filter-pill ${this.forumFilter === "done" ? "active" : ""}" data-filter="done">
+        Sudah Dijawab<span class="pill-count">${doneCount}</span>
+      </button>
+    `;
+      pills.querySelectorAll(".filter-pill").forEach((pill) => {
+        pill.addEventListener("click", () => {
+          this.forumFilter = pill.dataset.filter;
+          this._renderForums(this.activeForums, this.courses);
+        });
+      });
+      filterBar.appendChild(pills);
+    }
     _renderForums(forumItems, coursesFallback = []) {
       const forumContainer = this.shadow?.getElementById("forum-list-container");
       if (!forumContainer) return;
+      if (forumItems && forumItems.length > 0) {
+        this._renderForumFilterPills(forumItems);
+      }
       forumContainer.innerHTML = "";
       if (!forumItems || forumItems.length === 0) {
         if (coursesFallback && coursesFallback.length > 0) {
@@ -1057,14 +1309,25 @@
             forumContainer.appendChild(item);
           });
         } else {
-          forumContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">Tidak ada forum aktif saat ini.</div>';
+          forumContainer.innerHTML = '<div class="empty-state">Tidak ada forum aktif saat ini.</div>';
         }
         return;
       }
-      forumItems.forEach((f) => {
+      let filtered = forumItems;
+      if (this.forumFilter === "pending") {
+        filtered = forumItems.filter((f) => !f.answered);
+      } else if (this.forumFilter === "done") {
+        filtered = forumItems.filter((f) => f.answered);
+      }
+      if (filtered.length === 0) {
+        const filterLabel = this.forumFilter === "pending" ? "belum dijawab" : "sudah dijawab";
+        forumContainer.innerHTML = `<div class="empty-state">Tidak ada forum yang ${filterLabel}.</div>`;
+        return;
+      }
+      filtered.forEach((f) => {
         const item = document.createElement("div");
         item.className = "forum-card";
-        const statusBadge = f.completion ? '<span style="display:inline-block; font-size:10px; font-weight:700; color:#10b981; background:rgba(16,185,129,0.15); padding:2px 6px; border-radius:4px; margin-left:6px;">Sudah Dijawab</span>' : '<span style="display:inline-block; font-size:10px; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.15); padding:2px 6px; border-radius:4px; margin-left:6px;">Belum Dijawab</span>';
+        const statusBadge = f.answered ? '<span class="badge badge-done">Sudah Dijawab</span>' : '<span class="badge badge-pending">Belum Dijawab</span>';
         item.innerHTML = `
         <div>
           <div class="forum-title" style="display:flex; align-items:center; gap:4px;">
@@ -1078,6 +1341,157 @@
         forumContainer.appendChild(item);
       });
     }
+    // ─── Render: Evaluations ──────────────────────────────────────────────────────
+    _renderEvalFilterPills(evals) {
+      const filterBar = this.shadow?.getElementById("eval-filter-bar");
+      if (!filterBar) return;
+      const total = evals.length;
+      const pendingCount = evals.filter((e) => !e.completion && !e.locked).length;
+      const doneCount = evals.filter((e) => e.completion).length;
+      filterBar.innerHTML = "";
+      const pills = document.createElement("div");
+      pills.className = "filter-pills";
+      pills.innerHTML = `
+      <button class="filter-pill ${this.evalFilter === "all" ? "active" : ""}" data-filter="all">
+        Semua<span class="pill-count">${total}</span>
+      </button>
+      <button class="filter-pill ${this.evalFilter === "pending" ? "active" : ""}" data-filter="pending">
+        Belum Dikerjakan<span class="pill-count">${pendingCount}</span>
+      </button>
+      <button class="filter-pill ${this.evalFilter === "done" ? "active" : ""}" data-filter="done">
+        Sudah Selesai<span class="pill-count">${doneCount}</span>
+      </button>
+    `;
+      pills.querySelectorAll(".filter-pill").forEach((pill) => {
+        pill.addEventListener("click", () => {
+          this.evalFilter = pill.dataset.filter;
+          this._renderEvaluations(this.evaluations);
+        });
+      });
+      filterBar.appendChild(pills);
+    }
+    _renderEvalSummary(evals) {
+      const summaryBar = this.shadow?.getElementById("eval-summary-bar");
+      if (!summaryBar) return;
+      const preTests = evals.filter((e) => e.type === "PRE_TEST");
+      const postTests = evals.filter((e) => e.type === "POST_TEST");
+      const kuesioners = evals.filter((e) => e.type === "KUESIONER");
+      const preDone = preTests.filter((e) => e.completion).length;
+      const postDone = postTests.filter((e) => e.completion).length;
+      const kuesDone = kuesioners.filter((e) => e.completion).length;
+      summaryBar.innerHTML = `
+      <div class="eval-summary">
+        <div class="eval-stat">
+          <div class="eval-stat-value">${preDone}/${preTests.length}</div>
+          <div class="eval-stat-label">Pre-Test</div>
+        </div>
+        <div class="eval-stat">
+          <div class="eval-stat-value">${postDone}/${postTests.length}</div>
+          <div class="eval-stat-label">Post-Test</div>
+        </div>
+        <div class="eval-stat">
+          <div class="eval-stat-value">${kuesDone}/${kuesioners.length}</div>
+          <div class="eval-stat-label">Kuesioner</div>
+        </div>
+        <div class="eval-stat">
+          <div class="eval-stat-value">${preDone + postDone + kuesDone}/${evals.length}</div>
+          <div class="eval-stat-label">Total</div>
+        </div>
+      </div>
+    `;
+    }
+    _renderEvaluations(evalItems) {
+      const evalContainer = this.shadow?.getElementById("eval-list-container");
+      if (!evalContainer) return;
+      if (evalItems && evalItems.length > 0) {
+        this._renderEvalFilterPills(evalItems);
+        this._renderEvalSummary(evalItems);
+      }
+      evalContainer.innerHTML = "";
+      if (!evalItems || evalItems.length === 0) {
+        evalContainer.innerHTML = '<div class="empty-state">Tidak ada kuis atau evaluasi ditemukan.</div>';
+        return;
+      }
+      let filtered = evalItems;
+      if (this.evalFilter === "pending") {
+        filtered = evalItems.filter((e) => !e.completion && !e.locked);
+      } else if (this.evalFilter === "done") {
+        filtered = evalItems.filter((e) => e.completion);
+      }
+      if (filtered.length === 0) {
+        const filterLabel = this.evalFilter === "pending" ? "belum dikerjakan" : "sudah selesai";
+        evalContainer.innerHTML = `<div class="empty-state">Tidak ada evaluasi yang ${filterLabel}.</div>`;
+        return;
+      }
+      const grouped = {};
+      filtered.forEach((e) => {
+        if (!grouped[e.courseCode]) {
+          grouped[e.courseCode] = { courseTitle: e.courseTitle, items: [] };
+        }
+        grouped[e.courseCode].items.push(e);
+      });
+      const typeIcons = {
+        PRE_TEST: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+        POST_TEST: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+        KUESIONER: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`
+      };
+      const typeLabels = {
+        PRE_TEST: "Pre-Test",
+        POST_TEST: "Post-Test",
+        KUESIONER: "Kuesioner"
+      };
+      for (const courseCode of Object.keys(grouped)) {
+        const group = grouped[courseCode];
+        const header = document.createElement("div");
+        header.className = "eval-course-header";
+        header.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d4af37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        ${group.courseTitle}
+      `;
+        evalContainer.appendChild(header);
+        const bySection = {};
+        group.items.forEach((item) => {
+          const secKey = item.sectionName || "Lainnya";
+          if (!bySection[secKey]) bySection[secKey] = [];
+          bySection[secKey].push(item);
+        });
+        for (const secName of Object.keys(bySection)) {
+          const secLabel = document.createElement("div");
+          secLabel.className = "eval-section-label";
+          secLabel.textContent = secName;
+          evalContainer.appendChild(secLabel);
+          bySection[secName].forEach((e) => {
+            const card = document.createElement("div");
+            card.className = "eval-item";
+            let btnHtml = "";
+            if (e.completion) {
+              btnHtml = `<span class="eval-btn-action eval-btn-done">Selesai</span>`;
+            } else if (e.locked) {
+              btnHtml = `<span class="eval-btn-action eval-btn-locked" title="${e.lockReason || "Terkunci"}">Terkunci</span>`;
+            } else {
+              const url = e.type === "KUESIONER" ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/kuesioner/${e.subId}` : `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/exam/${e.subId}`;
+              btnHtml = `<a class="eval-btn-action" href="${url}" target="_blank">Kerjakan</a>`;
+            }
+            card.innerHTML = `
+            <div class="eval-item-info">
+              <div class="eval-item-title">
+                ${typeIcons[e.type] || ""}
+                ${typeLabels[e.type] || e.type}
+                ${e.completion ? '<span class="badge badge-done">Selesai</span>' : e.locked ? '<span class="badge badge-locked">Terkunci</span>' : '<span class="badge badge-pending">Belum</span>'}
+              </div>
+              <div class="eval-item-meta">${e.name} &bull; ${secName}</div>
+            </div>
+            ${btnHtml}
+          `;
+            evalContainer.appendChild(card);
+          });
+        }
+      }
+    }
+    // ─── Session Warning ──────────────────────────────────────────────────────────
     _showSessionWarning(msg) {
       const forumContainer = this.shadow?.getElementById("forum-list-container");
       if (!forumContainer || this.shadow?.getElementById("mentari-session-banner")) return;
@@ -1110,6 +1524,7 @@
         await this._loadCoursesAndForums();
       });
     }
+    // ─── Data Fetching ────────────────────────────────────────────────────────────
     async _prefetchData() {
       if (this.isOpen) {
         this._loadCoursesAndForums();
@@ -1119,6 +1534,17 @@
     }
     async _loadCoursesAndForums() {
       return this._fetchDataInternal(false);
+    }
+    /**
+     * Mengambil nama lengkap mahasiswa dari JWT payload
+     */
+    _getStudentNameFromToken(token) {
+      if (this._studentName) return this._studentName;
+      const payload = UnpamAuth.decodeJwtPayload(token);
+      if (payload) {
+        this._studentName = payload.fullname || payload.full_name || payload.name || payload.nama || "";
+      }
+      return this._studentName;
     }
     async _fetchDataInternal(silent = false) {
       if (this._currentFetchPromise) {
@@ -1156,6 +1582,8 @@
             }
             return;
           }
+          const rawToken = await UnpamAuth.getAuthToken();
+          this._getStudentNameFromToken(rawToken);
           const res = await fetch("https://mentari.unpam.ac.id/api/user-course?page=1&limit=50", options);
           if (res.status === 401) {
             const currentToken2 = await UnpamAuth.getAuthToken();
@@ -1179,8 +1607,8 @@
           this.courses = list;
           if (list.length === 0) {
             if (!silent) {
-              if (forumContainer) forumContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">Tidak ada forum aktif saat ini.</div>';
-              if (courseContainer) courseContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#888;">Tidak ada mata kuliah aktif.</div>';
+              if (forumContainer) forumContainer.innerHTML = '<div class="empty-state">Tidak ada forum aktif saat ini.</div>';
+              if (courseContainer) courseContainer.innerHTML = '<div class="empty-state">Tidak ada mata kuliah aktif.</div>';
             }
             return;
           }
@@ -1188,6 +1616,7 @@
             this._renderCourses(list);
           }
           const forumItems = [];
+          const evalItems = [];
           const chunkSize = 3;
           for (let i = 0; i < list.length; i += chunkSize) {
             const chunk = list.slice(i, i + chunkSize);
@@ -1199,28 +1628,83 @@
                 if (!cRes.ok) return;
                 const cData = await cRes.json();
                 const sections = Array.isArray(cData) ? cData : cData.data || [];
-                sections.forEach((section) => {
+                for (const section of sections) {
                   const subSections = section.sub_section || [];
-                  subSections.forEach((sub) => {
+                  const sectionName = section.nama_section || `Pertemuan ${section.urutan || ""}`;
+                  for (const sub of subSections) {
                     if (sub.kode_template === "FORUM_DISKUSI" && sub.id) {
-                      forumItems.push({
+                      let hasTopics = false;
+                      let isAnswered = false;
+                      try {
+                        const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
+                        if (topicRes.ok) {
+                          const topicData = await topicRes.json();
+                          const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
+                          hasTopics = topics.length > 0;
+                          if (hasTopics && this._studentName) {
+                            let totalStudentReplies = 0;
+                            for (const topic of topics) {
+                              try {
+                                const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
+                                if (replyRes.ok) {
+                                  const replyData = await replyRes.json();
+                                  const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
+                                  const studentReplies = replies.filter(
+                                    (r) => r.fullname && r.fullname.toLowerCase().includes(this._studentName.toLowerCase())
+                                  );
+                                  totalStudentReplies += studentReplies.length;
+                                }
+                              } catch {
+                              }
+                              if (totalStudentReplies >= 2) {
+                                isAnswered = true;
+                                break;
+                              }
+                            }
+                          }
+                          if (!this._studentName) {
+                            isAnswered = !!sub.completion;
+                          }
+                        }
+                      } catch {
+                      }
+                      if (hasTopics) {
+                        forumItems.push({
+                          courseCode,
+                          courseTitle,
+                          sectionName,
+                          forumId: sub.id,
+                          forumName: sub.nama_sub_section || sub.judul || "Forum Diskusi",
+                          completion: !!sub.completion,
+                          answered: isAnswered
+                        });
+                      }
+                    }
+                    if (["PRE_TEST", "POST_TEST", "KUESIONER"].includes(sub.kode_template) && sub.id) {
+                      const isLocked = !!(sub.warningAlert && sub.warningAlert.length > 0);
+                      evalItems.push({
                         courseCode,
                         courseTitle,
-                        sectionName: section.nama_section || `Pertemuan ${section.urutan || ""}`,
-                        forumId: sub.id,
-                        forumName: sub.nama_sub_section || sub.judul || "Forum Diskusi",
-                        completion: !!sub.completion
+                        sectionName,
+                        subId: sub.id,
+                        type: sub.kode_template,
+                        name: sub.nama_sub_section || sub.judul || sub.kode_template,
+                        completion: !!sub.completion,
+                        locked: isLocked,
+                        lockReason: sub.warningAlert || ""
                       });
                     }
-                  });
-                });
+                  }
+                }
               } catch (err) {
               }
             }));
           }
           this.activeForums = forumItems;
+          this.evaluations = evalItems;
           if (this.isOpen) {
             this._renderForums(forumItems, list);
+            this._renderEvaluations(evalItems);
           }
           const currentToken = await UnpamAuth.getAuthToken();
           const userId = UnpamAuth.getUserIdentifier(currentToken);
@@ -1229,6 +1713,7 @@
             [cacheKey]: {
               courses: list,
               forums: forumItems,
+              evaluations: evalItems,
               updatedAt: Date.now()
             },
             mentari_cached_courses: list,
