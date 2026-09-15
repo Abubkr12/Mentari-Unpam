@@ -684,6 +684,7 @@
       this.evalFilter = "all";
       this._currentFetchPromise = null;
       this._studentName = "";
+      this._studentNim = "";
       this._init();
     }
     async _init() {
@@ -764,6 +765,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-shrink: 0;
       }
       .brand {
         display: flex;
@@ -792,37 +794,41 @@
         transition: color 0.2s;
       }
       .close-btn:hover { color: #fff; }
+      
+      /* Tabs Bar */
       .tabs-bar {
         display: flex;
-        padding: 0 22px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        background: rgba(0, 0, 0, 0.2);
+        padding: 0 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.35);
         overflow-x: auto;
+        flex-shrink: 0;
+        gap: 4px;
       }
       .tab-btn {
-        background: none;
+        background: transparent;
         border: none;
         padding: 12px 16px;
-        color: #888;
+        color: #999;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         position: relative;
-        transition: color 0.2s;
+        transition: all 0.2s;
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 2px solid transparent;
       }
-      .tab-btn:hover { color: #ccc; }
+      .tab-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.03);
+      }
       .tab-btn.active {
         color: #d4af37;
-      }
-      .tab-btn.active::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: #d4af37;
+        border-bottom-color: #d4af37;
+        background: rgba(212, 175, 55, 0.06);
       }
       .tab-content {
         flex-grow: 1;
@@ -850,6 +856,8 @@
         cursor: pointer;
         transition: all 0.2s;
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
       }
       .filter-pill:hover {
         background: rgba(255, 255, 255, 0.1);
@@ -862,13 +870,15 @@
       }
       .filter-pill .pill-count {
         background: rgba(255, 255, 255, 0.12);
-        padding: 1px 6px;
+        padding: 1px 7px;
         border-radius: 10px;
         font-size: 10px;
-        margin-left: 4px;
+        margin-left: 6px;
+        font-weight: 700;
       }
       .filter-pill.active .pill-count {
         background: rgba(212, 175, 55, 0.35);
+        color: #fff;
       }
 
       /* Forum Card */
@@ -1127,10 +1137,22 @@
         </div>
 
         <div class="tabs-bar">
-          <button class="tab-btn active" data-tab="tab-forums">Forum Aktif</button>
-          <button class="tab-btn" data-tab="tab-evaluations">Kuis & Evaluasi</button>
-          <button class="tab-btn" data-tab="tab-courses">Mata Kuliah</button>
-          <button class="tab-btn" data-tab="tab-settings">Pengaturan</button>
+          <button class="tab-btn active" data-tab="tab-forums">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Forum Aktif
+          </button>
+          <button class="tab-btn" data-tab="tab-evaluations">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Kuis & Evaluasi
+          </button>
+          <button class="tab-btn" data-tab="tab-courses">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Mata Kuliah
+          </button>
+          <button class="tab-btn" data-tab="tab-settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Pengaturan
+          </button>
         </div>
 
         <div class="tab-content active" id="tab-forums">
@@ -1296,12 +1318,20 @@
       });
     }
     // ─── Render: Forums with Filter ───────────────────────────────────────────────
+    /**
+     * Cek apakah item forum sudah diselesaikan:
+     * Prioritas 1: sub.completion (Flag resmi LMS database Mentari)
+     * Prioritas 2: f.answered (Deteksi balasan reply mahasiswa >= 2 di forum)
+     */
+    _isForumDone(f) {
+      return Boolean(f.completion === true || f.answered === true);
+    }
     _renderForumFilterPills(forums) {
       const filterBar = this.shadow?.getElementById("forum-filter-bar");
       if (!filterBar) return;
       const total = forums.length;
-      const pendingCount = forums.filter((f) => !f.answered).length;
-      const doneCount = forums.filter((f) => f.answered).length;
+      const doneCount = forums.filter((f) => this._isForumDone(f)).length;
+      const pendingCount = total - doneCount;
       filterBar.innerHTML = "";
       const pills = document.createElement("div");
       pills.className = "filter-pills";
@@ -1352,11 +1382,16 @@
         }
         return;
       }
-      let filtered = forumItems;
+      const sorted = [...forumItems].sort((a, b) => {
+        const aDone = this._isForumDone(a) ? 1 : 0;
+        const bDone = this._isForumDone(b) ? 1 : 0;
+        return aDone - bDone;
+      });
+      let filtered = sorted;
       if (this.forumFilter === "pending") {
-        filtered = forumItems.filter((f) => !f.answered);
+        filtered = sorted.filter((f) => !this._isForumDone(f));
       } else if (this.forumFilter === "done") {
-        filtered = forumItems.filter((f) => f.answered);
+        filtered = sorted.filter((f) => this._isForumDone(f));
       }
       if (filtered.length === 0) {
         const filterLabel = this.forumFilter === "pending" ? "belum dijawab" : "sudah dijawab";
@@ -1366,7 +1401,8 @@
       filtered.forEach((f) => {
         const item = document.createElement("div");
         item.className = "forum-card";
-        const statusBadge = f.answered ? '<span class="badge badge-done">Sudah Dijawab</span>' : '<span class="badge badge-pending">Belum Dijawab</span>';
+        const isDone = this._isForumDone(f);
+        const statusBadge = isDone ? '<span class="badge badge-done">Sudah Dijawab</span>' : '<span class="badge badge-pending">Belum Dijawab</span>';
         item.innerHTML = `
         <div>
           <div class="forum-title" style="display:flex; align-items:center; gap:4px;">
@@ -1575,15 +1611,44 @@
       return this._fetchDataInternal(false);
     }
     /**
-     * Mengambil nama lengkap mahasiswa dari JWT payload
+     * Mengambil nama lengkap & NIM mahasiswa dari berbagai sumber handal (localStorage, DOM, JWT)
      */
-    _getStudentNameFromToken(token) {
-      if (this._studentName) return this._studentName;
-      const payload = UnpamAuth.decodeJwtPayload(token);
-      if (payload) {
-        this._studentName = payload.fullname || payload.full_name || payload.name || payload.nama || "";
+    async _resolveStudentIdentity(token) {
+      if (this._studentName && this._studentNim) return;
+      try {
+        if (typeof localStorage !== "undefined") {
+          const rawInfo = localStorage.getItem("mentari_user_info") || localStorage.getItem("user");
+          if (rawInfo) {
+            const parsed = JSON.parse(rawInfo);
+            this._studentName = parsed.nama || parsed.name || parsed.fullname || parsed.full_name || this._studentName;
+            this._studentNim = parsed.nim || parsed.username || this._studentNim;
+          }
+        }
+      } catch {
       }
-      return this._studentName;
+      try {
+        if (!this._studentName && typeof document !== "undefined") {
+          const profileEl = document.querySelector(".MuiAvatar-root")?.parentElement;
+          if (profileEl) {
+            const t = profileEl.textContent.trim();
+            if (t && t.length > 2 && !t.includes("Login")) {
+              this._studentName = t;
+            }
+          }
+        }
+      } catch {
+      }
+      if (token) {
+        const payload = UnpamAuth.decodeJwtPayload(token);
+        if (payload) {
+          if (!this._studentName) {
+            this._studentName = payload.fullname || payload.full_name || payload.name || payload.nama || "";
+          }
+          if (!this._studentNim) {
+            this._studentNim = payload.nim || payload.username || "";
+          }
+        }
+      }
     }
     async _fetchDataInternal(silent = false) {
       if (this._currentFetchPromise) {
@@ -1622,7 +1687,7 @@
             return;
           }
           const rawToken = await UnpamAuth.getAuthToken();
-          this._getStudentNameFromToken(rawToken);
+          await this._resolveStudentIdentity(rawToken);
           const res = await fetch("https://mentari.unpam.ac.id/api/user-course?page=1&limit=50", options);
           if (res.status === 401) {
             const currentToken2 = await UnpamAuth.getAuthToken();
@@ -1672,40 +1737,44 @@
                   const sectionName = section.nama_section || `Pertemuan ${section.urutan || ""}`;
                   for (const sub of subSections) {
                     if (sub.kode_template === "FORUM_DISKUSI" && sub.id) {
-                      let hasTopics = false;
-                      let isAnswered = false;
-                      try {
-                        const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
-                        if (topicRes.ok) {
-                          const topicData = await topicRes.json();
-                          const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
-                          hasTopics = topics.length > 0;
-                          if (hasTopics && this._studentName) {
-                            let totalStudentReplies = 0;
-                            for (const topic of topics) {
-                              try {
-                                const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
-                                if (replyRes.ok) {
-                                  const replyData = await replyRes.json();
-                                  const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
-                                  const studentReplies = replies.filter(
-                                    (r) => r.fullname && r.fullname.toLowerCase().includes(this._studentName.toLowerCase())
-                                  );
-                                  totalStudentReplies += studentReplies.length;
+                      const isLmsCompleted = Boolean(sub.completion === true);
+                      let isAnswered = isLmsCompleted;
+                      let hasTopics = true;
+                      if (!isLmsCompleted) {
+                        try {
+                          const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
+                          if (topicRes.ok) {
+                            const topicData = await topicRes.json();
+                            const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
+                            hasTopics = topics.length > 0;
+                            if (hasTopics && (this._studentName || this._studentNim)) {
+                              let totalReplies = 0;
+                              const searchName = (this._studentName || "").toLowerCase();
+                              const searchNim = (this._studentNim || "").toLowerCase();
+                              for (const topic of topics) {
+                                try {
+                                  const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
+                                  if (replyRes.ok) {
+                                    const replyData = await replyRes.json();
+                                    const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
+                                    const myReplies = replies.filter((r) => {
+                                      const rName = (r.fullname || r.nama || "").toLowerCase();
+                                      const rNim = (r.nim || r.username || "").toLowerCase();
+                                      return searchName && rName.includes(searchName) || searchNim && rNim === searchNim;
+                                    });
+                                    totalReplies += myReplies.length;
+                                  }
+                                } catch {
                                 }
-                              } catch {
-                              }
-                              if (totalStudentReplies >= 2) {
-                                isAnswered = true;
-                                break;
+                                if (totalReplies >= 2) {
+                                  isAnswered = true;
+                                  break;
+                                }
                               }
                             }
                           }
-                          if (!this._studentName) {
-                            isAnswered = !!sub.completion;
-                          }
+                        } catch {
                         }
-                      } catch {
                       }
                       if (hasTopics) {
                         forumItems.push({
@@ -1714,7 +1783,7 @@
                           sectionName,
                           forumId: sub.id,
                           forumName: sub.nama_sub_section || sub.judul || "Forum Diskusi",
-                          completion: !!sub.completion,
+                          completion: isLmsCompleted,
                           answered: isAnswered
                         });
                       }
@@ -1728,7 +1797,7 @@
                         subId: sub.id,
                         type: sub.kode_template,
                         name: sub.nama_sub_section || sub.judul || sub.kode_template,
-                        completion: !!sub.completion,
+                        completion: Boolean(sub.completion === true),
                         locked: isLocked,
                         lockReason: sub.warningAlert || ""
                       });

@@ -31,6 +31,7 @@ class MentariDashboard {
     this.evalFilter = 'all';
     this._currentFetchPromise = null;
     this._studentName = '';
+    this._studentNim = '';
     this._init();
   }
 
@@ -127,6 +128,7 @@ class MentariDashboard {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-shrink: 0;
       }
       .brand {
         display: flex;
@@ -155,37 +157,41 @@ class MentariDashboard {
         transition: color 0.2s;
       }
       .close-btn:hover { color: #fff; }
+      
+      /* Tabs Bar */
       .tabs-bar {
         display: flex;
-        padding: 0 22px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        background: rgba(0, 0, 0, 0.2);
+        padding: 0 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.35);
         overflow-x: auto;
+        flex-shrink: 0;
+        gap: 4px;
       }
       .tab-btn {
-        background: none;
+        background: transparent;
         border: none;
         padding: 12px 16px;
-        color: #888;
+        color: #999;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         position: relative;
-        transition: color 0.2s;
+        transition: all 0.2s;
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 2px solid transparent;
       }
-      .tab-btn:hover { color: #ccc; }
+      .tab-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.03);
+      }
       .tab-btn.active {
         color: #d4af37;
-      }
-      .tab-btn.active::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: #d4af37;
+        border-bottom-color: #d4af37;
+        background: rgba(212, 175, 55, 0.06);
       }
       .tab-content {
         flex-grow: 1;
@@ -213,6 +219,8 @@ class MentariDashboard {
         cursor: pointer;
         transition: all 0.2s;
         white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
       }
       .filter-pill:hover {
         background: rgba(255, 255, 255, 0.1);
@@ -225,13 +233,15 @@ class MentariDashboard {
       }
       .filter-pill .pill-count {
         background: rgba(255, 255, 255, 0.12);
-        padding: 1px 6px;
+        padding: 1px 7px;
         border-radius: 10px;
         font-size: 10px;
-        margin-left: 4px;
+        margin-left: 6px;
+        font-weight: 700;
       }
       .filter-pill.active .pill-count {
         background: rgba(212, 175, 55, 0.35);
+        color: #fff;
       }
 
       /* Forum Card */
@@ -491,10 +501,22 @@ class MentariDashboard {
         </div>
 
         <div class="tabs-bar">
-          <button class="tab-btn active" data-tab="tab-forums">Forum Aktif</button>
-          <button class="tab-btn" data-tab="tab-evaluations">Kuis & Evaluasi</button>
-          <button class="tab-btn" data-tab="tab-courses">Mata Kuliah</button>
-          <button class="tab-btn" data-tab="tab-settings">Pengaturan</button>
+          <button class="tab-btn active" data-tab="tab-forums">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Forum Aktif
+          </button>
+          <button class="tab-btn" data-tab="tab-evaluations">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Kuis & Evaluasi
+          </button>
+          <button class="tab-btn" data-tab="tab-courses">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Mata Kuliah
+          </button>
+          <button class="tab-btn" data-tab="tab-settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Pengaturan
+          </button>
         </div>
 
         <div class="tab-content active" id="tab-forums">
@@ -686,13 +708,22 @@ class MentariDashboard {
 
   // ─── Render: Forums with Filter ───────────────────────────────────────────────
 
+  /**
+   * Cek apakah item forum sudah diselesaikan:
+   * Prioritas 1: sub.completion (Flag resmi LMS database Mentari)
+   * Prioritas 2: f.answered (Deteksi balasan reply mahasiswa >= 2 di forum)
+   */
+  _isForumDone(f) {
+    return Boolean(f.completion === true || f.answered === true);
+  }
+
   _renderForumFilterPills(forums) {
     const filterBar = this.shadow?.getElementById('forum-filter-bar');
     if (!filterBar) return;
 
     const total = forums.length;
-    const pendingCount = forums.filter(f => !f.answered).length;
-    const doneCount = forums.filter(f => f.answered).length;
+    const doneCount = forums.filter(f => this._isForumDone(f)).length;
+    const pendingCount = total - doneCount;
 
     filterBar.innerHTML = '';
     const pills = document.createElement('div');
@@ -752,12 +783,19 @@ class MentariDashboard {
       return;
     }
 
+    // Sort: yang belum dijawab selalu tampil paling atas
+    const sorted = [...forumItems].sort((a, b) => {
+      const aDone = this._isForumDone(a) ? 1 : 0;
+      const bDone = this._isForumDone(b) ? 1 : 0;
+      return aDone - bDone;
+    });
+
     // Apply filter
-    let filtered = forumItems;
+    let filtered = sorted;
     if (this.forumFilter === 'pending') {
-      filtered = forumItems.filter(f => !f.answered);
+      filtered = sorted.filter(f => !this._isForumDone(f));
     } else if (this.forumFilter === 'done') {
-      filtered = forumItems.filter(f => f.answered);
+      filtered = sorted.filter(f => this._isForumDone(f));
     }
 
     if (filtered.length === 0) {
@@ -769,7 +807,8 @@ class MentariDashboard {
     filtered.forEach(f => {
       const item = document.createElement('div');
       item.className = 'forum-card';
-      const statusBadge = f.answered
+      const isDone = this._isForumDone(f);
+      const statusBadge = isDone
         ? '<span class="badge badge-done">Sudah Dijawab</span>'
         : '<span class="badge badge-pending">Belum Dijawab</span>';
 
@@ -1021,15 +1060,48 @@ class MentariDashboard {
   }
 
   /**
-   * Mengambil nama lengkap mahasiswa dari JWT payload
+   * Mengambil nama lengkap & NIM mahasiswa dari berbagai sumber handal (localStorage, DOM, JWT)
    */
-  _getStudentNameFromToken(token) {
-    if (this._studentName) return this._studentName;
-    const payload = UnpamAuth.decodeJwtPayload(token);
-    if (payload) {
-      this._studentName = payload.fullname || payload.full_name || payload.name || payload.nama || '';
+  async _resolveStudentIdentity(token) {
+    if (this._studentName && this._studentNim) return;
+
+    // 1. Coba baca dari mentari_user_info di localStorage
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const rawInfo = localStorage.getItem('mentari_user_info') || localStorage.getItem('user');
+        if (rawInfo) {
+          const parsed = JSON.parse(rawInfo);
+          this._studentName = parsed.nama || parsed.name || parsed.fullname || parsed.full_name || this._studentName;
+          this._studentNim = parsed.nim || parsed.username || this._studentNim;
+        }
+      }
+    } catch {}
+
+    // 2. Coba baca dari elemen DOM profil Mentari (Navbar)
+    try {
+      if (!this._studentName && typeof document !== 'undefined') {
+        const profileEl = document.querySelector('.MuiAvatar-root')?.parentElement;
+        if (profileEl) {
+          const t = profileEl.textContent.trim();
+          if (t && t.length > 2 && !t.includes('Login')) {
+            this._studentName = t;
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Coba baca dari JWT payload
+    if (token) {
+      const payload = UnpamAuth.decodeJwtPayload(token);
+      if (payload) {
+        if (!this._studentName) {
+          this._studentName = payload.fullname || payload.full_name || payload.name || payload.nama || '';
+        }
+        if (!this._studentNim) {
+          this._studentNim = payload.nim || payload.username || '';
+        }
+      }
     }
-    return this._studentName;
   }
 
   async _fetchDataInternal(silent = false) {
@@ -1074,9 +1146,9 @@ class MentariDashboard {
           return;
         }
 
-        // Ambil nama mahasiswa dari token
+        // Ambil identitas mahasiswa dari berbagai sumber handal
         const rawToken = await UnpamAuth.getAuthToken();
-        this._getStudentNameFromToken(rawToken);
+        await this._resolveStudentIdentity(rawToken);
 
         const res = await fetch('https://mentari.unpam.ac.id/api/user-course?page=1&limit=50', options);
 
@@ -1116,7 +1188,7 @@ class MentariDashboard {
           this._renderCourses(list);
         }
 
-        // ─── Batch concurrency: scan setiap mata kuliah ─────────────────────
+        // ─── Scan setiap mata kuliah secara efisien ─────────────────────────
         const forumItems = [];
         const evalItems = [];
         const chunkSize = 3;
@@ -1132,7 +1204,7 @@ class MentariDashboard {
               const cData = await cRes.json();
               const sections = Array.isArray(cData) ? cData : (cData.data || []);
 
-              // Scan ALL sections dynamically (tidak ada limit pertemuan)
+              // Scan seluruh section secara dinamis (tanpa batas pertemuan)
               for (const section of sections) {
                 const subSections = section.sub_section || [];
                 const sectionName = section.nama_section || `Pertemuan ${section.urutan || ''}`;
@@ -1140,47 +1212,53 @@ class MentariDashboard {
                 for (const sub of subSections) {
                   // ─── Forum Diskusi ─────────────────────────────────────
                   if (sub.kode_template === 'FORUM_DISKUSI' && sub.id) {
-                    // Verifikasi forum punya topik (skip forum kosong)
-                    let hasTopics = false;
-                    let isAnswered = false;
+                    const isLmsCompleted = Boolean(sub.completion === true);
+                    let isAnswered = isLmsCompleted;
+                    let hasTopics = true; // Default true jika sudah selesai
 
-                    try {
-                      const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
-                      if (topicRes.ok) {
-                        const topicData = await topicRes.json();
-                        const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
-                        hasTopics = topics.length > 0;
+                    // Hanya lakukan deep fetch replies jika BELUM selesai di LMS
+                    // Ini menghemat ratusan request HTTP dan mencegah rate-limiting
+                    if (!isLmsCompleted) {
+                      try {
+                        const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
+                        if (topicRes.ok) {
+                          const topicData = await topicRes.json();
+                          const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
+                          hasTopics = topics.length > 0;
 
-                        // Cek apakah mahasiswa sudah menjawab (minimal 2 reply dengan nama mahasiswa)
-                        if (hasTopics && this._studentName) {
-                          let totalStudentReplies = 0;
-                          for (const topic of topics) {
-                            try {
-                              const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
-                              if (replyRes.ok) {
-                                const replyData = await replyRes.json();
-                                const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
-                                const studentReplies = replies.filter(r =>
-                                  r.fullname && r.fullname.toLowerCase().includes(this._studentName.toLowerCase())
-                                );
-                                totalStudentReplies += studentReplies.length;
+                          // Jika ada topik dan kita punya identitas mahasiswa, cek tanggapannya
+                          if (hasTopics && (this._studentName || this._studentNim)) {
+                            let totalReplies = 0;
+                            const searchName = (this._studentName || '').toLowerCase();
+                            const searchNim = (this._studentNim || '').toLowerCase();
+
+                            for (const topic of topics) {
+                              try {
+                                const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
+                                if (replyRes.ok) {
+                                  const replyData = await replyRes.json();
+                                  const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
+                                  
+                                  const myReplies = replies.filter(r => {
+                                    const rName = (r.fullname || r.nama || '').toLowerCase();
+                                    const rNim = (r.nim || r.username || '').toLowerCase();
+                                    return (searchName && rName.includes(searchName)) || (searchNim && rNim === searchNim);
+                                  });
+                                  totalReplies += myReplies.length;
+                                }
+                              } catch {}
+
+                              if (totalReplies >= 2) {
+                                isAnswered = true;
+                                break;
                               }
-                            } catch {}
-                            // Kalau sudah >= 2 reply, langsung mark answered
-                            if (totalStudentReplies >= 2) {
-                              isAnswered = true;
-                              break;
                             }
                           }
                         }
+                      } catch {}
+                    }
 
-                        // Fallback: kalau nama mahasiswa kosong, gunakan completion flag
-                        if (!this._studentName) {
-                          isAnswered = !!sub.completion;
-                        }
-                      }
-                    } catch {}
-
+                    // Hanya tampilkan jika forum memiliki topik diskusi
                     if (hasTopics) {
                       forumItems.push({
                         courseCode,
@@ -1188,7 +1266,7 @@ class MentariDashboard {
                         sectionName,
                         forumId: sub.id,
                         forumName: sub.nama_sub_section || sub.judul || 'Forum Diskusi',
-                        completion: !!sub.completion,
+                        completion: isLmsCompleted,
                         answered: isAnswered
                       });
                     }
@@ -1204,7 +1282,7 @@ class MentariDashboard {
                       subId: sub.id,
                       type: sub.kode_template,
                       name: sub.nama_sub_section || sub.judul || sub.kode_template,
-                      completion: !!sub.completion,
+                      completion: Boolean(sub.completion === true),
                       locked: isLocked,
                       lockReason: sub.warningAlert || ''
                     });
