@@ -169,12 +169,17 @@
      * Mencari tombol berdasarkan teks kontennya (pengganti fatal bug :contains())
      * Aman dari DOMException / SyntaxError pada Chromium modern.
      */
-    findButtonByText(keywords, root = document) {
+    findButtonByText(keywords, root = document, includeDisabled = false) {
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
       const buttons = root.querySelectorAll('button, a[role="button"], input[type="button"], input[type="submit"], div[role="button"]');
       for (const btn of buttons) {
         if (btn.offsetParent === null && !btn.getClientRects().length) continue;
+        if (!includeDisabled) {
+          if (btn.disabled || btn.classList.contains("Mui-disabled") || btn.classList.contains("disabled") || btn.getAttribute("aria-disabled") === "true" || btn.getAttribute("disabled") !== null) {
+            continue;
+          }
+        }
         const text = (btn.textContent || btn.value || "").trim().toLowerCase();
         if (normalized.some((kw) => text.includes(kw))) {
           return btn;
@@ -725,27 +730,32 @@
         const success = await this.processCurrentQuestion(true);
         if (!success) {
           if (statusEl) statusEl.textContent = "Selesai atau tidak ada soal aktif.";
+          this.isRunning = false;
           break;
         }
         const nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya"]);
         if (nextBtn) {
-          if (statusEl) statusEl.textContent = "Jeda membaca soal berikutnya...";
-          await Humanizer.randomDelay(1800, 3500);
+          if (statusEl) statusEl.textContent = "Menuju soal berikutnya...";
+          await Humanizer.randomDelay(700, 1500);
           await Humanizer.naturalClick(nextBtn);
-          await Humanizer.delay(1500);
+          await Humanizer.delay(1200);
         } else {
-          const finishBtn = DOM.findButtonByText(["selesai quiz", "selesai kuis", "selesai", "finish"]);
+          this.isRunning = false;
+          const finishBtn = DOM.findButtonByText(["selesai quiz", "selesai kuis", "selesai", "finish", "kumpulkan", "akhiri"]);
           if (finishBtn) {
             if (statusEl) statusEl.textContent = "Semua soal terjawab. Selesai!";
             Toast.success("Semua soal kuis berhasil dijawab dengan sukses!");
             const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
             if (mentari_auto_finish_quiz) {
-              await Humanizer.randomDelay(2e3, 4e3);
+              await Humanizer.randomDelay(1500, 2500);
               await Humanizer.naturalClick(finishBtn);
               await Humanizer.delay(800);
-              const confirmBtn = DOM.findButtonByText(["ya", "ok", "setuju", "submit"]);
+              const confirmBtn = DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim"]);
               if (confirmBtn) await Humanizer.naturalClick(confirmBtn);
             }
+          } else {
+            if (statusEl) statusEl.textContent = "Semua soal telah terjawab!";
+            Toast.success("Seluruh nomor soal telah berhasil dijawab!");
           }
           break;
         }
@@ -777,7 +787,7 @@
         return true;
       }
       if (isAuto) {
-        await Humanizer.readingPacing(questionText, 2500, 6e3);
+        await Humanizer.readingPacing(questionText, 600, 1500);
       }
       const prompt = this._buildPrompt(questionText, options);
       const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;

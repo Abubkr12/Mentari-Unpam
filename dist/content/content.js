@@ -5,12 +5,17 @@
      * Mencari tombol berdasarkan teks kontennya (pengganti fatal bug :contains())
      * Aman dari DOMException / SyntaxError pada Chromium modern.
      */
-    findButtonByText(keywords, root = document) {
+    findButtonByText(keywords, root = document, includeDisabled = false) {
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
       const buttons = root.querySelectorAll('button, a[role="button"], input[type="button"], input[type="submit"], div[role="button"]');
       for (const btn of buttons) {
         if (btn.offsetParent === null && !btn.getClientRects().length) continue;
+        if (!includeDisabled) {
+          if (btn.disabled || btn.classList.contains("Mui-disabled") || btn.classList.contains("disabled") || btn.getAttribute("aria-disabled") === "true" || btn.getAttribute("disabled") !== null) {
+            continue;
+          }
+        }
         const text = (btn.textContent || btn.value || "").trim().toLowerCase();
         if (normalized.some((kw) => text.includes(kw))) {
           return btn;

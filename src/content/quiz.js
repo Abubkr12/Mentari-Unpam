@@ -236,36 +236,39 @@ class QuizAssistant {
       const success = await this.processCurrentQuestion(true);
       if (!success) {
         if (statusEl) statusEl.textContent = 'Selesai atau tidak ada soal aktif.';
+        this.isRunning = false;
         break;
       }
 
-      // Cari tombol Selanjutnya / Next
-      // Gunakan DOM.findButtonByText (MENGHINDARI :contains() BUG)
+      // Cari tombol Selanjutnya / Next yang masih AKTIF (tidak disabled)
       const nextBtn = DOM.findButtonByText(['selanjutnya', 'next', 'berikutnya']);
       if (nextBtn) {
-        if (statusEl) statusEl.textContent = 'Jeda membaca soal berikutnya...';
-        // Jeda natural sebelum klik tombol next (1.8s - 3.5s)
-        await Humanizer.randomDelay(1800, 3500);
+        if (statusEl) statusEl.textContent = 'Menuju soal berikutnya...';
+        await Humanizer.randomDelay(700, 1500);
         await Humanizer.naturalClick(nextBtn);
 
         // Tunggu transisi soal
-        await Humanizer.delay(1500);
+        await Humanizer.delay(1200);
       } else {
-        // Cek tombol Selesai
-        const finishBtn = DOM.findButtonByText(['selesai quiz', 'selesai kuis', 'selesai', 'finish']);
+        // Soal terakhir! Cek tombol Selesai / Kumpulkan
+        this.isRunning = false;
+        const finishBtn = DOM.findButtonByText(['selesai quiz', 'selesai kuis', 'selesai', 'finish', 'kumpulkan', 'akhiri']);
         if (finishBtn) {
           if (statusEl) statusEl.textContent = 'Semua soal terjawab. Selesai!';
           Toast.success('Semua soal kuis berhasil dijawab dengan sukses!');
           
           const { mentari_auto_finish_quiz } = await Storage.get('mentari_auto_finish_quiz', { mentari_auto_finish_quiz: false });
           if (mentari_auto_finish_quiz) {
-            await Humanizer.randomDelay(2000, 4000);
+            await Humanizer.randomDelay(1500, 2500);
             await Humanizer.naturalClick(finishBtn);
             // Tangani dialog konfirmasi jika muncul
             await Humanizer.delay(800);
-            const confirmBtn = DOM.findButtonByText(['ya', 'ok', 'setuju', 'submit']);
+            const confirmBtn = DOM.findButtonByText(['ya', 'ok', 'setuju', 'submit', 'kirim']);
             if (confirmBtn) await Humanizer.naturalClick(confirmBtn);
           }
+        } else {
+          if (statusEl) statusEl.textContent = 'Semua soal telah terjawab!';
+          Toast.success('Seluruh nomor soal telah berhasil dijawab!');
         }
         break;
       }
@@ -309,9 +312,9 @@ class QuizAssistant {
       return true;
     }
 
-    // Jeda membaca natural jika dalam mode otomatis (Anti-Deteksi)
+    // Jeda membaca natural yang cepat & responsif (Anti-Deteksi ringan)
     if (isAuto) {
-      await Humanizer.readingPacing(questionText, 2500, 6000);
+      await Humanizer.readingPacing(questionText, 600, 1500);
     }
 
     // Bangun prompt untuk Gemini
