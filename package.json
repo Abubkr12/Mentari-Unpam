@@ -1,0 +1,20 @@
+{
+  "name": "mentari-mod-modern",
+  "version": "2.1.0",
+  "description": "Ekstensi modern untuk meningkatkan pengalaman belajar di MENTARI UNPAM dengan asisten AI Gemini generasi baru, anti-deteksi, dan manajemen presensi.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "keywords": [
+    "mentari",
+    "unpam",
+    "chrome-extension",
+    "gemini-ai"
+  ],
+  "author": "Lukman Muludin & Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

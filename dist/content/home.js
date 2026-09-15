@@ -1,19 +1,14 @@
-/**
- * Mentari Mod Modern Edition - Login Page UI Theme
- * Mempercantik halaman login Mentari UNPAM dengan tema Cyber Metallic Glass modern.
- */
-
-class HomeTheme {
-  constructor() {
-    this._applyStyles();
-  }
-
-  _applyStyles() {
-    if (document.getElementById('mentari-home-theme')) return;
-
-    const style = document.createElement('style');
-    style.id = 'mentari-home-theme';
-    style.textContent = `
+(() => {
+  // src/content/home.js
+  var HomeTheme = class {
+    constructor() {
+      this._applyStyles();
+    }
+    _applyStyles() {
+      if (document.getElementById("mentari-home-theme")) return;
+      const style = document.createElement("style");
+      style.id = "mentari-home-theme";
+      style.textContent = `
       /* Cyber Metallic Glass container */
       .MuiDrawer-paperAnchorRight.MuiDrawer-paper {
         background: rgba(22, 24, 28, 0.88) !important;
@@ -61,11 +56,10 @@ class HomeTheme {
         box-shadow: 0 8px 25px rgba(212, 175, 55, 0.35) !important;
       }
     `;
-
-    document.head.appendChild(style);
+      document.head.appendChild(style);
+    }
+  };
+  if (typeof window !== "undefined") {
+    new HomeTheme();
   }
-}
-
-if (typeof window !== 'undefined') {
-  new HomeTheme();
-}
+})();

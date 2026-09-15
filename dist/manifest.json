@@ -15,12 +15,12 @@
     "https://api.github.com/*"
   ],
   "background": {
-    "service_worker": "dist/background/service-worker.js",
+    "service_worker": "background/service-worker.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "dist/popup/popup.html",
-    "default_icon": "dist/assets/icon.png"
+    "default_popup": "popup/popup.html",
+    "default_icon": "assets/icon.png"
   },
   "content_scripts": [
     {
@@ -29,7 +29,7 @@
         "https://my.unpam.ac.id/*"
       ],
       "js": [
-        "dist/content/main-sniffer.js"
+        "content/main-sniffer.js"
       ],
       "world": "MAIN",
       "run_at": "document_start"
@@ -42,10 +42,10 @@
         "https://mentari.unpam.ac.id/login"
       ],
       "js": [
-        "dist/content/apiKeyManager.js",
-        "dist/content/gemini.js",
-        "dist/content/token.js",
-        "dist/content/content.js"
+        "content/apiKeyManager.js",
+        "content/gemini.js",
+        "content/token.js",
+        "content/content.js"
       ]
     },
     {
@@ -53,7 +53,7 @@
         "https://mentari.unpam.ac.id/login"
       ],
       "js": [
-        "dist/content/home.js"
+        "content/home.js"
       ]
     },
     {
@@ -61,7 +61,7 @@
         "https://mentari.unpam.ac.id/u-courses/*/exam/*"
       ],
       "js": [
-        "dist/content/quiz.js"
+        "content/quiz.js"
       ]
     },
     {
@@ -69,7 +69,7 @@
         "https://mentari.unpam.ac.id/u-courses/*/kuesioner/*"
       ],
       "js": [
-        "dist/content/kuisioner.js"
+        "content/kuisioner.js"
       ]
     },
     {
@@ -77,7 +77,7 @@
         "https://mentari.unpam.ac.id/u-courses/*/forum/*/topics/*"
       ],
       "js": [
-        "dist/content/discus.js"
+        "content/discus.js"
       ]
     },
     {
@@ -88,8 +88,8 @@
         "https://mentari.unpam.ac.id/login"
       ],
       "js": [
-        "dist/content/presensi.js",
-        "dist/content/QuickSurvey.js"
+        "content/presensi.js",
+        "content/QuickSurvey.js"
       ]
     },
     {
@@ -98,17 +98,17 @@
         "https://mentari.unpam.ac.id/login"
       ],
       "js": [
-        "dist/content/pw.js"
+        "content/pw.js"
       ]
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
-        "dist/content/main-sniffer.js",
-        "dist/content/token.js",
-        "dist/content/apiKeyManager.js",
-        "dist/assets/background.png"
+        "content/main-sniffer.js",
+        "content/token.js",
+        "content/apiKeyManager.js",
+        "assets/background.png"
       ],
       "matches": [
         "https://mentari.unpam.ac.id/*",
@@ -117,8 +117,8 @@
     }
   ],
   "icons": {
-    "16": "dist/assets/icon.png",
-    "48": "dist/assets/icon.png",
-    "128": "dist/assets/icon.png"
+    "16": "assets/icon.png",
+    "48": "assets/icon.png",
+    "128": "assets/icon.png"
   }
 }
