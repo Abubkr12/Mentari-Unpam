@@ -380,10 +380,16 @@
       window.addEventListener("mentari-update-api-key", () => {
         this.openModal();
       });
-      const { geminiApiKey } = await Storage.get("geminiApiKey");
-      if (!geminiApiKey) {
+      const store = await Storage.get(["geminiApiKey", "geminiApiKeys"]);
+      const hasKey = store.geminiApiKey || Array.isArray(store.geminiApiKeys) && store.geminiApiKeys.length > 0;
+      if (!hasKey) {
         setTimeout(() => this.openModal(), 1200);
       }
+    }
+    _maskKey(key) {
+      if (!key || typeof key !== "string") return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+      if (key.length <= 12) return key.slice(0, 4) + "..." + key.slice(-2);
+      return key.slice(0, 7) + "..." + key.slice(-4);
     }
     _buildModalDOM() {
       if (this.host) return;
@@ -412,16 +418,19 @@
         visibility: visible;
       }
       .modal {
-        width: 440px;
-        max-width: 92vw;
+        width: 490px;
+        max-width: 94vw;
         background: #141416;
-        border: 1px solid rgba(212, 175, 55, 0.3);
+        border: 1px solid rgba(212, 175, 55, 0.35);
         border-radius: 16px;
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
         overflow: hidden;
         transform: scale(0.95);
         transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         color: #e5e5e5;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
       }
       .overlay.open .modal {
         transform: scale(1);
@@ -462,10 +471,11 @@
         background: rgba(255, 255, 255, 0.08);
       }
       .content {
-        padding: 22px;
+        padding: 20px 22px;
         display: flex;
         flex-direction: column;
         gap: 16px;
+        overflow-y: auto;
       }
       .info-box {
         font-size: 12px;
@@ -484,17 +494,119 @@
       .info-box a:hover {
         text-decoration: underline;
       }
-      .form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .label {
-        font-size: 12px;
-        font-weight: 600;
+      .section-label {
+        font-size: 11px;
+        font-weight: 700;
         color: #bbb;
         text-transform: uppercase;
+        letter-spacing: 0.6px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .keys-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 190px;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      .keys-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      .keys-list::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+      }
+      .key-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #1a1a1e;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 10px 14px;
+        transition: border-color 0.2s;
+      }
+      .key-item.active {
+        border-color: rgba(212, 175, 55, 0.45);
+        background: rgba(212, 175, 55, 0.04);
+      }
+      .key-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .key-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        color: #f1f1f1;
         letter-spacing: 0.5px;
+      }
+      .key-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .key-badge.primary {
+        background: rgba(212, 175, 55, 0.18);
+        color: #d4af37;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+      }
+      .key-badge.backup {
+        background: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.25);
+      }
+      .key-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .key-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        padding: 5px 8px;
+        color: #bbb;
+        cursor: pointer;
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: all 0.2s;
+      }
+      .key-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      .key-btn.btn-set-primary:hover {
+        border-color: rgba(212, 175, 55, 0.4);
+        color: #d4af37;
+      }
+      .key-btn.btn-delete:hover {
+        border-color: rgba(239, 68, 68, 0.4);
+        color: #ef4444;
+      }
+      .empty-keys {
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+        border: 1px dashed rgba(255, 255, 255, 0.08);
+      }
+      .add-form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
       }
       .input-wrapper {
         position: relative;
@@ -598,13 +710,25 @@
             <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">
               https://aistudio.google.com/api-keys
             </a>
-            <div style="margin-top:6px; font-size:11px; color:#888;">
-              Mendukung Google Auth Key baru (diawali <b>AQ.</b>) dan Standard Key (<b>AIza...</b>). Pilihan model AI bebas kamu ganti kapan saja di menu kuis, chat, atau dashboard.
+            <div style="margin-top:6px; font-size:11px; color:#9ca3af;">
+              <b>Multi-Key Failover:</b> Kamu bisa menambahkan lebih dari satu API Key. Saat key utama terkena limit kuota / HTTP 429, sistem otomatis beralih ke key cadangan berikutnya tanpa henti.
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="label">Gemini API Key</label>
+          <div class="section-label">
+            <span>Daftar API Key Tersimpan</span>
+            <span id="keys-count-badge" style="color:#d4af37; font-size:10px;">0 Key</span>
+          </div>
+
+          <div class="keys-list" id="keys-list-container">
+            <div class="empty-keys">Memuat daftar API Key...</div>
+          </div>
+
+          <div class="section-label" style="margin-top:6px;">
+            <span>Tambah API Key Baru</span>
+          </div>
+
+          <div class="add-form">
             <div class="input-wrapper">
               <input type="password" id="input-api-key" class="input-field" placeholder="Masukkan AQ... atau AIza..." spellcheck="false" autocomplete="off">
               <button class="toggle-vis" id="btn-toggle-vis" type="button" aria-label="Lihat Key">
@@ -618,8 +742,13 @@
         </div>
 
         <div class="footer">
-          <button class="btn btn-cancel" id="btn-cancel">Batal</button>
-          <button class="btn btn-save" id="btn-save">Simpan & Uji Key</button>
+          <button class="btn btn-cancel" id="btn-cancel">Tutup</button>
+          <button class="btn btn-save" id="btn-add-key">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Tambah & Uji Key
+          </button>
         </div>
       </div>
     `;
@@ -627,7 +756,7 @@
       this.shadow.appendChild(overlay);
       document.body.appendChild(this.host);
       const inputKey = this.shadow.getElementById("input-api-key");
-      const btnSave = this.shadow.getElementById("btn-save");
+      const btnAddKey = this.shadow.getElementById("btn-add-key");
       const btnCancel = this.shadow.getElementById("btn-cancel");
       const btnClose = this.shadow.getElementById("btn-close");
       const btnToggleVis = this.shadow.getElementById("btn-toggle-vis");
@@ -640,40 +769,136 @@
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close();
       });
-      btnSave.addEventListener("click", async () => {
+      btnAddKey.addEventListener("click", async () => {
         const keyVal = inputKey.value.trim();
         if (!keyVal) {
           Toast.warning("Silakan masukkan API Key Gemini Anda.");
           return;
         }
-        btnSave.disabled = true;
-        btnSave.textContent = "Memverifikasi...";
+        const currentKeysRes = await new Promise((r) => chrome.runtime.sendMessage({ action: "getGeminiApiKeys" }, r));
+        if (currentKeysRes?.keys?.includes(keyVal)) {
+          Toast.warning("API Key ini sudah tersimpan di dalam daftar.");
+          return;
+        }
+        btnAddKey.disabled = true;
+        btnAddKey.textContent = "Memverifikasi...";
         chrome.runtime.sendMessage({
-          action: "validateGeminiApiKey",
+          action: "addGeminiApiKey",
           apiKey: keyVal
         }, async (res) => {
-          btnSave.disabled = false;
-          btnSave.textContent = "Simpan & Uji Key";
+          btnAddKey.disabled = false;
+          btnAddKey.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Tambah & Uji Key
+        `;
           if (res && res.valid) {
-            await Storage.set({ geminiApiKey: keyVal });
+            inputKey.value = "";
+            Toast.success("API Key valid dan berhasil ditambahkan ke pool!");
+            await this._loadAndRenderKeys();
             window.dispatchEvent(new CustomEvent("gemini-api-key-updated", {
               detail: { apiKey: keyVal }
             }));
-            Toast.success("API Key valid dan berhasil dikoneksikan ke Google Gemini!");
-            close();
           } else {
             Toast.error(res ? res.message : "Verifikasi API Key gagal.");
           }
         });
       });
     }
+    async _loadAndRenderKeys() {
+      if (!this.shadow) return;
+      const container = this.shadow.getElementById("keys-list-container");
+      const countBadge = this.shadow.getElementById("keys-count-badge");
+      if (!container) return;
+      chrome.runtime.sendMessage({ action: "getGeminiApiKeys" }, (res) => {
+        const keys = res?.keys || [];
+        const activeKey = res?.activeKey || keys[0] || "";
+        if (countBadge) {
+          countBadge.textContent = `${keys.length} Key`;
+        }
+        if (keys.length === 0) {
+          container.innerHTML = `
+          <div class="empty-keys">
+            Belum ada API Key tersimpan. Masukkan key Gemini agar asisten dapat bekerja.
+          </div>
+        `;
+          return;
+        }
+        container.innerHTML = "";
+        keys.forEach((key, idx) => {
+          const isPrimary = key === activeKey;
+          const itemDiv = document.createElement("div");
+          itemDiv.className = `key-item ${isPrimary ? "active" : ""}`;
+          itemDiv.innerHTML = `
+          <div class="key-left">
+            <span class="key-badge ${isPrimary ? "primary" : "backup"}">
+              ${isPrimary ? "Utama" : "Cadangan"}
+            </span>
+            <span class="key-code" title="${key}">${this._maskKey(key)}</span>
+          </div>
+          <div class="key-actions">
+            ${!isPrimary ? `
+              <button class="key-btn btn-set-primary" data-key="${key}" title="Jadikan API Key Utama">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                Utamakan
+              </button>
+            ` : ""}
+            <button class="key-btn btn-delete" data-key="${key}" title="Hapus API Key ini">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                <line x1="10" y1="11" x2="10" y2="17"></line>
+                <line x1="14" y1="11" x2="14" y2="17"></line>
+              </svg>
+            </button>
+          </div>
+        `;
+          const btnSet = itemDiv.querySelector(".btn-set-primary");
+          if (btnSet) {
+            btnSet.addEventListener("click", () => {
+              chrome.runtime.sendMessage({
+                action: "setActiveGeminiApiKey",
+                apiKey: key
+              }, (setRes) => {
+                if (setRes && setRes.success) {
+                  Toast.success("API Key utama berhasil diperbarui.");
+                  this._loadAndRenderKeys();
+                  window.dispatchEvent(new CustomEvent("gemini-api-key-updated", {
+                    detail: { apiKey: key }
+                  }));
+                }
+              });
+            });
+          }
+          const btnDel = itemDiv.querySelector(".btn-delete");
+          if (btnDel) {
+            btnDel.addEventListener("click", () => {
+              chrome.runtime.sendMessage({
+                action: "removeGeminiApiKey",
+                apiKey: key
+              }, (delRes) => {
+                if (delRes && delRes.success) {
+                  Toast.info("API Key telah dihapus.");
+                  this._loadAndRenderKeys();
+                  window.dispatchEvent(new CustomEvent("gemini-api-key-updated", {
+                    detail: { apiKey: delRes.activeKey }
+                  }));
+                }
+              });
+            });
+          }
+          container.appendChild(itemDiv);
+        });
+      });
+    }
     async openModal() {
       this._buildModalDOM();
+      await this._loadAndRenderKeys();
       const overlay = this.shadow.querySelector(".overlay");
-      const inputKey = this.shadow.getElementById("input-api-key");
-      const { geminiApiKey } = await Storage.get("geminiApiKey");
-      if (geminiApiKey) inputKey.value = geminiApiKey;
-      overlay.classList.add("open");
+      if (overlay) overlay.classList.add("open");
       this.isOpen = true;
     }
     closeModal() {

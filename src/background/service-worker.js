@@ -37,6 +37,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleValidateApiKey(request.apiKey).then(sendResponse);
       return true; // async response
 
+    case 'addGeminiApiKey':
+      handleAddApiKey(request.apiKey).then(sendResponse);
+      return true;
+
+    case 'removeGeminiApiKey':
+      handleRemoveApiKey(request.apiKey).then(sendResponse);
+      return true;
+
+    case 'getGeminiApiKeys':
+      handleGetApiKeys().then(sendResponse);
+      return true;
+
+    case 'setActiveGeminiApiKey':
+      handleSetActiveApiKey(request.apiKey).then(sendResponse);
+      return true;
+
     case 'generateGeminiContent':
       handleGenerateContent(request).then(sendResponse);
       return true;
@@ -69,7 +85,6 @@ async function handleValidateApiKey(apiKey) {
   }
 
   const cleanKey = apiKey.trim();
-  // Validasi format universal (Mendukung AQ. Auth Keys dan AIza... Traffic Keys)
   const keyPattern = /^(AIza|AQ)[a-zA-Z0-9_\-\.]{20,}$/;
   if (!keyPattern.test(cleanKey)) {
     return {
@@ -86,9 +101,18 @@ async function handleValidateApiKey(apiKey) {
     });
 
     if (response.ok) {
-      const data = await response.json();
-      // Simpan API Key yang valid di chrome.storage.local
-      await chrome.storage.local.set({ geminiApiKey: cleanKey });
+      const store = await chrome.storage.local.get(['geminiApiKeys', 'geminiApiKey']);
+      let keys = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
+      if (store.geminiApiKey && !keys.includes(store.geminiApiKey)) {
+        keys.unshift(store.geminiApiKey);
+      }
+      if (!keys.includes(cleanKey)) {
+        keys.push(cleanKey);
+      }
+      await chrome.storage.local.set({
+        geminiApiKey: cleanKey,
+        geminiApiKeys: keys
+      });
       return { valid: true, message: 'API key valid dan berhasil dikoneksikan ke Google AI Studio!' };
     } else {
       const err = await response.json().catch(() => ({}));
@@ -101,97 +125,186 @@ async function handleValidateApiKey(apiKey) {
 }
 
 /**
- * Memanggil Gemini API untuk inferensi teks kuis / forum / chatbot
+ * Menambahkan API Key baru ke pool
+ */
+async function handleAddApiKey(apiKey) {
+  return handleValidateApiKey(apiKey);
+}
+
+/**
+ * Menghapus API Key dari pool
+ */
+async function handleRemoveApiKey(targetKey) {
+  if (!targetKey) return { success: false, message: 'Key tidak valid.' };
+  const store = await chrome.storage.local.get(['geminiApiKeys', 'geminiApiKey']);
+  let keys = Array.isArray(store.geminiApiKeys) ? store.geminiApiKeys : [];
+  keys = keys.filter(k => k !== targetKey);
+
+  const newActive = keys[0] || '';
+  await chrome.storage.local.set({
+    geminiApiKeys: keys,
+    geminiApiKey: newActive
+  });
+  return { success: true, keys, activeKey: newActive };
+}
+
+/**
+ * Menyetel API Key aktif (Primary Key)
+ */
+async function handleSetActiveApiKey(targetKey) {
+  if (!targetKey) return { success: false, message: 'Key tidak valid.' };
+  const store = await chrome.storage.local.get(['geminiApiKeys', 'geminiApiKey']);
+  let keys = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
+  if (!keys.includes(targetKey)) {
+    keys.unshift(targetKey);
+  } else {
+    keys = [targetKey, ...keys.filter(k => k !== targetKey)];
+  }
+  await chrome.storage.local.set({
+    geminiApiKey: targetKey,
+    geminiApiKeys: keys
+  });
+  return { success: true, activeKey: targetKey, keys };
+}
+
+/**
+ * Mengambil daftar seluruh API Key yang tersimpan
+ */
+async function handleGetApiKeys() {
+  const store = await chrome.storage.local.get(['geminiApiKeys', 'geminiApiKey']);
+  let keys = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
+  if (store.geminiApiKey && !keys.includes(store.geminiApiKey)) {
+    keys.unshift(store.geminiApiKey);
+  }
+  return {
+    keys,
+    activeKey: store.geminiApiKey || keys[0] || ''
+  };
+}
+
+/**
+ * Memanggil Gemini API untuk inferensi teks dengan rotasi multi-API Key otomatis saat 429/403
  */
 async function handleGenerateContent({ prompt, systemInstruction = '', model = null }) {
-  const store = await chrome.storage.local.get(['geminiApiKey', 'gemini_model']);
-  const apiKey = store.geminiApiKey;
+  const store = await chrome.storage.local.get(['geminiApiKey', 'geminiApiKeys', 'gemini_model']);
   const activeModel = model || store.gemini_model || 'gemini-2.5-flash';
 
-  if (!apiKey) {
+  let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
+  if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
+    keyPool.unshift(store.geminiApiKey);
+  }
+  // Pastikan primary key berada di urutan pertama
+  if (store.geminiApiKey && keyPool.includes(store.geminiApiKey)) {
+    keyPool = [store.geminiApiKey, ...keyPool.filter(k => k !== store.geminiApiKey)];
+  }
+
+  if (keyPool.length === 0) {
     return {
       success: false,
-      error: 'API Key Gemini belum disetel. Buka pengaturan untuk memasukkan API Key.'
+      error: 'Belum ada API Key Gemini yang disetel. Buka pengaturan untuk memasukkan API Key.'
     };
   }
 
-  try {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey}`;
-
-    const bodyPayload = {
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: prompt }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2, // Rendah untuk akurasi tinggi pada soal kuis
-        topP: 0.95,
-        maxOutputTokens: 2048
+  const bodyPayload = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: prompt }]
       }
-    };
-
-    if (systemInstruction) {
-      bodyPayload.systemInstruction = {
-        parts: [{ text: systemInstruction }]
-      };
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.95,
+      maxOutputTokens: 2048
     }
+  };
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(bodyPayload)
-    });
+  if (systemInstruction) {
+    bodyPayload.systemInstruction = {
+      parts: [{ text: systemInstruction }]
+    };
+  }
 
-    if (!response.ok) {
+  let lastError = null;
+
+  // Coba API Key satu per satu secara berurutan jika terjadi rate limit / quota exceeded
+  for (let i = 0; i < keyPool.length; i++) {
+    const currentKey = keyPool[i];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${currentKey}`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload)
+      });
+
+      if (response.ok) {
+        const resJson = await response.json();
+        const candidate = resJson.candidates?.[0];
+        const textOut = candidate?.content?.parts?.[0]?.text || '';
+
+        // Jika key cadangan berhasil, jadikan key ini sebagai primary key berikutnya
+        if (currentKey !== store.geminiApiKey) {
+          console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
+          await chrome.storage.local.set({ geminiApiKey: currentKey });
+        }
+
+        return {
+          success: true,
+          text: textOut,
+          model: activeModel,
+          keyIndex: i + 1,
+          totalKeys: keyPool.length
+        };
+      }
+
       const errData = await response.json().catch(() => ({}));
-      const errMsg = errData.error?.message || `Error ${response.status} dari Gemini API.`;
-      
-      // Auto-fallback jika model mengalami lonjakan trafik / high demand (503 / 429)
-      const isHighDemand = response.status === 503 || response.status === 429 || errMsg.toLowerCase().includes('high demand') || errMsg.toLowerCase().includes('quota');
-      if (isHighDemand && activeModel !== 'gemini-2.5-flash') {
-        console.warn(`[Service Worker] Model ${activeModel} sedang padat/overload. Melakukan fallback otomatis ke gemini-2.5-flash...`);
-        const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
+      const isQuotaOrLimit = response.status === 429 || response.status === 403 ||
+                            errMsg.toLowerCase().includes('quota') ||
+                            errMsg.toLowerCase().includes('rate limit') ||
+                            errMsg.toLowerCase().includes('resource has been exhausted');
+
+      if (isQuotaOrLimit && i < keyPool.length - 1) {
+        console.warn(`[Service Worker] API Key ke-${i + 1} terkena limit (${errMsg}). Beralih otomatis ke API Key cadangan berikutnya...`);
+        lastError = `API Key #${i + 1} kena limit: ${errMsg}`;
+        continue; // Coba key berikutnya
+      } else {
+        lastError = errMsg;
+      }
+    } catch (netErr) {
+      lastError = netErr.message;
+      if (i < keyPool.length - 1) continue;
+    }
+  }
+
+  // Fallback darurat ke gemini-2.5-flash jika model kustom overload
+  if (activeModel !== 'gemini-2.5-flash') {
+    for (const fbKey of keyPool) {
+      try {
+        const fbRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${fbKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyPayload)
         });
-
-        if (fallbackRes.ok) {
-          const fbJson = await fallbackRes.json();
+        if (fbRes.ok) {
+          const fbJson = await fbRes.json();
           const fbText = fbJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
           return {
             success: true,
             text: fbText,
-            model: 'Gemini 2.5 Flash (Fallback Otomatis)'
+            model: 'Gemini 2.5 Flash (Fallback Kuota)'
           };
         }
-      }
-
-      return {
-        success: false,
-        error: errMsg
-      };
+      } catch {}
     }
-
-    const resJson = await response.json();
-    const candidate = resJson.candidates?.[0];
-    const textOut = candidate?.content?.parts?.[0]?.text || '';
-
-    return {
-      success: true,
-      text: textOut,
-      model: activeModel
-    };
-  } catch (e) {
-    return {
-      success: false,
-      error: 'Koneksi error: ' + e.message
-    };
   }
+
+  return {
+    success: false,
+    error: `Semua API Key (${keyPool.length} key) gagal: ${lastError || 'Limit kuota habis.'}`
+  };
 }
 
 /**

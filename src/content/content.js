@@ -4,6 +4,8 @@
  */
 
 import { DOM } from '../utils/dom.js';
+import { Storage } from '../utils/storage.js';
+import { Toast } from '../utils/toast.js';
 
 class MentariContentEntry {
   constructor() {
@@ -29,6 +31,9 @@ class MentariContentEntry {
 
     // Dengarkan event koordinasi dengan Gemini Chat
     this._setupGeminiChatCoordination();
+
+    // Kawal navigasi single-tab Auto-Pilot jika SPA LMS meredirect ke luar /exam/
+    this._checkAutoPilotNavigation();
   }
 
   _injectMainSnifferFallback() {
@@ -267,6 +272,38 @@ class MentariContentEntry {
 
     // Fallback interval berkala
     setInterval(checkAndInject, 1500);
+  }
+
+  /**
+   * Pengawal navigasi otomatis single-tab Auto-Pilot
+   */
+  async _checkAutoPilotNavigation() {
+    // Jangan tangani jika saat ini sudah berada di halaman exam (dikelola oleh quiz.js)
+    if (window.location.pathname.includes('/exam/')) return;
+
+    try {
+      const store = await Storage.get('mentari_auto_pilot_state');
+      const state = store?.mentari_auto_pilot_state;
+
+      if (state && state.active === true && Array.isArray(state.queue)) {
+        if (state.currentIndex < state.queue.length) {
+          const nextItem = state.queue[state.currentIndex];
+          if (nextItem && nextItem.url) {
+            console.log('[Auto-Pilot Guard] Melanjutkan antrean kuis ke tab aktif:', nextItem.url);
+            Toast.info(`Auto-Pilot Kuis: Melanjutkan ke ${nextItem.courseTitle} (${state.currentIndex + 1}/${state.queue.length})...`);
+            setTimeout(() => {
+              window.location.href = nextItem.url;
+            }, 1200);
+          }
+        } else {
+          // Antrean sudah selesai
+          await Storage.set({
+            mentari_auto_pilot_state: { ...state, active: false, finished: true }
+          });
+          Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah selesai!');
+        }
+      }
+    } catch (e) {}
   }
 }
 

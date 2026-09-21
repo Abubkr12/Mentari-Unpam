@@ -27,10 +27,14 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 class QuizAssistant {
   constructor() {
     this.isRunning = false;
+    this.isPaused = false;
     this.isAutoMode = false;
+    this.isAutoPilot = false;
     this.answeredCount = 0;
     this.totalQuestions = 0;
     this.shadow = null;
+    this.hudShadow = null;
+    this.hudHost = null;
     this.activeModel = DEFAULT_MODEL;
     this._init();
   }
@@ -69,6 +73,9 @@ class QuizAssistant {
         }
       });
     }
+
+    // 4. Periksa dan inisialisasi sesi Auto-Pilot jika aktif
+    await this._checkAndInitAutoPilot();
   }
 
   _injectFloatingControl() {
@@ -267,8 +274,14 @@ class QuizAssistant {
   /**
    * Eksekusi loop menjawab seluruh soal dengan jeda natural manusia
    */
-  async runAutoLoop(statusEl) {
+  async runAutoLoop(statusEl, isAutoPilot = false) {
     while (this.isRunning) {
+      // Tunggu jika dijeda oleh pengguna
+      while (this.isPaused && this.isRunning) {
+        if (statusEl) statusEl.textContent = 'Auto-Pilot dijeda sementara.';
+        await Humanizer.delay(600);
+      }
+
       if (statusEl) statusEl.textContent = 'Menganalisis soal...';
       const success = await this.processCurrentQuestion(true);
       if (!success) {
@@ -291,17 +304,20 @@ class QuizAssistant {
         this.isRunning = false;
         const finishBtn = DOM.findButtonByText(['selesai quiz', 'selesai kuis', 'selesai', 'finish', 'kumpulkan', 'akhiri']);
         if (finishBtn) {
-          if (statusEl) statusEl.textContent = 'Semua soal terjawab. Selesai!';
+          if (statusEl) statusEl.textContent = 'Semua soal terjawab. Menyelesaikan kuis...';
           Toast.success('Semua soal kuis berhasil dijawab dengan sukses!');
           
           const { mentari_auto_finish_quiz } = await Storage.get('mentari_auto_finish_quiz', { mentari_auto_finish_quiz: false });
-          if (mentari_auto_finish_quiz) {
-            await Humanizer.randomDelay(1500, 2500);
+          if (mentari_auto_finish_quiz || isAutoPilot) {
+            await Humanizer.randomDelay(1200, 2200);
             await Humanizer.naturalClick(finishBtn);
             // Tangani dialog konfirmasi jika muncul
             await Humanizer.delay(800);
-            const confirmBtn = DOM.findButtonByText(['ya', 'ok', 'setuju', 'submit', 'kirim']);
-            if (confirmBtn) await Humanizer.naturalClick(confirmBtn);
+            const confirmBtn = DOM.findButtonByText(['ya', 'ok', 'setuju', 'submit', 'kirim', 'selesaikan', 'ya, selesaikan', 'akhiri']);
+            if (confirmBtn) {
+              await Humanizer.naturalClick(confirmBtn);
+            }
+            await Humanizer.delay(1500);
           }
         } else {
           if (statusEl) statusEl.textContent = 'Semua soal telah terjawab!';
@@ -309,6 +325,434 @@ class QuizAssistant {
         }
         break;
       }
+    }
+  }
+
+  // ─── Auto-Pilot Kuis (Single-Tab Batch Runner) ────────────────────────────────
+
+  async _checkAndInitAutoPilot() {
+    const store = await Storage.get('mentari_auto_pilot_state');
+    const state = store?.mentari_auto_pilot_state;
+
+    if (!state || !state.active || !Array.isArray(state.queue)) {
+      return;
+    }
+
+    // Jika antrean kuis sudah selesai seluruhnya
+    if (state.currentIndex >= state.queue.length) {
+      await Storage.set({
+        mentari_auto_pilot_state: { ...state, active: false, finished: true }
+      });
+      Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah selesai 100%!');
+      return;
+    }
+
+    this.isAutoPilot = true;
+    this.isPaused = Boolean(state.paused);
+
+    const currentItem = state.queue[state.currentIndex];
+    console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
+
+    // Injeksi Glassmorphic Floating HUD Tracker
+    const { statusEl, badgeEl, btnPause, progressBar } = this._injectAutoPilotHUD(state, currentItem);
+
+    // Eksekusi otomatis kuis
+    this._executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar);
+  }
+
+  _injectAutoPilotHUD(state, currentItem) {
+    if (document.getElementById('mentari-autopilot-hud-host')) {
+      document.getElementById('mentari-autopilot-hud-host').remove();
+    }
+
+    this.hudHost = document.createElement('div');
+    this.hudHost.id = 'mentari-autopilot-hud-host';
+    this.hudHost.style.position = 'fixed';
+    this.hudHost.style.top = '20px';
+    this.hudHost.style.right = '24px';
+    this.hudHost.style.zIndex = '2147483646';
+
+    this.hudShadow = this.hudHost.attachShadow({ mode: 'closed' });
+
+    const style = document.createElement('style');
+    style.textContent = `
+      * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; }
+      .hud-card {
+        background: rgba(18, 18, 22, 0.95);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(212, 175, 55, 0.45);
+        border-radius: 14px;
+        padding: 14px 18px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 330px;
+        max-width: 90vw;
+      }
+      .hud-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .hud-brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: #fbbf24;
+      }
+      .hud-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 6px;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .hud-badge.running {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .hud-badge.paused {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+      }
+      .hud-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .hud-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #f3f4f6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hud-subtitle {
+        font-size: 11px;
+        color: #9ca3af;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .hud-tag {
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+      .hud-tag.pre {
+        background: rgba(59, 130, 246, 0.2);
+        color: #60a5fa;
+      }
+      .hud-tag.post {
+        background: rgba(16, 185, 129, 0.2);
+        color: #34d399;
+      }
+      .hud-progress-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 2px;
+      }
+      .hud-progress-info {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #888;
+      }
+      .hud-progress-bar-bg {
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .hud-progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #d4af37, #fbbf24);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+      }
+      .hud-status {
+        font-size: 11px;
+        color: #fbbf24;
+        background: rgba(212, 175, 55, 0.08);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 6px;
+        padding: 7px 10px;
+        line-height: 1.4;
+      }
+      .hud-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .hud-btn {
+        flex: 1;
+        padding: 7px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        transition: all 0.2s;
+      }
+      .hud-btn-pause {
+        background: rgba(255, 255, 255, 0.08);
+        color: #ddd;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      .hud-btn-pause:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+      }
+      .hud-btn-cancel {
+        background: rgba(239, 68, 68, 0.12);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.25);
+      }
+      .hud-btn-cancel:hover {
+        background: rgba(239, 68, 68, 0.25);
+        color: #ef4444;
+      }
+    `;
+
+    const hudCard = document.createElement('div');
+    hudCard.className = 'hud-card';
+
+    const currentIdx = state.currentIndex;
+    const totalCount = state.queue.length;
+    const progressPercent = Math.round((currentIdx / totalCount) * 100);
+
+    hudCard.innerHTML = `
+      <div class="hud-header">
+        <div class="hud-brand">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          Auto-Pilot Kuis
+        </div>
+        <div class="hud-badge ${this.isPaused ? 'paused' : 'running'}" id="hud-badge">
+          ${this.isPaused ? 'Dijeda' : 'Berjalan'}
+        </div>
+      </div>
+
+      <div class="hud-body">
+        <div class="hud-title" title="${currentItem.courseTitle}">${currentItem.courseTitle}</div>
+        <div class="hud-subtitle">
+          <span class="hud-tag ${currentItem.type === 'PRE_TEST' ? 'pre' : 'post'}">
+            ${currentItem.type === 'PRE_TEST' ? 'Pre-Test' : 'Post-Test'}
+          </span>
+          <span>${currentItem.sectionName}</span>
+        </div>
+      </div>
+
+      <div class="hud-progress-wrap">
+        <div class="hud-progress-info">
+          <span>Kuis ${currentIdx + 1} dari ${totalCount}</span>
+          <span>${progressPercent}%</span>
+        </div>
+        <div class="hud-progress-bar-bg">
+          <div class="hud-progress-bar-fill" id="hud-progress-fill" style="width: ${progressPercent}%;"></div>
+        </div>
+      </div>
+
+      <div class="hud-status" id="hud-status-text">
+        Mempersiapkan kuis...
+      </div>
+
+      <div class="hud-actions">
+        <button class="hud-btn hud-btn-pause" id="hud-btn-pause">
+          ${this.isPaused ? 'Lanjutkan' : 'Jeda'}
+        </button>
+        <button class="hud-btn hud-btn-cancel" id="hud-btn-cancel">
+          Batalkan
+        </button>
+      </div>
+    `;
+
+    this.hudShadow.appendChild(style);
+    this.hudShadow.appendChild(hudCard);
+    document.body.appendChild(this.hudHost);
+
+    const statusEl = this.hudShadow.getElementById('hud-status-text');
+    const badgeEl = this.hudShadow.getElementById('hud-badge');
+    const btnPause = this.hudShadow.getElementById('hud-btn-pause');
+    const btnCancel = this.hudShadow.getElementById('hud-btn-cancel');
+    const progressBar = this.hudShadow.getElementById('hud-progress-fill');
+
+    btnPause.addEventListener('click', async () => {
+      this.isPaused = !this.isPaused;
+      badgeEl.className = `hud-badge ${this.isPaused ? 'paused' : 'running'}`;
+      badgeEl.textContent = this.isPaused ? 'Dijeda' : 'Berjalan';
+      btnPause.textContent = this.isPaused ? 'Lanjutkan' : 'Jeda';
+      statusEl.textContent = this.isPaused ? 'Auto-Pilot dijeda sementara.' : 'Melanjutkan pengerjaan kuis...';
+
+      const curStore = await Storage.get('mentari_auto_pilot_state');
+      if (curStore?.mentari_auto_pilot_state) {
+        curStore.mentari_auto_pilot_state.paused = this.isPaused;
+        await Storage.set({ mentari_auto_pilot_state: curStore.mentari_auto_pilot_state });
+      }
+    });
+
+    btnCancel.addEventListener('click', async () => {
+      this.isRunning = false;
+      this.isAutoPilot = false;
+      await Storage.set({
+        mentari_auto_pilot_state: { active: false, cancelled: true }
+      });
+      Toast.info('Auto-Pilot Kuis telah dibatalkan.');
+      if (this.hudHost) this.hudHost.remove();
+    });
+
+    return { statusEl, badgeEl, btnPause, progressBar };
+  }
+
+  async _executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar) {
+    statusEl.textContent = 'Memeriksa kesiapan halaman kuis...';
+
+    // 1. Tunggu halaman kuis siap (deteksi tombol Mulai Kuis atau langsung soal)
+    const isReady = await this._waitForExamReady(statusEl);
+    if (!isReady) {
+      statusEl.textContent = 'Kuis tidak dapat dimulai atau sudah selesai. Melompat ke kuis berikutnya...';
+      await Humanizer.delay(1500);
+      await this._advanceToNextQuiz(state, statusEl);
+      return;
+    }
+
+    // 2. Mulai menjawab seluruh soal kuis
+    statusEl.textContent = 'Menjawab seluruh soal otomatis via AI...';
+    this.isRunning = true;
+
+    try {
+      await this.runAutoLoop(statusEl, true);
+    } catch (e) {
+      console.error('[Auto-Pilot] Error saat menjawab kuis:', e);
+      statusEl.textContent = `Peringatan: ${e.message}`;
+    }
+
+    // 3. Setelah submit kuis selesai, beralih ke kuis berikutnya dengan cooldown
+    await this._advanceToNextQuiz(state, statusEl);
+  }
+
+  async _waitForExamReady(statusEl) {
+    const maxRetries = 40; // 40 x 500ms = 20 detik
+    for (let i = 0; i < maxRetries; i++) {
+      if (!this.isAutoPilot) return false;
+
+      while (this.isPaused && this.isAutoPilot) {
+        await Humanizer.delay(500);
+      }
+
+      // a) Cek apakah soal sudah ada di layar
+      const qContainer = this._findQuestionContainer();
+      if (qContainer) {
+        return true;
+      }
+
+      // b) Cek apakah ada tombol Mulai Kuis / Kerjakan / Start Exam
+      const startBtn = DOM.findButtonByText([
+        'mulai kuis', 'mulai ujian', 'kerjakan kuis', 'kerjakan',
+        'start exam', 'attempt quiz', 'lanjutkan kuis', 'mulai tes'
+      ]);
+      if (startBtn) {
+        if (statusEl) statusEl.textContent = 'Menemukan tombol mulai kuis... Memulai!';
+        await Humanizer.randomDelay(800, 1500);
+        await Humanizer.naturalClick(startBtn);
+
+        // Cek jika muncul modal konfirmasi ("Ya", "Mulai", "Start", "Ok")
+        await Humanizer.delay(800);
+        const confirmStartBtn = DOM.findButtonByText(['ya', 'mulai', 'start', 'ok', 'setuju', 'kerjakan']);
+        if (confirmStartBtn && confirmStartBtn !== startBtn) {
+          await Humanizer.naturalClick(confirmStartBtn);
+        }
+
+        await Humanizer.delay(1500);
+        continue;
+      }
+
+      // c) Cek apakah kuis ini ternyata sudah selesai (halaman hasil / skor)
+      const bodyText = (document.body?.textContent || '').toLowerCase();
+      const isAlreadyDone = bodyText.includes('nilai anda') ||
+                            bodyText.includes('hasil kuis') ||
+                            bodyText.includes('hasil ujian') ||
+                            bodyText.includes('sudah dikerjakan') ||
+                            bodyText.includes('sudah diselesaikan') ||
+                            bodyText.includes('review attempt');
+      if (isAlreadyDone) {
+        if (statusEl) statusEl.textContent = 'Kuis ini sudah diselesaikan sebelumnya.';
+        return false;
+      }
+
+      await Humanizer.delay(500);
+    }
+
+    return false;
+  }
+
+  async _advanceToNextQuiz(state, statusEl) {
+    if (!this.isAutoPilot) return;
+
+    // Perbarui status item saat ini menjadi 'completed'
+    if (state.queue && state.queue[state.currentIndex]) {
+      state.queue[state.currentIndex].status = 'completed';
+    }
+
+    state.currentIndex = state.currentIndex + 1;
+
+    // Periksa apakah antrean masih ada
+    if (state.currentIndex < state.queue.length) {
+      const nextItem = state.queue[state.currentIndex];
+      await Storage.set({ mentari_auto_pilot_state: state });
+
+      const cooldown = state.cooldownSec || 15;
+      if (statusEl) statusEl.textContent = `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
+
+      for (let s = cooldown; s > 0; s--) {
+        if (!this.isAutoPilot) return;
+
+        while (this.isPaused && this.isAutoPilot) {
+          if (statusEl) statusEl.textContent = `Istirahat dijeda (${s}s). Klik Lanjutkan untuk lanjut.`;
+          await Humanizer.delay(500);
+        }
+
+        if (statusEl) statusEl.textContent = `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+        await Humanizer.delay(1000);
+      }
+
+      if (statusEl) statusEl.textContent = `Menuju: ${nextItem.courseTitle} (${nextItem.sectionName})...`;
+      await Humanizer.delay(600);
+
+      // Pindah ke kuis berikutnya di tab yang sama (Single-Tab)
+      window.location.href = nextItem.url;
+    } else {
+      // Seluruh antrean selesai
+      state.active = false;
+      state.finished = true;
+      await Storage.set({ mentari_auto_pilot_state: state });
+
+      if (statusEl) statusEl.textContent = '🎉 Seluruh antrean Auto-Pilot kuis selesai 100%!';
+      Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah berhasil diselesaikan!');
+
+      setTimeout(() => {
+        if (this.hudHost) this.hudHost.remove();
+      }, 7000);
     }
   }
 

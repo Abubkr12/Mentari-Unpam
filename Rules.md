@@ -168,3 +168,16 @@ Mentari-Unpam-v2.0_2/
    - **Rincian Presensi per Pertemuan**: `GET https://my.unpam.ac.id/api/presensi/mahasiswa/jadwal-pertemuan/{id_kelas}/{id_mata_kuliah}`
      - Menghasilkan array riwayat absensi setiap pertemuan (Pertemuan 1 s/d 14) dengan atribut `presensi_status` (`hadir`, `alpa`, `izin`, `sakit`).
    - **Kebutuhan Header**: Wajib menyertakan `Authorization: Bearer <jwt>`, `X-XSRF-TOKEN: <token>`, dan `credentials: 'include'`. Untuk toleransi backend, sediakan variasi kapitalisasi (`authorization` & `x-xsrf-token`).
+
+### 7. Arsitektur Multi-API Key Failover Pool
+- **Storage**: Disimpan dalam array `geminiApiKeys` dan string pointer `geminiApiKey` (active key).
+- **Format Didukung**: Universal regex `/^(AIza|AQ)[a-zA-Z0-9_\-\.]{20,}$/` (Auth Key baru `AQ.` & Traffic Key lama `AIza...`).
+- **Failover Otomatis**: Background service worker (`service-worker.js`) mencegat kode error HTTP 429, 403, atau pesan limit kuota. Sistem secara mulus mencoba key berikutnya dalam pool tanpa membatalkan proses kuis yang sedang berjalan. Key yang berhasil otomatis dipromosikan sebagai primary key.
+- **UI Management**: Tersedia di `ApiKeyManager` dengan Closed Shadow DOM, masking presisi, status badge (Utama/Cadangan), tombol jadikan utama, dan hapus key.
+
+### 8. Arsitektur Auto-Pilot Kuis Batch (Single-Tab Runner)
+- **Filosofi Single-Tab**: Menghindari pembuatan tab baru (`target="_blank"`) untuk menghemat konsumsi RAM browser dan mencegah deteksi session concurrency dari backend Mentari. Seluruh antrean kuis dieksekusi secara berurutan dalam tab aktif yang sama (`window.location.href`).
+- **Validasi Prasyarat Mutlak**: Post-Test pada pertemuan tertentu HANYA dapat dieksekusi jika Forum Diskusi pada pertemuan tersebut telah diselesaikan mahasiswa (`forum.completion === true || forum.answered === true`). Jika forum belum selesai atau tidak ada, Post-Test otomatis dilewati (skipped) dan diinformasikan pada pratinjau antrean.
+- **Inter-Quiz Cooldown**: Jeda aman (default 15 detik, konfigurasi 10–60 detik) dengan visual countdown pada Floating HUD sebelum berpindah ke kuis berikutnya guna menghindari pendeteksi bot velocity kampus.
+- **Glassmorphic Floating HUD**: Menampilkan identitas kuis aktif, progress bar kumulatif, live status, tombol Jeda/Lanjut, dan Batalkan.
+- **Fail-Safe SPA Router**: Divalidasi oleh pengawal navigasi `content.js` jika SPA LMS Mentari meredirect ke luar halaman `/exam/*` pasca-submisi kuis.

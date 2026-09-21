@@ -1696,6 +1696,12 @@
               </svg>
               <span id="eval-toggle-all-text">Buka Semua</span>
             </button>
+            <button class="eval-toggle-all-btn" id="eval-autopilot-btn" title="Auto-Pilot Kuis Batch (1 Tab Murni)" style="background:rgba(212,175,55,0.18); border-color:rgba(212,175,55,0.45); color:#fbbf24; font-weight:700;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+              <span>Auto-Pilot Kuis</span>
+            </button>
           </div>
         </div>
       `;
@@ -1703,6 +1709,7 @@
         const clearBtn = controlsBar.querySelector("#eval-search-clear");
         const typeSelect = controlsBar.querySelector("#eval-type-select");
         const toggleAllBtn = controlsBar.querySelector("#eval-toggle-all-btn");
+        const autoPilotBtn = controlsBar.querySelector("#eval-autopilot-btn");
         if (this.evalSearchQuery) {
           clearBtn.style.display = "block";
         }
@@ -1727,6 +1734,11 @@
         toggleAllBtn.addEventListener("click", () => {
           this._handleToggleAllCourses();
         });
+        if (autoPilotBtn) {
+          autoPilotBtn.addEventListener("click", () => {
+            this._openAutoPilotModal();
+          });
+        }
       }
       this._updateToggleAllBtn();
     }
@@ -1752,6 +1764,250 @@
       if (toggleIcon) {
         toggleIcon.innerHTML = allExpanded ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>' : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
       }
+    }
+    _openAutoPilotModal() {
+      if (!this.evaluations || this.evaluations.length === 0) {
+        Toast.warning("Belum ada data kuis & evaluasi. Silakan refresh tab terlebih dahulu.");
+        return;
+      }
+      const existing = this.shadow.getElementById("mentari-autopilot-modal-overlay");
+      if (existing) existing.remove();
+      const pendingEvals = this.evaluations.filter((e) => !e.completion && !e.locked && (e.type === "PRE_TEST" || e.type === "POST_TEST"));
+      const coursesWithPending = [];
+      const courseMap = {};
+      pendingEvals.forEach((e) => {
+        if (!courseMap[e.courseCode]) {
+          courseMap[e.courseCode] = {
+            code: e.courseCode,
+            title: e.courseTitle,
+            count: 0
+          };
+          coursesWithPending.push(courseMap[e.courseCode]);
+        }
+        courseMap[e.courseCode].count++;
+      });
+      const overlay = document.createElement("div");
+      overlay.id = "mentari-autopilot-modal-overlay";
+      overlay.className = "overlay open";
+      overlay.style.zIndex = "2147483645";
+      overlay.innerHTML = `
+      <div class="modal" style="width: 590px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+        <div class="header">
+          <div class="header-title" style="color: #fbbf24;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            Auto-Pilot Kuis Batch (Single-Tab)
+          </div>
+          <button class="close-btn" id="btn-close-ap-modal" aria-label="Tutup">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="content" style="overflow-y: auto; padding: 20px; gap: 14px;">
+          <div class="info-box" style="border-color: rgba(212, 175, 55, 0.3); background: rgba(212, 175, 55, 0.05);">
+            <div style="font-weight: 700; color: #fbbf24; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              Pengerjaan Kuis Otomatis 1 Tab Murni
+            </div>
+            Kuis dikerjakan berurutan secara otomatis dalam <b>1 tab yang sama</b> tanpa pernah membuka tab baru (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test hanya dapat dikerjakan jika Forum Diskusi pada pertemuan tersebut sudah diselesaikan</b>.
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="label">Lingkup Mata Kuliah</label>
+              <select id="ap-course-select" class="eval-type-select" style="width: 100%; height: 38px; padding: 6px 10px; font-size: 12px;">
+                <option value="all">Semua Mata Kuliah (${pendingEvals.length} Kuis)</option>
+                ${coursesWithPending.map((c) => `<option value="${c.code}">${c.title} (${c.count} Kuis)</option>`).join("")}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="label">Mode Pengerjaan</label>
+              <select id="ap-mode-select" class="eval-type-select" style="width: 100%; height: 38px; padding: 6px 10px; font-size: 12px;">
+                <option value="both">Keduanya (Pre-Test lalu Post-Test)</option>
+                <option value="pre">Hanya Pre-Test</option>
+                <option value="post">Hanya Post-Test (Wajib Cek Forum)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label class="label">Inter-Quiz Cooldown (Jeda Istirahat)</label>
+              <span id="ap-cooldown-display" style="font-size: 12px; font-weight: 700; color: #fbbf24;">15 detik</span>
+            </div>
+            <input type="range" id="ap-cooldown-slider" min="10" max="60" value="15" step="5" style="width: 100%; accent-color: #d4af37; cursor: pointer;">
+            <div style="font-size: 11px; color: #888; margin-top: 4px;">
+              Jeda istirahat di akhir setiap kuis untuk mensimulasikan jeda alami manusia dan menghindari pendeteksi bot velocity kampus.
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label class="label">Pratinjau Antrean Eksekusi</label>
+              <span id="ap-queue-count" style="font-size: 11px; font-weight: 700; color: #38bdf8;">0 Kuis Terjadwal</span>
+            </div>
+            <div id="ap-queue-preview-list" style="max-height: 180px; overflow-y: auto; background: #16161a; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+            </div>
+            <div id="ap-skipped-box" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; font-size: 11px; color: #fca5a5;">
+            </div>
+          </div>
+        </div>
+
+        <div class="footer" style="padding: 14px 20px;">
+          <button class="btn btn-cancel" id="btn-cancel-ap">Batal</button>
+          <button class="btn btn-save" id="btn-start-ap" style="background: #fbbf24; color: #121212; font-weight: 700;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Mulai Auto-Pilot (1 Tab)
+          </button>
+        </div>
+      </div>
+    `;
+      this.shadow.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector("#btn-close-ap-modal").addEventListener("click", close);
+      overlay.querySelector("#btn-cancel-ap").addEventListener("click", close);
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) close();
+      });
+      const courseSelect = overlay.querySelector("#ap-course-select");
+      const modeSelect = overlay.querySelector("#ap-mode-select");
+      const cooldownSlider = overlay.querySelector("#ap-cooldown-slider");
+      const cooldownDisplay = overlay.querySelector("#ap-cooldown-display");
+      const queueList = overlay.querySelector("#ap-queue-preview-list");
+      const queueCount = overlay.querySelector("#ap-queue-count");
+      const skippedBox = overlay.querySelector("#ap-skipped-box");
+      const btnStart = overlay.querySelector("#btn-start-ap");
+      cooldownSlider.addEventListener("input", (e) => {
+        cooldownDisplay.textContent = `${e.target.value} detik`;
+      });
+      const calculateQueue = () => {
+        const selectedCourse = courseSelect.value;
+        const selectedMode = modeSelect.value;
+        let candidates = this.evaluations.filter((e) => !e.completion && !e.locked);
+        if (selectedCourse !== "all") {
+          candidates = candidates.filter((e) => e.courseCode === selectedCourse);
+        }
+        const preCandidates = candidates.filter((e) => e.type === "PRE_TEST");
+        const postCandidates = candidates.filter((e) => e.type === "POST_TEST");
+        const validQueue = [];
+        const skippedList = [];
+        if (selectedMode === "both" || selectedMode === "pre") {
+          preCandidates.forEach((item) => {
+            validQueue.push({
+              id: item.subId,
+              courseCode: item.courseCode,
+              courseTitle: item.courseTitle,
+              sectionName: item.sectionName,
+              type: "PRE_TEST",
+              name: item.name,
+              url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}/exam/${item.subId}`,
+              status: "pending"
+            });
+          });
+        }
+        if (selectedMode === "both" || selectedMode === "post") {
+          postCandidates.forEach((item) => {
+            const matchingForum = (this.activeForums || []).find(
+              (f) => f.courseCode === item.courseCode && (f.sectionName === item.sectionName || f.sectionName && item.sectionName && f.sectionName.toLowerCase().trim() === item.sectionName.toLowerCase().trim())
+            );
+            const isForumDone = matchingForum && (matchingForum.completion === true || matchingForum.answered === true);
+            if (isForumDone) {
+              validQueue.push({
+                id: item.subId,
+                courseCode: item.courseCode,
+                courseTitle: item.courseTitle,
+                sectionName: item.sectionName,
+                type: "POST_TEST",
+                name: item.name,
+                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}/exam/${item.subId}`,
+                status: "pending"
+              });
+            } else {
+              const reason = matchingForum ? "Forum Diskusi belum dijawab/diselesaikan" : "Forum Diskusi belum ada/dibuat dosen";
+              skippedList.push({
+                item,
+                reason
+              });
+            }
+          });
+        }
+        queueCount.textContent = `${validQueue.length} Kuis Terjadwal`;
+        if (validQueue.length === 0) {
+          queueList.innerHTML = `<div style="color:#777; text-align:center; padding:12px;">Tidak ada kuis yang memenuhi syarat untuk dijalankan.</div>`;
+          btnStart.disabled = true;
+        } else {
+          btnStart.disabled = false;
+          queueList.innerHTML = validQueue.map((q, idx) => `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="color:#888; font-family:monospace; font-size:11px; width:18px;">${idx + 1}.</span>
+              <span class="badge ${q.type === "PRE_TEST" ? "badge-primary" : "badge-done"}" style="font-size:10px; padding:2px 6px; ${q.type === "PRE_TEST" ? "background:rgba(59,130,246,0.15); color:#60a5fa;" : "background:rgba(16,185,129,0.15); color:#34d399;"}">
+                ${q.type === "PRE_TEST" ? "Pre-Test" : "Post-Test"}
+              </span>
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; color:#ddd;" title="${q.courseTitle} - ${q.sectionName}">
+                ${q.sectionName}: ${q.courseTitle}
+              </span>
+            </div>
+            <span style="font-size:10px; color:#888;">${q.type === "POST_TEST" ? "Forum Selesai" : "Siap"}</span>
+          </div>
+        `).join("");
+        }
+        if (skippedList.length > 0) {
+          skippedBox.style.display = "block";
+          skippedBox.innerHTML = `
+          <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            ${skippedList.length} Post-Test dilewati (Prasyarat Forum Diskusi belum terpenuhi):
+          </div>
+          <div style="display:flex; flex-direction:column; gap:2px; max-height:80px; overflow-y:auto;">
+            ${skippedList.map((s) => `
+              <div>\u2022 <b>${s.item.sectionName}</b> (${s.item.courseTitle}): <span style="opacity:0.85;">${s.reason}</span></div>
+            `).join("")}
+          </div>
+        `;
+        } else {
+          skippedBox.style.display = "none";
+        }
+        return validQueue;
+      };
+      let activeValidQueue = calculateQueue();
+      courseSelect.addEventListener("change", () => {
+        activeValidQueue = calculateQueue();
+      });
+      modeSelect.addEventListener("change", () => {
+        activeValidQueue = calculateQueue();
+      });
+      btnStart.addEventListener("click", async () => {
+        if (!activeValidQueue || activeValidQueue.length === 0) {
+          Toast.warning("Tidak ada antrean kuis yang valid.");
+          return;
+        }
+        const cooldown = parseInt(cooldownSlider.value, 10) || 15;
+        await Storage.set({
+          mentari_auto_pilot_state: {
+            active: true,
+            currentIndex: 0,
+            cooldownSec: cooldown,
+            queue: activeValidQueue,
+            startedAt: Date.now(),
+            paused: false,
+            total: activeValidQueue.length
+          }
+        });
+        Toast.success(`Auto-Pilot Kuis aktif! Memulai kuis 1/${activeValidQueue.length}...`);
+        close();
+        setTimeout(() => {
+          window.location.href = activeValidQueue[0].url;
+        }, 500);
+      });
     }
     _renderEvaluations(evalItems, updateControls = true) {
       const evalContainer = this.shadow?.getElementById("eval-list-container");
