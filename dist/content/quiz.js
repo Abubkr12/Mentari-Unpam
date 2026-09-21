@@ -1003,6 +1003,13 @@
           reason: "Tombol mulai kuis berstatus disabled (Terkunci)"
         };
       }
+      const pageText = (document.body?.innerText || "").toLowerCase();
+      if (pageText.includes("waktu pengerjaan telah habis") || pageText.includes("waktu ujian telah habis") || pageText.includes("waktu telah berakhir") || pageText.includes("waktu telah habis") || pageText.includes("waktu pengerjaan kuis telah habis")) {
+        return {
+          isLocked: true,
+          reason: "Waktu pengerjaan 1 jam di UNPAM telah habis (Attempt Expired)"
+        };
+      }
       return { isLocked: false, reason: "" };
     }
     /**
@@ -1177,18 +1184,39 @@
           this.isRunning = false;
           return { isFinished: true, submitted: true, reason: stepComp.reason };
         }
-        if (statusEl) statusEl.textContent = "Menganalisis soal...";
-        let success = false;
-        try {
-          success = await this.processCurrentQuestion(true);
-        } catch (err) {
-          console.warn("[Mentari AI] Gagal memproses soal:", err);
-          await Humanizer.delay(1e3);
+        const curQContainer = this._findQuestionContainer();
+        const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
+        const navStatusCurrent = this._getExamNavigationStatus();
+        const hasQuestionsNav = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.length > 0;
+        const anyUnansweredRemaining = hasQuestionsNav && navStatusCurrent.questions.some((q) => !q.isAnswered);
+        if (alreadyCheckedRadio && anyUnansweredRemaining) {
+          const nextUnanswered = navStatusCurrent.questions.find((q) => !q.isAnswered && !q.isCurrent);
+          if (nextUnanswered && nextUnanswered.btn) {
+            console.log(`[Auto-Pilot] Soal saat ini sudah terjawab. Melompat langsung ke Soal ${nextUnanswered.num} yang belum dijawab.`);
+            if (statusEl) statusEl.textContent = `Soal sudah dijawab. Melompat ke Soal ${nextUnanswered.num}...`;
+            await Humanizer.randomDelay(400, 800);
+            await Humanizer.naturalClick(nextUnanswered.btn);
+            await Humanizer.delay(1200);
+            continue;
+          }
+        }
+        if (!alreadyCheckedRadio) {
+          if (statusEl) statusEl.textContent = "Menganalisis soal...";
+          let success = false;
           try {
             success = await this.processCurrentQuestion(true);
-          } catch (retryErr) {
-            if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+          } catch (err) {
+            console.warn("[Mentari AI] Gagal memproses soal:", err);
+            await Humanizer.delay(1e3);
+            try {
+              success = await this.processCurrentQuestion(true);
+            } catch (retryErr) {
+              if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+            }
           }
+        } else {
+          console.log("[Auto-Pilot] Soal saat ini sudah memiliki jawaban terpilih. Melewati AI untuk hemat kuota.");
+          if (statusEl) statusEl.textContent = "Soal ini sudah terjawab. Menuju tahap berikutnya...";
         }
         await Humanizer.delay(700);
         let nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
@@ -1609,7 +1637,10 @@
       const readyResult = await this._waitForExamReady(statusEl);
       if (!readyResult.ready) {
         if (readyResult.reason === "completed") {
-          await this._markQuizAsCompletedPermanently(state, currentItem);
+          const hasStartOrResume = !!this._findStartExamButton();
+          if (!hasStartOrResume) {
+            await this._markQuizAsCompletedPermanently(state, currentItem);
+          }
         }
         const isFastSkip = readyResult.reason === "completed" || readyResult.reason === "locked";
         const skipMsg = readyResult.reason === "completed" ? `${domInfo.cleanTitle || "Kuis"} sudah selesai dikerjakan sebelumnya. Melompat ke antrean berikutnya...` : `Kuis tidak dapat dimulai (${readyResult.reason}). Melompat ke kuis berikutnya...`;

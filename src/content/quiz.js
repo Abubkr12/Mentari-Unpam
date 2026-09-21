@@ -543,6 +543,19 @@ class QuizAssistant {
       };
     }
 
+    // Cek batas waktu ujian 1 jam habis / expired attempt
+    const pageText = (document.body?.innerText || '').toLowerCase();
+    if (pageText.includes('waktu pengerjaan telah habis') || 
+        pageText.includes('waktu ujian telah habis') || 
+        pageText.includes('waktu telah berakhir') || 
+        pageText.includes('waktu telah habis') ||
+        pageText.includes('waktu pengerjaan kuis telah habis')) {
+      return {
+        isLocked: true,
+        reason: 'Waktu pengerjaan 1 jam di UNPAM telah habis (Attempt Expired)'
+      };
+    }
+
     return { isLocked: false, reason: '' };
   }
 
@@ -718,18 +731,44 @@ class QuizAssistant {
         return { isFinished: true, submitted: true, reason: stepComp.reason };
       }
 
-      if (statusEl) statusEl.textContent = 'Menganalisis soal...';
-      let success = false;
-      try {
-        success = await this.processCurrentQuestion(true);
-      } catch (err) {
-        console.warn('[Mentari AI] Gagal memproses soal:', err);
-        await Humanizer.delay(1000);
+      // Resume Optimization: Deteksi soal yang SUDAH terjawab (misal saat melanjutkan attempt < 1 jam)
+      const curQContainer = this._findQuestionContainer();
+      const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
+      const navStatusCurrent = this._getExamNavigationStatus();
+      const hasQuestionsNav = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.length > 0;
+      const anyUnansweredRemaining = hasQuestionsNav && navStatusCurrent.questions.some(q => !q.isAnswered);
+
+      // A. Jika nomor saat ini sudah terjawab dan ada nomor lain yang belum terjawab, langsung lompat via navigasi!
+      if (alreadyCheckedRadio && anyUnansweredRemaining) {
+        const nextUnanswered = navStatusCurrent.questions.find(q => !q.isAnswered && !q.isCurrent);
+        if (nextUnanswered && nextUnanswered.btn) {
+          console.log(`[Auto-Pilot] Soal saat ini sudah terjawab. Melompat langsung ke Soal ${nextUnanswered.num} yang belum dijawab.`);
+          if (statusEl) statusEl.textContent = `Soal sudah dijawab. Melompat ke Soal ${nextUnanswered.num}...`;
+          await Humanizer.randomDelay(400, 800);
+          await Humanizer.naturalClick(nextUnanswered.btn);
+          await Humanizer.delay(1200);
+          continue;
+        }
+      }
+
+      // B. Hanya panggil Gemini AI jika soal ini BELUM memiliki jawaban terpilih
+      if (!alreadyCheckedRadio) {
+        if (statusEl) statusEl.textContent = 'Menganalisis soal...';
+        let success = false;
         try {
           success = await this.processCurrentQuestion(true);
-        } catch (retryErr) {
-          if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+        } catch (err) {
+          console.warn('[Mentari AI] Gagal memproses soal:', err);
+          await Humanizer.delay(1000);
+          try {
+            success = await this.processCurrentQuestion(true);
+          } catch (retryErr) {
+            if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+          }
         }
+      } else {
+        console.log('[Auto-Pilot] Soal saat ini sudah memiliki jawaban terpilih. Melewati AI untuk hemat kuota.');
+        if (statusEl) statusEl.textContent = 'Soal ini sudah terjawab. Menuju tahap berikutnya...';
       }
 
       // Beri jeda sejenak setelah menjawab agar state DOM terbarui
@@ -1194,7 +1233,10 @@ class QuizAssistant {
     const readyResult = await this._waitForExamReady(statusEl);
     if (!readyResult.ready) {
       if (readyResult.reason === 'completed') {
-        await this._markQuizAsCompletedPermanently(state, currentItem);
+        const hasStartOrResume = !!this._findStartExamButton();
+        if (!hasStartOrResume) {
+          await this._markQuizAsCompletedPermanently(state, currentItem);
+        }
       }
 
       const isFastSkip = readyResult.reason === 'completed' || readyResult.reason === 'locked';

@@ -396,6 +396,13 @@ class MentariDashboard {
         background: rgba(255, 255, 255, 0.12);
         color: #fff;
       }
+      @keyframes mentari-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .spin-animation {
+        animation: mentari-spin 1s linear infinite;
+      }
       .eval-course-card {
         background: rgba(255, 255, 255, 0.02);
         border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1092,6 +1099,14 @@ class MentariDashboard {
               </svg>
               <span id="eval-toggle-all-text">Buka Semua</span>
             </button>
+            <button class="eval-toggle-all-btn" id="eval-refresh-status-btn" title="Periksa dan Sinkronkan Status dari Server UNPAM (Deteksi Kuis Berjalan / Belum Selesai)">
+              <svg id="eval-refresh-status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span id="eval-refresh-status-text">Periksa Status</span>
+            </button>
             <button class="eval-toggle-all-btn" id="eval-autopilot-btn" title="Auto-Pilot Kuis Batch (1 Tab Murni)" style="background:rgba(212,175,55,0.18); border-color:rgba(212,175,55,0.45); color:#fbbf24; font-weight:700;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -1106,6 +1121,9 @@ class MentariDashboard {
       const clearBtn = controlsBar.querySelector('#eval-search-clear');
       const typeSelect = controlsBar.querySelector('#eval-type-select');
       const toggleAllBtn = controlsBar.querySelector('#eval-toggle-all-btn');
+      const refreshStatusBtn = controlsBar.querySelector('#eval-refresh-status-btn');
+      const refreshIcon = controlsBar.querySelector('#eval-refresh-status-icon');
+      const refreshText = controlsBar.querySelector('#eval-refresh-status-text');
       const autoPilotBtn = controlsBar.querySelector('#eval-autopilot-btn');
 
       if (this.evalSearchQuery) {
@@ -1136,6 +1154,32 @@ class MentariDashboard {
       toggleAllBtn.addEventListener('click', () => {
         this._handleToggleAllCourses();
       });
+
+      if (refreshStatusBtn) {
+        refreshStatusBtn.addEventListener('click', async () => {
+          if (this._isRefreshingStatus) return;
+          this._isRefreshingStatus = true;
+          refreshStatusBtn.disabled = true;
+          if (refreshIcon) refreshIcon.classList.add('spin-animation');
+          if (refreshText) refreshText.textContent = 'Memeriksa...';
+          Toast.info('Memeriksa status kuis terbaru langsung dari server UNPAM...');
+
+          try {
+            // Reset in-flight promise cache agar memicu fetch segar dari API UNPAM
+            this._currentFetchPromise = null;
+            await this._loadCoursesAndForums();
+            Toast.success('Status kuis & evaluasi berhasil disinkronkan dengan server UNPAM!');
+          } catch (err) {
+            console.error('[Mentari] Gagal sinkronisasi status:', err);
+            Toast.error('Gagal memperbarui status dari server. Silakan coba lagi.');
+          } finally {
+            this._isRefreshingStatus = false;
+            refreshStatusBtn.disabled = false;
+            if (refreshIcon) refreshIcon.classList.remove('spin-animation');
+            if (refreshText) refreshText.textContent = 'Periksa Status';
+          }
+        });
+      }
 
       if (autoPilotBtn) {
         autoPilotBtn.addEventListener('click', () => {
@@ -1196,15 +1240,8 @@ class MentariDashboard {
     const storeComp = await Storage.get('mentari_completed_quiz_ids');
     const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
 
-    // Sinkronkan status completion pada this.evaluations
-    this.evaluations.forEach(e => {
-      if (completedQuizIds.includes(e.subId)) {
-        e.completion = true;
-      }
-    });
-
-    // Dapatkan daftar courses yang memiliki kuis belum selesai
-    const pendingEvals = this.evaluations.filter(e => !e.completion && !e.locked && !completedQuizIds.includes(e.subId) && (e.type === 'PRE_TEST' || e.type === 'POST_TEST'));
+    // Dapatkan daftar kuis yang belum selesai langsung berdasarkan status resmi server UNPAM
+    const pendingEvals = this.evaluations.filter(e => !e.completion && !e.locked && (e.type === 'PRE_TEST' || e.type === 'POST_TEST'));
     const coursesWithPending = [];
     const courseMap = {};
 
@@ -1825,7 +1862,7 @@ class MentariDashboard {
     const calculateQueue = () => {
       const selectedCourse = courseSelect.value;
 
-      let candidates = this.evaluations.filter(e => !e.completion && !e.locked && !completedQuizIds.includes(e.subId));
+      let candidates = this.evaluations.filter(e => !e.completion && !e.locked);
       if (selectedCourse !== 'all') {
         candidates = candidates.filter(e => e.courseCode === selectedCourse);
       }
@@ -2404,6 +2441,7 @@ class MentariDashboard {
 
         const storeComp = await Storage.get('mentari_completed_quiz_ids');
         const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
+        const staleCompletedQuizIds = new Set();
 
         for (let i = 0; i < list.length; i += chunkSize) {
           const chunk = list.slice(i, i + chunkSize);
@@ -2485,9 +2523,10 @@ class MentariDashboard {
                   }
 
                   // ─── Pre-Test, Post-Test, Kuesioner ────────────────────
+                  // Server UNPAM adalah Single Source of Truth mutlak!
                   if (['PRE_TEST', 'POST_TEST', 'KUESIONER'].includes(sub.kode_template) && sub.id) {
                     const isLocked = !!(sub.warningAlert && sub.warningAlert.length > 0);
-                    const isDone = Boolean(
+                    const isLmsCompleted = Boolean(
                       sub.completion === true ||
                       sub.completion === 1 ||
                       sub.completion === '1' ||
@@ -2499,9 +2538,14 @@ class MentariDashboard {
                       sub.status === 'done' ||
                       (sub.nilai !== undefined && sub.nilai !== null && sub.nilai !== '') ||
                       (sub.score !== undefined && sub.score !== null && sub.score !== '') ||
-                      (Array.isArray(sub.history) && sub.history.length > 0) ||
-                      completedQuizIds.includes(sub.id)
+                      (Array.isArray(sub.history) && sub.history.length > 0)
                     );
+
+                    // Self-healing: jika status resmi di UNPAM belum selesai, buang ID dari storage lokal
+                    if (!isLmsCompleted && completedQuizIds.includes(sub.id)) {
+                      staleCompletedQuizIds.add(sub.id);
+                    }
+
                     evalItems.push({
                       courseCode,
                       courseTitle,
@@ -2509,7 +2553,7 @@ class MentariDashboard {
                       subId: sub.id,
                       type: sub.kode_template,
                       name: sub.nama_sub_section || sub.judul || sub.kode_template,
-                      completion: isDone,
+                      completion: isLmsCompleted,
                       locked: isLocked,
                       lockReason: sub.warningAlert || ''
                     });
@@ -2518,6 +2562,13 @@ class MentariDashboard {
               }
             } catch (err) {}
           }));
+        }
+
+        // Auto-Prune: simpan pembersihan ID kuis yang terbukti belum selesai di UNPAM
+        if (staleCompletedQuizIds.size > 0) {
+          const cleanedCompletedIds = completedQuizIds.filter(id => !staleCompletedQuizIds.has(id));
+          await Storage.set({ mentari_completed_quiz_ids: cleanedCompletedIds });
+          console.log(`[Mentari] Auto-pruned ${staleCompletedQuizIds.size} uncompleted quiz ID(s) from local storage. Server UNPAM authoritative status: Incomplete.`);
         }
 
         this.activeForums = forumItems;
