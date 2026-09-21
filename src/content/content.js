@@ -300,7 +300,7 @@ class MentariContentEntry {
           await Storage.set({
             mentari_auto_pilot_state: { ...state, active: false, finished: true }
           });
-          Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah selesai!');
+          Toast.success('Seluruh antrean Auto-Pilot kuis telah selesai 100%!');
         }
       }
     } catch (e) {}

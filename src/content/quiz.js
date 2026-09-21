@@ -272,9 +272,101 @@ class QuizAssistant {
   }
 
   /**
+   * Cari tombol mulai kuis / ujian dengan pencarian keyword fleksibel & tahan banting
+   */
+  _findStartExamButton() {
+    // 1. Cek keyword eksplisit via DOM.findButtonByText
+    const startKeywords = [
+      'mulai quiz', 'mulai kuis', 'mulai ujian', 'mulai tes', 'mulai',
+      'kerjakan quiz', 'kerjakan kuis', 'kerjakan ujian', 'kerjakan tes', 'kerjakan',
+      'start exam', 'start quiz', 'take quiz', 'attempt quiz', 'attempt now',
+      'attempt quiz now', 're-attempt quiz', 'kerjakan ulang',
+      'lanjutkan quiz', 'lanjutkan kuis', 'lanjutkan ujian', 'lanjutkan'
+    ];
+    const startBtn = DOM.findButtonByText(startKeywords);
+    if (startBtn) return startBtn;
+
+    // 2. Query selector tombol MUI / HTML button yang mengandung kata kunci
+    const allButtons = Array.from(document.querySelectorAll('button, a[role="button"], div[role="button"]'));
+    for (const b of allButtons) {
+      if (b.closest('#mentari-autopilot-hud-host') ||
+          b.closest('#mentari-quiz-control-host') ||
+          b.closest('#mentari-token-mod-host') ||
+          b.closest('.mentari-toast-container')) {
+        continue;
+      }
+      if (b.disabled || b.classList.contains('Mui-disabled') || b.getAttribute('aria-disabled') === 'true') {
+        continue;
+      }
+      const text = (b.textContent || b.value || '').trim().toLowerCase();
+      // Negative filter: lewati tombol navigasi
+      if (text.includes('kembali') || text.includes('back') || text.includes('cancel') || text.includes('batal') || text.includes('daftar')) {
+        continue;
+      }
+      if (text.includes('mulai') || (text.includes('quiz') && !text.includes('belum')) || (text.includes('kuis') && !text.includes('belum')) || text.includes('kerjakan')) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Cari tombol konfirmasi modal / dialog MUI ("Ya", "Mulai", "Lanjutkan")
+   */
+  _findDialogConfirmButton(excludeBtn = null) {
+    const dialog = document.querySelector('.MuiDialog-root, [role="dialog"], .MuiModal-root, .modal');
+    if (!dialog) return null;
+
+    const confirmKeywords = ['ya', 'mulai', 'start', 'ok', 'setuju', 'kerjakan', 'lanjutkan', 'ya, mulai', 'mulai quiz', 'mulai kuis'];
+    const confirmBtn = DOM.findButtonByText(confirmKeywords, dialog);
+    if (confirmBtn && confirmBtn !== excludeBtn) {
+      return confirmBtn;
+    }
+    return null;
+  }
+
+  /**
+   * Polling waiter hingga elemen soal kuis ter-mount di DOM
+   */
+  async _waitForQuestionContainer(timeoutMs = 15000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const q = this._findQuestionContainer();
+      if (q) return q;
+      await Humanizer.delay(400);
+    }
+    return null;
+  }
+
+  /**
    * Eksekusi loop menjawab seluruh soal dengan jeda natural manusia
    */
   async runAutoLoop(statusEl, isAutoPilot = false) {
+    // 1. Jika masih di landing page kuis (container soal belum muncul), coba mulai kuis terlebih dahulu
+    let qContainer = this._findQuestionContainer();
+    if (!qContainer) {
+      const startBtn = this._findStartExamButton();
+      if (startBtn) {
+        if (statusEl) statusEl.textContent = 'Menemukan tombol mulai kuis... Memulai pengerjaan!';
+        await Humanizer.randomDelay(600, 1200);
+        await Humanizer.naturalClick(startBtn);
+
+        // Periksa dialog konfirmasi modal jika muncul
+        await Humanizer.delay(800);
+        const confirmBtn = this._findDialogConfirmButton(startBtn);
+        if (confirmBtn) {
+          await Humanizer.naturalClick(confirmBtn);
+        }
+
+        // Tunggu container soal ter-mount di DOM
+        if (statusEl) statusEl.textContent = 'Menunggu soal dimuat...';
+        qContainer = await this._waitForQuestionContainer(15000);
+        if (!qContainer) {
+          throw new Error('Soal kuis tidak muncul setelah tombol mulai diklik.');
+        }
+      }
+    }
+
     while (this.isRunning) {
       // Tunggu jika dijeda oleh pengguna
       while (this.isPaused && this.isRunning) {
@@ -283,7 +375,20 @@ class QuizAssistant {
       }
 
       if (statusEl) statusEl.textContent = 'Menganalisis soal...';
-      const success = await this.processCurrentQuestion(true);
+      let success = false;
+      try {
+        success = await this.processCurrentQuestion(true);
+      } catch (err) {
+        console.warn('[Mentari AI] Gagal memproses soal:', err);
+        await Humanizer.delay(1000);
+        try {
+          success = await this.processCurrentQuestion(true);
+        } catch (retryErr) {
+          if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+          break;
+        }
+      }
+
       if (!success) {
         if (statusEl) statusEl.textContent = 'Selesai atau tidak ada soal aktif.';
         this.isRunning = false;
@@ -291,7 +396,7 @@ class QuizAssistant {
       }
 
       // Cari tombol Selanjutnya / Next yang masih AKTIF (tidak disabled)
-      const nextBtn = DOM.findButtonByText(['selanjutnya', 'next', 'berikutnya']);
+      const nextBtn = DOM.findButtonByText(['selanjutnya', 'next', 'berikutnya', 'soal berikutnya']);
       if (nextBtn) {
         if (statusEl) statusEl.textContent = 'Menuju soal berikutnya...';
         await Humanizer.randomDelay(700, 1500);
@@ -302,7 +407,7 @@ class QuizAssistant {
       } else {
         // Soal terakhir! Cek tombol Selesai / Kumpulkan
         this.isRunning = false;
-        const finishBtn = DOM.findButtonByText(['selesai quiz', 'selesai kuis', 'selesai', 'finish', 'kumpulkan', 'akhiri']);
+        const finishBtn = DOM.findButtonByText(['selesai quiz', 'selesai kuis', 'selesai ujian', 'selesai', 'finish', 'kumpulkan', 'akhiri']);
         if (finishBtn) {
           if (statusEl) statusEl.textContent = 'Semua soal terjawab. Menyelesaikan kuis...';
           Toast.success('Semua soal kuis berhasil dijawab dengan sukses!');
@@ -343,12 +448,22 @@ class QuizAssistant {
       await Storage.set({
         mentari_auto_pilot_state: { ...state, active: false, finished: true }
       });
-      Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah selesai 100%!');
+      Toast.success('Seluruh antrean Auto-Pilot kuis telah selesai 100%!');
       return;
     }
 
     this.isAutoPilot = true;
     this.isPaused = Boolean(state.paused);
+
+    // Sinkronisasi model AI dari state Auto-Pilot jika ada
+    if (state.model && VALID_MODEL_IDS.includes(state.model)) {
+      this.activeModel = state.model;
+      await Storage.set({ gemini_model: state.model });
+      const selectModel = this.shadow?.getElementById('quiz-select-model');
+      if (selectModel && selectModel.value !== state.model) {
+        selectModel.value = state.model;
+      }
+    }
 
     const currentItem = state.queue[state.currentIndex];
     console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
@@ -539,6 +654,9 @@ class QuizAssistant {
     const currentIdx = state.currentIndex;
     const totalCount = state.queue.length;
     const progressPercent = Math.round((currentIdx / totalCount) * 100);
+    const currentModelId = state.model || this.activeModel;
+    const currentModelObj = ALL_MODELS.find(m => m.id === currentModelId);
+    const modelLabel = currentModelObj ? currentModelObj.name.split(' (')[0] : (currentModelId || 'Gemini');
 
     hudCard.innerHTML = `
       <div class="hud-header">
@@ -560,6 +678,12 @@ class QuizAssistant {
             ${currentItem.type === 'PRE_TEST' ? 'Pre-Test' : 'Post-Test'}
           </span>
           <span>${currentItem.sectionName}</span>
+          <span class="hud-tag" style="background:rgba(212,175,55,0.18); color:#fbbf24; border:1px solid rgba(212,175,55,0.35); margin-left:auto; display:flex; align-items:center; gap:4px;" title="Model AI Aktif: ${modelLabel}">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            ${modelLabel}
+          </span>
         </div>
       </div>
 
@@ -652,7 +776,7 @@ class QuizAssistant {
   }
 
   async _waitForExamReady(statusEl) {
-    const maxRetries = 40; // 40 x 500ms = 20 detik
+    const maxRetries = 60; // 60 x 500ms = 30 detik
     for (let i = 0; i < maxRetries; i++) {
       if (!this.isAutoPilot) return false;
 
@@ -660,48 +784,54 @@ class QuizAssistant {
         await Humanizer.delay(500);
       }
 
-      // a) Cek apakah soal sudah ada di layar
+      // a) Cek apakah container soal sudah ada di layar
       const qContainer = this._findQuestionContainer();
       if (qContainer) {
         return true;
       }
 
       // b) Cek apakah ada tombol Mulai Kuis / Kerjakan / Start Exam
-      const startBtn = DOM.findButtonByText([
-        'mulai kuis', 'mulai ujian', 'kerjakan kuis', 'kerjakan',
-        'start exam', 'attempt quiz', 'lanjutkan kuis', 'mulai tes'
-      ]);
+      const startBtn = this._findStartExamButton();
       if (startBtn) {
         if (statusEl) statusEl.textContent = 'Menemukan tombol mulai kuis... Memulai!';
-        await Humanizer.randomDelay(800, 1500);
+        await Humanizer.randomDelay(600, 1200);
         await Humanizer.naturalClick(startBtn);
 
-        // Cek jika muncul modal konfirmasi ("Ya", "Mulai", "Start", "Ok")
+        // Cek jika muncul modal konfirmasi dialog MUI ("Ya", "Mulai", "Start", "Ok")
         await Humanizer.delay(800);
-        const confirmStartBtn = DOM.findButtonByText(['ya', 'mulai', 'start', 'ok', 'setuju', 'kerjakan']);
-        if (confirmStartBtn && confirmStartBtn !== startBtn) {
+        const confirmStartBtn = this._findDialogConfirmButton(startBtn);
+        if (confirmStartBtn) {
           await Humanizer.naturalClick(confirmStartBtn);
         }
 
-        await Humanizer.delay(1500);
+        // Tunggu transisi hingga container soal muncul
+        if (statusEl) statusEl.textContent = 'Menunggu soal kuis dimuat...';
+        const readyQ = await this._waitForQuestionContainer(15000);
+        if (readyQ) {
+          return true;
+        }
         continue;
       }
 
-      // c) Cek apakah kuis ini ternyata sudah selesai (halaman hasil / skor)
-      const bodyText = (document.body?.textContent || '').toLowerCase();
-      const isAlreadyDone = bodyText.includes('nilai anda') ||
-                            bodyText.includes('hasil kuis') ||
-                            bodyText.includes('hasil ujian') ||
-                            bodyText.includes('sudah dikerjakan') ||
-                            bodyText.includes('sudah diselesaikan') ||
-                            bodyText.includes('review attempt');
-      if (isAlreadyDone) {
+      // c) Cek apakah kuis ini memang sudah selesai (halaman hasil / skor kuis)
+      // HANYA jika tombol mulai dan container soal TIDAK ditemukan!
+      const scoreTable = document.querySelector('table.MuiTable-root, .hasil-ujian, .skor-container');
+      const hasScoreHeader = Array.from(document.querySelectorAll('.MuiTypography-h4, .MuiTypography-h5, .MuiTypography-h6, h2, h3, h4'))
+        .some(el => {
+          const t = el.textContent.toLowerCase();
+          return t.includes('hasil kuis') || t.includes('hasil ujian') || t.includes('nilai akhir');
+        });
+
+      if (scoreTable && hasScoreHeader) {
         if (statusEl) statusEl.textContent = 'Kuis ini sudah diselesaikan sebelumnya.';
         return false;
       }
 
       await Humanizer.delay(500);
     }
+
+    // Double check container soal terakhir sebelum menyerah
+    if (this._findQuestionContainer()) return true;
 
     return false;
   }
@@ -747,8 +877,8 @@ class QuizAssistant {
       state.finished = true;
       await Storage.set({ mentari_auto_pilot_state: state });
 
-      if (statusEl) statusEl.textContent = '🎉 Seluruh antrean Auto-Pilot kuis selesai 100%!';
-      Toast.success('🎉 Seluruh antrean Auto-Pilot kuis telah berhasil diselesaikan!');
+      if (statusEl) statusEl.textContent = 'Seluruh antrean Auto-Pilot kuis selesai 100%!';
+      Toast.success('Seluruh antrean Auto-Pilot kuis telah berhasil diselesaikan!');
 
       setTimeout(() => {
         if (this.hudHost) this.hudHost.remove();
@@ -803,9 +933,11 @@ class QuizAssistant {
     const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
 
     const selectModel = this.shadow?.getElementById('quiz-select-model');
-    const chosenModel = (selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value))
-      ? selectModel.value
-      : (this.activeModel || DEFAULT_MODEL);
+    const chosenModel = this.isAutoPilot
+      ? (this.activeModel || DEFAULT_MODEL)
+      : ((selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value))
+          ? selectModel.value
+          : (this.activeModel || DEFAULT_MODEL));
 
     // Panggil Service Worker
     const response = await new Promise((resolve) => {

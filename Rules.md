@@ -181,3 +181,12 @@ Mentari-Unpam-v2.0_2/
 - **Inter-Quiz Cooldown**: Jeda aman (default 15 detik, konfigurasi 10–60 detik) dengan visual countdown pada Floating HUD sebelum berpindah ke kuis berikutnya guna menghindari pendeteksi bot velocity kampus.
 - **Glassmorphic Floating HUD**: Menampilkan identitas kuis aktif, progress bar kumulatif, live status, tombol Jeda/Lanjut, dan Batalkan.
 - **Fail-Safe SPA Router**: Divalidasi oleh pengawal navigasi `content.js` jika SPA LMS Mentari meredirect ke luar halaman `/exam/*` pasca-submisi kuis.
+
+### 9. Mekanisme Resilient Button Locator & AI Model Persistence pada Auto-Pilot Kuis
+- **Resilient Button Locator (`_findStartExamButton`)**: Menangani variasi tombol resmi MUI di LMS Mentari UNPAM ("MULAI QUIZ" dengan huruf Z, "KERJAKAN QUIZ", "MULAI KUIS", dll.), dilengkapi negative filter untuk tombol navigasi (Kembali, Daftar, Batal), serta shielding dari host ekstensi agar tidak terjadi salah klik elemen UI ekstensi.
+- **Dialog Confirmation Auto-Handler (`_findDialogConfirmButton`)**: Mendeteksi dan mengklik tombol konfirmasi modal Material UI ("Ya", "Mulai", "Lanjutkan") saat pop-up konfirmasi pengerjaan kuis muncul.
+- **Question Transistion Waiter (`_waitForQuestionContainer`)**: Melakukan polling hingga container soal kuis (`input[type="radio"]` atau `.MuiRadio-root`) ter-mount di DOM sebelum loop penjawab dieksekusi.
+- **Auto-Start dari Landing Page**: Jika tombol "Auto Semua" pada floating card pojok kanan bawah diklik saat masih berada di landing page kuis, sistem otomatis memicu pengerjaan awal tanpa mengalami freeze/stuck.
+- **Strict "Already Done" Verification**: Memastikan status kuis selesai HANYA dievaluasi jika tidak ada tombol mulai dan tidak ada container soal, serta ditemukan tabel riwayat skor spesifik guna mencegah false-positive dari teks petunjuk pengerjaan dosen.
+- **Explicit Gemini Model Selection**: Pilihan 9 model AI Gemini tersedia langsung di modal konfigurasi Auto-Pilot (`token.js`), tersimpan persisten ke `gemini_model` & `mentari_auto_pilot_state.model`, tersinkronisasi real-time ke card kontrol mini, dan ditampilkan secara elegan dengan badge SVG inline pada Floating HUD Tracker.
+

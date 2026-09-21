@@ -1177,11 +1177,16 @@ class MentariDashboard {
     }
   }
 
-  _openAutoPilotModal() {
+  async _openAutoPilotModal() {
     if (!this.evaluations || this.evaluations.length === 0) {
       Toast.warning('Belum ada data kuis & evaluasi. Silakan refresh tab terlebih dahulu.');
       return;
     }
+
+    // Ambil preferensi model Gemini aktif dari storage
+    const validModelIds = ALL_MODELS.map(m => m.id);
+    const { gemini_model } = await Storage.get('gemini_model', { gemini_model: 'gemini-2.5-flash' });
+    const currentModel = (gemini_model && validModelIds.includes(gemini_model)) ? gemini_model : 'gemini-2.5-flash';
 
     // Hapus overlay lama jika ada
     const existing = this.shadow.getElementById('mentari-autopilot-modal-overlay');
@@ -1710,6 +1715,16 @@ class MentariDashboard {
             </div>
           </div>
 
+          <div class="ap-field-group">
+            <div class="ap-label">
+              <span>Model AI Gemini</span>
+              <span style="color:#d4af37; font-size:10px; font-weight:600; text-transform:none;">Otak Penjawab Kuis</span>
+            </div>
+            <select id="ap-model-select" class="ap-select">
+              ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === currentModel ? 'selected' : ''}>${m.name}</option>`).join('')}
+            </select>
+          </div>
+
           <div class="ap-field-group ap-cooldown-wrap">
             <div class="ap-label">
               <span>Inter-Quiz Cooldown (Jeda Istirahat)</span>
@@ -1916,6 +1931,16 @@ class MentariDashboard {
       });
     });
 
+    const modelSelect = overlay.querySelector('#ap-model-select');
+    if (modelSelect) {
+      modelSelect.addEventListener('change', () => {
+        const chosen = modelSelect.value;
+        if (chosen && validModelIds.includes(chosen)) {
+          Storage.set({ gemini_model: chosen });
+        }
+      });
+    }
+
     // Start Auto-Pilot Button
     btnStart.addEventListener('click', async () => {
       if (!activeValidQueue || activeValidQueue.length === 0) {
@@ -1924,6 +1949,11 @@ class MentariDashboard {
       }
 
       const cooldown = parseInt(cooldownSlider.value, 10) || 15;
+      const chosenModel = (modelSelect && modelSelect.value && validModelIds.includes(modelSelect.value))
+        ? modelSelect.value
+        : currentModel;
+
+      await Storage.set({ gemini_model: chosenModel });
 
       // Simpan state Auto-Pilot ke chrome.storage.local
       await Storage.set({
@@ -1934,11 +1964,15 @@ class MentariDashboard {
           queue: activeValidQueue,
           startedAt: Date.now(),
           paused: false,
-          total: activeValidQueue.length
+          total: activeValidQueue.length,
+          model: chosenModel
         }
       });
 
-      Toast.success(`Auto-Pilot Kuis aktif! Memulai kuis 1/${activeValidQueue.length}...`);
+      const chosenModelObj = ALL_MODELS.find(m => m.id === chosenModel);
+      const chosenModelName = chosenModelObj ? chosenModelObj.name.split(' (')[0] : chosenModel;
+
+      Toast.success(`Auto-Pilot Kuis aktif (${chosenModelName})! Memulai kuis 1/${activeValidQueue.length}...`);
       close();
 
       // Navigasi instan di tab yang sama
