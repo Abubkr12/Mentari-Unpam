@@ -3205,21 +3205,22 @@
     let rXml = "";
     if (Array.isArray(runs) && runs.length > 0) {
       for (const run of runs) {
+        if (!run.text) continue;
         rXml += `<w:r><w:rPr>`;
-        rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`;
-        if (run.bold) rXml += `<w:b/><w:bCs/>`;
-        if (run.italic) rXml += `<w:i/><w:iCs/>`;
+        rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>`;
+        if (run.bold) rXml += `<w:b/>`;
+        if (run.italic) rXml += `<w:i/>`;
         const sz = run.fontSize || fontSize;
-        rXml += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`;
+        rXml += `<w:sz w:val="${sz}"/>`;
         rXml += `<w:color w:val="000000"/>`;
         rXml += `</w:rPr><w:t xml:space="preserve">${escapeXml(run.text)}</w:t></w:r>`;
       }
-    } else if (text !== void 0) {
+    } else if (text) {
       rXml = `<w:r><w:rPr>`;
-      rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`;
-      if (bold) rXml += `<w:b/><w:bCs/>`;
-      if (italic) rXml += `<w:i/><w:iCs/>`;
-      rXml += `<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/>`;
+      rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>`;
+      if (bold) rXml += `<w:b/>`;
+      if (italic) rXml += `<w:i/>`;
+      rXml += `<w:sz w:val="${fontSize}"/>`;
       rXml += `<w:color w:val="000000"/>`;
       rXml += `</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
     }
@@ -3245,8 +3246,6 @@
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
 </Types>`
       );
       zip.file(
@@ -3261,28 +3260,7 @@
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
 </Relationships>`
-      );
-      zip.file(
-        "word/settings.xml",
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:defaultTabStop w:val="720"/>
-</w:settings>`
-      );
-      zip.file(
-        "word/fontTable.xml",
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:fontTable xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:font w:name="Times New Roman">
-    <w:panose1 w:val="02020603050405020304"/>
-    <w:charset w:val="00"/>
-    <w:family w:val="roman"/>
-    <w:pitch w:val="variable"/>
-  </w:font>
-</w:fontTable>`
       );
       zip.file(
         "word/styles.xml",
@@ -3293,7 +3271,6 @@
       <w:rPr>
         <w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>
         <w:sz w:val="24"/>
-        <w:szCs w:val="24"/>
         <w:color w:val="000000"/>
         <w:lang w:val="id-ID"/>
       </w:rPr>
@@ -3304,6 +3281,18 @@
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:spacing w:before="60" w:after="60" w:line="360" w:lineRule="auto"/>
+    </w:pPr>
+    <w:rPr>
+      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>
+      <w:sz w:val="24"/>
+      <w:color w:val="000000"/>
+    </w:rPr>
+  </w:style>
 </w:styles>`
       );
       let bodyXml = "";
@@ -3325,7 +3314,14 @@
         spaceBefore: 0,
         spaceAfter: 160
       });
-      bodyXml += `<w:p><w:pPr><w:pBdr><w:bottom w:val="double" w:sz="12" w:space="4" w:color="000000"/></w:pBdr><w:spacing w:before="0" w:after="160"/></w:pPr></w:p>`;
+      bodyXml += createParagraphXml({
+        text: "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550",
+        bold: true,
+        align: "center",
+        fontSize: 20,
+        spaceBefore: 0,
+        spaceAfter: 160
+      });
       bodyXml += createParagraphXml({
         runs: [
           { text: "Nama Mahasiswa : ", bold: true },
@@ -3452,8 +3448,7 @@
       <w:docGrid w:linePitch="360"/>
     </w:sectPr>`;
       const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     ${bodyXml}
     ${sectPr}
@@ -5218,6 +5213,127 @@
         toggleIcon.innerHTML = allExpanded ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>' : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
       }
     }
+    /**
+     * Helper ekstraksi teks pertanyaan / soal forum dari respon JSON Mentari
+     */
+    _extractQuestionFromAny(data, targetTopicId = null) {
+      if (!data) return "";
+      if (typeof data === "string") {
+        const clean = data.trim();
+        if (clean.length > 15 && (clean.includes("<p>") || clean.includes(" ") || clean.length > 30)) {
+          return clean;
+        }
+        return "";
+      }
+      if (typeof data !== "object") return "";
+      const isValidContent = (val) => {
+        if (!val || typeof val !== "string") return false;
+        const trimmed = val.trim();
+        return trimmed.length > 10;
+      };
+      const contentFields = [
+        "deskripsi",
+        "pesan",
+        "message",
+        "content",
+        "body",
+        "uraian",
+        "soal",
+        "instruksi",
+        "pertanyaan",
+        "isi",
+        "keterangan"
+      ];
+      if (data.topic && typeof data.topic === "object") {
+        const t = data.topic;
+        for (const field of contentFields) {
+          if (isValidContent(t[field])) return t[field];
+        }
+      }
+      if (data.data && typeof data.data === "object" && !Array.isArray(data.data)) {
+        if (data.data.topic && typeof data.data.topic === "object") {
+          const t = data.data.topic;
+          for (const field of contentFields) {
+            if (isValidContent(t[field])) return t[field];
+          }
+        }
+        for (const field of contentFields) {
+          if (isValidContent(data.data[field])) return data.data[field];
+        }
+      }
+      for (const field of contentFields) {
+        if (isValidContent(data[field])) return data[field];
+      }
+      if (data.parent && typeof data.parent === "object") {
+        for (const field of contentFields) {
+          if (isValidContent(data.parent[field])) return data.parent[field];
+        }
+      }
+      const replyList = data.replies || data.posts || (Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : null);
+      if (Array.isArray(replyList) && replyList.length > 0) {
+        for (const r of replyList) {
+          if (!r || typeof r !== "object") continue;
+          const name = (r.fullname || r.nama || r.author || "").toLowerCase();
+          const isDosen = r.role === "dosen" || r.is_dosen || /s\.pd|m\.pd|dr\.|prof\.|m\.kom|s\.kom|m\.m|s\.e/i.test(name);
+          if (isDosen) {
+            for (const field of contentFields) {
+              if (isValidContent(r[field])) return r[field];
+            }
+          }
+        }
+        for (const r of replyList) {
+          if (!r || typeof r !== "object") continue;
+          if (r.is_parent || r.parent_id === 0 || r.parent_id === null || r.is_thread_starter) {
+            for (const field of contentFields) {
+              if (isValidContent(r[field])) return r[field];
+            }
+          }
+        }
+        const first = replyList[0];
+        if (first && typeof first === "object") {
+          for (const field of contentFields) {
+            if (isValidContent(first[field])) return first[field];
+          }
+        }
+      }
+      return "";
+    }
+    /**
+     * Fetch teks pertanyaan dosen untuk suatu topik dari endpoint API Mentari
+     */
+    async _fetchTopicQuestionContent(topicId, fetchOpts) {
+      if (!topicId) return "";
+      if (typeof window !== "undefined" && window.location.href.includes(topicId)) {
+        const domContent = document.querySelector(".ck-content") || document.querySelector('[role="article"]') || document.querySelector(".MuiPaper-root");
+        if (domContent) {
+          const txt = domContent.textContent.trim();
+          if (txt.length > 20) return txt;
+        }
+      }
+      const endpoints = [
+        `https://mentari.unpam.ac.id/api/forum/topic/${topicId}`,
+        `https://mentari.unpam.ac.id/api/forum/topics/${topicId}`,
+        `https://mentari.unpam.ac.id/api/forum/reply/${topicId}`
+      ];
+      const results = await Promise.allSettled(endpoints.map(async (url) => {
+        try {
+          const res = await fetch(url, fetchOpts);
+          if (res.ok) {
+            const json = await res.json();
+            const extracted = this._extractQuestionFromAny(json, topicId);
+            if (extracted && extracted.length > 10) return extracted;
+          }
+        } catch {
+        }
+        return null;
+      }));
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) {
+          return r.value;
+        }
+      }
+      return "";
+    }
     async _handleExportForumRecap(btn, icon, textEl) {
       if (this._isExportingDocx) return;
       this._isExportingDocx = true;
@@ -5238,10 +5354,9 @@
           fetchOpts = await UnpamAuth.getFetchOptions();
         } catch {
         }
-        const missingTopicForums = pendingForums.filter((f) => !f.topics || f.topics.length === 0);
-        if (missingTopicForums.length > 0) {
-          if (textEl) textEl.textContent = "Mengambil Soal...";
-          await Promise.allSettled(missingTopicForums.map(async (f) => {
+        if (textEl) textEl.textContent = "Memuat Topik...";
+        await Promise.allSettled(pendingForums.map(async (f) => {
+          if (!f.topics || f.topics.length === 0) {
             try {
               const res = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${f.forumId}`, fetchOpts);
               if (res.ok) {
@@ -5254,6 +5369,29 @@
                 }));
               }
             } catch {
+            }
+          }
+        }));
+        const topicsNeedingContent = [];
+        for (const f of pendingForums) {
+          if (f.topics && f.topics.length > 0) {
+            for (const top of f.topics) {
+              if (!top.message || top.message.trim().length === 0) {
+                topicsNeedingContent.push(top);
+              }
+            }
+          }
+        }
+        if (topicsNeedingContent.length > 0) {
+          if (textEl) textEl.textContent = "Mengambil Soal...";
+          await Promise.allSettled(topicsNeedingContent.map(async (top) => {
+            try {
+              const content = await this._fetchTopicQuestionContent(top.id, fetchOpts);
+              if (content) {
+                top.message = content;
+              }
+            } catch (err) {
+              console.warn("[Mentari Recap] Gagal mengambil soal untuk topik:", top.id, err);
             }
           }));
         }
@@ -7134,6 +7272,11 @@
                               const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
                               if (replyRes.ok) {
                                 const replyData = await replyRes.json();
+                                const extractedQuestion = this._extractQuestionFromAny(replyData, topic.id);
+                                if (extractedQuestion) {
+                                  const td = topicDetails.find((t) => t.id === topic.id);
+                                  if (td && !td.message) td.message = extractedQuestion;
+                                }
                                 const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
                                 return replies.filter((r) => {
                                   const rName = (r.fullname || r.nama || "").toLowerCase();

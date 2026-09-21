@@ -101,21 +101,22 @@ function createParagraphXml({
   let rXml = '';
   if (Array.isArray(runs) && runs.length > 0) {
     for (const run of runs) {
+      if (!run.text) continue;
       rXml += `<w:r><w:rPr>`;
-      rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`;
-      if (run.bold) rXml += `<w:b/><w:bCs/>`;
-      if (run.italic) rXml += `<w:i/><w:iCs/>`;
+      rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>`;
+      if (run.bold) rXml += `<w:b/>`;
+      if (run.italic) rXml += `<w:i/>`;
       const sz = run.fontSize || fontSize;
-      rXml += `<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`;
+      rXml += `<w:sz w:val="${sz}"/>`;
       rXml += `<w:color w:val="000000"/>`;
       rXml += `</w:rPr><w:t xml:space="preserve">${escapeXml(run.text)}</w:t></w:r>`;
     }
-  } else if (text !== undefined) {
+  } else if (text) {
     rXml = `<w:r><w:rPr>`;
-    rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>`;
-    if (bold) rXml += `<w:b/><w:bCs/>`;
-    if (italic) rXml += `<w:i/><w:iCs/>`;
-    rXml += `<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/>`;
+    rXml += `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>`;
+    if (bold) rXml += `<w:b/>`;
+    if (italic) rXml += `<w:i/>`;
+    rXml += `<w:sz w:val="${fontSize}"/>`;
     rXml += `<w:color w:val="000000"/>`;
     rXml += `</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
   }
@@ -145,8 +146,6 @@ export class DocxGenerator {
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
-  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
 </Types>`
     );
 
@@ -165,35 +164,10 @@ export class DocxGenerator {
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
 </Relationships>`
     );
 
-    // 4. word/settings.xml
-    zip.file(
-      'word/settings.xml',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:defaultTabStop w:val="720"/>
-</w:settings>`
-    );
-
-    // 5. word/fontTable.xml
-    zip.file(
-      'word/fontTable.xml',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:fontTable xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:font w:name="Times New Roman">
-    <w:panose1 w:val="02020603050405020304"/>
-    <w:charset w:val="00"/>
-    <w:family w:val="roman"/>
-    <w:pitch w:val="variable"/>
-  </w:font>
-</w:fontTable>`
-    );
-
-    // 6. word/styles.xml
+    // 4. word/styles.xml
     zip.file(
       'word/styles.xml',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -203,7 +177,6 @@ export class DocxGenerator {
       <w:rPr>
         <w:rFonts w:ascii="Times New Roman" w:eastAsia="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>
         <w:sz w:val="24"/>
-        <w:szCs w:val="24"/>
         <w:color w:val="000000"/>
         <w:lang w:val="id-ID"/>
       </w:rPr>
@@ -214,10 +187,22 @@ export class DocxGenerator {
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:spacing w:before="60" w:after="60" w:line="360" w:lineRule="auto"/>
+    </w:pPr>
+    <w:rPr>
+      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>
+      <w:sz w:val="24"/>
+      <w:color w:val="000000"/>
+    </w:rPr>
+  </w:style>
 </w:styles>`
     );
 
-    // 7. word/document.xml
+    // 5. word/document.xml
     let bodyXml = '';
 
     // A. Header Dokumen Akademik
@@ -240,7 +225,14 @@ export class DocxGenerator {
     });
 
     // Garis pembatas horizontal ganda
-    bodyXml += `<w:p><w:pPr><w:pBdr><w:bottom w:val="double" w:sz="12" w:space="4" w:color="000000"/></w:pBdr><w:spacing w:before="0" w:after="160"/></w:pPr></w:p>`;
+    bodyXml += createParagraphXml({
+      text: '════════════════════════════════════════════════════════════════════════════════',
+      bold: true,
+      align: 'center',
+      fontSize: 20,
+      spaceBefore: 0,
+      spaceAfter: 160
+    });
 
     // Informasi Mahasiswa & Dokumen (Format Rapi)
     bodyXml += createParagraphXml({
@@ -396,8 +388,7 @@ export class DocxGenerator {
     </w:sectPr>`;
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     ${bodyXml}
     ${sectPr}
