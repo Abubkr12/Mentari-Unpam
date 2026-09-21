@@ -755,13 +755,34 @@ class MentariDashboard {
 
     // Model selection on the fly
     const selectModel = this.shadow.getElementById('select-active-model');
+    const validModelIds = ALL_MODELS.map(m => m.id);
     Storage.get('gemini_model').then(({ gemini_model }) => {
-      if (gemini_model) selectModel.value = gemini_model;
+      if (gemini_model && validModelIds.includes(gemini_model)) {
+        selectModel.value = gemini_model;
+      } else {
+        selectModel.value = 'gemini-2.5-flash';
+        Storage.set({ gemini_model: 'gemini-2.5-flash' });
+      }
     });
+
     selectModel.addEventListener('change', () => {
-      Storage.set({ gemini_model: selectModel.value });
-      Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+      const chosen = selectModel.value;
+      if (chosen && validModelIds.includes(chosen)) {
+        Storage.set({ gemini_model: chosen });
+        Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+      }
     });
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.gemini_model) {
+          const newModel = changes.gemini_model.newValue;
+          if (newModel && validModelIds.includes(newModel) && selectModel.value !== newModel) {
+            selectModel.value = newModel;
+          }
+        }
+      });
+    }
 
     // Settings trigger
     this.shadow.getElementById('btn-open-api-settings').addEventListener('click', () => {

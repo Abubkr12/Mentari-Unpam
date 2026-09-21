@@ -54,12 +54,8 @@ export const Storage = {
       try {
         if (this.isContextValid() && chrome.storage && chrome.storage.local) {
           chrome.storage.local.set(items, () => {
-            if (chrome.runtime?.lastError) {
-              this._setLocalStorageFallback(items);
-              resolve(true);
-            } else {
-              resolve(true);
-            }
+            this._setLocalStorageFallback(items);
+            resolve(true);
           });
         } else {
           this._setLocalStorageFallback(items);
@@ -125,6 +121,10 @@ export const Storage = {
     try {
       if (typeof window === 'undefined' || !window.localStorage) return;
 
+      // Cek apakah sudah pernah dimigrasikan sebelumnya
+      const { mentari_legacy_migrated } = await this.get('mentari_legacy_migrated', { mentari_legacy_migrated: false });
+      if (mentari_legacy_migrated) return;
+
       const legacyKeys = [
         'mentari_auth_token',
         'mentari_user_info',
@@ -136,8 +136,23 @@ export const Storage = {
         'access'
       ];
 
+      const validModels = [
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
+        'gemini-3-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
+        'gemini-3.8-flash'
+      ];
+
       const toMigrate = {};
       let hasData = false;
+
+      // Ambil data yang sudah ada di chrome.storage.local agar tidak menimpa setting modern
+      const existing = await this.get(['gemini_model', 'geminiApiKey']);
 
       for (const k of legacyKeys) {
         const raw = localStorage.getItem(k);
@@ -145,25 +160,40 @@ export const Storage = {
           try {
             // Check base64 encoded apiKey
             if (k === 'geminiApiKey') {
-              try {
-                toMigrate[k] = atob(raw);
-              } catch {
-                toMigrate[k] = raw;
+              if (!existing.geminiApiKey) {
+                try {
+                  toMigrate[k] = atob(raw);
+                } catch {
+                  toMigrate[k] = raw;
+                }
+                hasData = true;
+              }
+            } else if (k === 'gemini_model') {
+              // Hanya migrasi gemini_model jika belum ada di chrome.storage dan nilainya valid
+              let parsedModel = raw;
+              try { parsedModel = JSON.parse(raw); } catch {}
+              if (!existing.gemini_model && validModels.includes(parsedModel)) {
+                toMigrate[k] = parsedModel;
+                hasData = true;
               }
             } else {
-              toMigrate[k] = JSON.parse(raw);
+              if (!existing[k]) {
+                toMigrate[k] = JSON.parse(raw);
+                hasData = true;
+              }
             }
           } catch {
-            toMigrate[k] = raw;
+            if (!existing[k]) {
+              toMigrate[k] = raw;
+              hasData = true;
+            }
           }
-          hasData = true;
         }
       }
 
-      if (hasData) {
-        await this.set(toMigrate);
-        console.log('[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.');
-      }
+      toMigrate.mentari_legacy_migrated = true;
+      await this.set(toMigrate);
+      console.log('[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.');
     } catch (e) {
       console.log('[Storage] Auto-migrasi info:', e.message);
     }

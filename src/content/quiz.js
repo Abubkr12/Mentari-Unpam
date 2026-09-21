@@ -21,6 +21,9 @@ const ALL_MODELS = [
   { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }
 ];
 
+const VALID_MODEL_IDS = ALL_MODELS.map(m => m.id);
+const DEFAULT_MODEL = 'gemini-2.5-flash';
+
 class QuizAssistant {
   constructor() {
     this.isRunning = false;
@@ -28,14 +31,44 @@ class QuizAssistant {
     this.answeredCount = 0;
     this.totalQuestions = 0;
     this.shadow = null;
+    this.activeModel = DEFAULT_MODEL;
     this._init();
   }
 
   async _init() {
     console.log('[Mentari Mod] Quiz Assistant aktif.');
 
-    // Pasang panel kontrol mini asisten kuis
+    // 1. Muat model terakhir dari storage sebelum UI diinjeksi (mencegah flash blank)
+    try {
+      const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_MODEL });
+      if (gemini_model && VALID_MODEL_IDS.includes(gemini_model)) {
+        this.activeModel = gemini_model;
+      } else {
+        this.activeModel = DEFAULT_MODEL;
+        await Storage.set({ gemini_model: DEFAULT_MODEL });
+      }
+    } catch (e) {
+      this.activeModel = DEFAULT_MODEL;
+    }
+
+    // 2. Pasang panel kontrol mini asisten kuis
     this._injectFloatingControl();
+
+    // 3. Sinkronisasi real-time jika model diubah dari komponen lain (Settings / Chat)
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.gemini_model) {
+          const newModel = changes.gemini_model.newValue;
+          if (newModel && VALID_MODEL_IDS.includes(newModel)) {
+            this.activeModel = newModel;
+            const selectModel = this.shadow?.getElementById('quiz-select-model');
+            if (selectModel && selectModel.value !== newModel) {
+              selectModel.value = newModel;
+            }
+          }
+        }
+      });
+    }
   }
 
   _injectFloatingControl() {
@@ -159,7 +192,7 @@ class QuizAssistant {
       </div>
       <div>
         <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
-          ${ALL_MODELS.map(m => `<option value="${m.id}">${m.name}</option>`).join('')}
+          ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === this.activeModel ? 'selected' : ''}>${m.name}</option>`).join('')}
         </select>
       </div>
       <div class="status-text" id="status-text">Siap membantu mengerjakan kuis.</div>
@@ -178,15 +211,19 @@ class QuizAssistant {
     const btnAuto = this.shadow.getElementById('btn-auto');
     const statusText = this.shadow.getElementById('status-text');
 
-    // Sinkronisasi model yang tersimpan
-    Storage.get('gemini_model').then(({ gemini_model }) => {
-      if (gemini_model) selectModel.value = gemini_model;
-    });
+    if (selectModel) {
+      selectModel.value = this.activeModel;
 
-    selectModel.addEventListener('change', () => {
-      Storage.set({ gemini_model: selectModel.value });
-      Toast.info(`Model diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
-    });
+      selectModel.addEventListener('change', () => {
+        const chosen = selectModel.value;
+        if (chosen && VALID_MODEL_IDS.includes(chosen)) {
+          this.activeModel = chosen;
+          Storage.set({ gemini_model: chosen });
+          const label = selectModel.options[selectModel.selectedIndex]?.text || chosen;
+          Toast.info(`Model diubah ke: ${label}`);
+        }
+      });
+    }
 
     btnSingle.addEventListener('click', async () => {
       btnSingle.disabled = true;
@@ -322,7 +359,9 @@ class QuizAssistant {
     const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
 
     const selectModel = this.shadow?.getElementById('quiz-select-model');
-    const chosenModel = selectModel ? selectModel.value : null;
+    const chosenModel = (selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value))
+      ? selectModel.value
+      : (this.activeModel || DEFAULT_MODEL);
 
     // Panggil Service Worker
     const response = await new Promise((resolve) => {

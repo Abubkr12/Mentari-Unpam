@@ -47,12 +47,8 @@
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              if (chrome.runtime?.lastError) {
-                this._setLocalStorageFallback(items);
-                resolve(true);
-              } else {
-                resolve(true);
-              }
+              this._setLocalStorageFallback(items);
+              resolve(true);
             });
           } else {
             this._setLocalStorageFallback(items);
@@ -122,6 +118,8 @@
     async autoMigrateLegacyStorage() {
       try {
         if (typeof window === "undefined" || !window.localStorage) return;
+        const { mentari_legacy_migrated } = await this.get("mentari_legacy_migrated", { mentari_legacy_migrated: false });
+        if (mentari_legacy_migrated) return;
         const legacyKeys = [
           "mentari_auth_token",
           "mentari_user_info",
@@ -132,31 +130,60 @@
           "mentari_auto_finish_quiz",
           "access"
         ];
+        const validModels = [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-3-flash",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3.6-flash",
+          "gemini-3.7-flash",
+          "gemini-3.8-flash"
+        ];
         const toMigrate = {};
         let hasData = false;
+        const existing = await this.get(["gemini_model", "geminiApiKey"]);
         for (const k of legacyKeys) {
           const raw = localStorage.getItem(k);
           if (raw) {
             try {
               if (k === "geminiApiKey") {
+                if (!existing.geminiApiKey) {
+                  try {
+                    toMigrate[k] = atob(raw);
+                  } catch {
+                    toMigrate[k] = raw;
+                  }
+                  hasData = true;
+                }
+              } else if (k === "gemini_model") {
+                let parsedModel = raw;
                 try {
-                  toMigrate[k] = atob(raw);
+                  parsedModel = JSON.parse(raw);
                 } catch {
-                  toMigrate[k] = raw;
+                }
+                if (!existing.gemini_model && validModels.includes(parsedModel)) {
+                  toMigrate[k] = parsedModel;
+                  hasData = true;
                 }
               } else {
-                toMigrate[k] = JSON.parse(raw);
+                if (!existing[k]) {
+                  toMigrate[k] = JSON.parse(raw);
+                  hasData = true;
+                }
               }
             } catch {
-              toMigrate[k] = raw;
+              if (!existing[k]) {
+                toMigrate[k] = raw;
+                hasData = true;
+              }
             }
-            hasData = true;
           }
         }
-        if (hasData) {
-          await this.set(toMigrate);
-          console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
-        }
+        toMigrate.mentari_legacy_migrated = true;
+        await this.set(toMigrate);
+        console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);
       }
@@ -1383,13 +1410,32 @@
         });
       });
       const selectModel = this.shadow.getElementById("select-active-model");
+      const validModelIds = ALL_MODELS.map((m) => m.id);
       Storage.get("gemini_model").then(({ gemini_model }) => {
-        if (gemini_model) selectModel.value = gemini_model;
+        if (gemini_model && validModelIds.includes(gemini_model)) {
+          selectModel.value = gemini_model;
+        } else {
+          selectModel.value = "gemini-2.5-flash";
+          Storage.set({ gemini_model: "gemini-2.5-flash" });
+        }
       });
       selectModel.addEventListener("change", () => {
-        Storage.set({ gemini_model: selectModel.value });
-        Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+        const chosen = selectModel.value;
+        if (chosen && validModelIds.includes(chosen)) {
+          Storage.set({ gemini_model: chosen });
+          Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+        }
       });
+      if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === "local" && changes.gemini_model) {
+            const newModel = changes.gemini_model.newValue;
+            if (newModel && validModelIds.includes(newModel) && selectModel.value !== newModel) {
+              selectModel.value = newModel;
+            }
+          }
+        });
+      }
       this.shadow.getElementById("btn-open-api-settings").addEventListener("click", () => {
         this.closeModal();
         window.dispatchEvent(new CustomEvent("mentari-update-api-key"));

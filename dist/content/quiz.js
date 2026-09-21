@@ -47,12 +47,8 @@
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              if (chrome.runtime?.lastError) {
-                this._setLocalStorageFallback(items);
-                resolve(true);
-              } else {
-                resolve(true);
-              }
+              this._setLocalStorageFallback(items);
+              resolve(true);
             });
           } else {
             this._setLocalStorageFallback(items);
@@ -122,6 +118,8 @@
     async autoMigrateLegacyStorage() {
       try {
         if (typeof window === "undefined" || !window.localStorage) return;
+        const { mentari_legacy_migrated } = await this.get("mentari_legacy_migrated", { mentari_legacy_migrated: false });
+        if (mentari_legacy_migrated) return;
         const legacyKeys = [
           "mentari_auth_token",
           "mentari_user_info",
@@ -132,31 +130,60 @@
           "mentari_auto_finish_quiz",
           "access"
         ];
+        const validModels = [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-3-flash",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3.6-flash",
+          "gemini-3.7-flash",
+          "gemini-3.8-flash"
+        ];
         const toMigrate = {};
         let hasData = false;
+        const existing = await this.get(["gemini_model", "geminiApiKey"]);
         for (const k of legacyKeys) {
           const raw = localStorage.getItem(k);
           if (raw) {
             try {
               if (k === "geminiApiKey") {
+                if (!existing.geminiApiKey) {
+                  try {
+                    toMigrate[k] = atob(raw);
+                  } catch {
+                    toMigrate[k] = raw;
+                  }
+                  hasData = true;
+                }
+              } else if (k === "gemini_model") {
+                let parsedModel = raw;
                 try {
-                  toMigrate[k] = atob(raw);
+                  parsedModel = JSON.parse(raw);
                 } catch {
-                  toMigrate[k] = raw;
+                }
+                if (!existing.gemini_model && validModels.includes(parsedModel)) {
+                  toMigrate[k] = parsedModel;
+                  hasData = true;
                 }
               } else {
-                toMigrate[k] = JSON.parse(raw);
+                if (!existing[k]) {
+                  toMigrate[k] = JSON.parse(raw);
+                  hasData = true;
+                }
               }
             } catch {
-              toMigrate[k] = raw;
+              if (!existing[k]) {
+                toMigrate[k] = raw;
+                hasData = true;
+              }
             }
-            hasData = true;
           }
         }
-        if (hasData) {
-          await this.set(toMigrate);
-          console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
-        }
+        toMigrate.mentari_legacy_migrated = true;
+        await this.set(toMigrate);
+        console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);
       }
@@ -533,6 +560,8 @@
     { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
     { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash" }
   ];
+  var VALID_MODEL_IDS = ALL_MODELS.map((m) => m.id);
+  var DEFAULT_MODEL = "gemini-2.5-flash";
   var QuizAssistant = class {
     constructor() {
       this.isRunning = false;
@@ -540,11 +569,37 @@
       this.answeredCount = 0;
       this.totalQuestions = 0;
       this.shadow = null;
+      this.activeModel = DEFAULT_MODEL;
       this._init();
     }
     async _init() {
       console.log("[Mentari Mod] Quiz Assistant aktif.");
+      try {
+        const { gemini_model } = await Storage.get("gemini_model", { gemini_model: DEFAULT_MODEL });
+        if (gemini_model && VALID_MODEL_IDS.includes(gemini_model)) {
+          this.activeModel = gemini_model;
+        } else {
+          this.activeModel = DEFAULT_MODEL;
+          await Storage.set({ gemini_model: DEFAULT_MODEL });
+        }
+      } catch (e) {
+        this.activeModel = DEFAULT_MODEL;
+      }
       this._injectFloatingControl();
+      if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === "local" && changes.gemini_model) {
+            const newModel = changes.gemini_model.newValue;
+            if (newModel && VALID_MODEL_IDS.includes(newModel)) {
+              this.activeModel = newModel;
+              const selectModel = this.shadow?.getElementById("quiz-select-model");
+              if (selectModel && selectModel.value !== newModel) {
+                selectModel.value = newModel;
+              }
+            }
+          }
+        });
+      }
     }
     _injectFloatingControl() {
       if (document.getElementById("mentari-quiz-control-host")) return;
@@ -663,7 +718,7 @@
       </div>
       <div>
         <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
-          ${ALL_MODELS.map((m) => `<option value="${m.id}">${m.name}</option>`).join("")}
+          ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === this.activeModel ? "selected" : ""}>${m.name}</option>`).join("")}
         </select>
       </div>
       <div class="status-text" id="status-text">Siap membantu mengerjakan kuis.</div>
@@ -679,13 +734,18 @@
       const btnSingle = this.shadow.getElementById("btn-single");
       const btnAuto = this.shadow.getElementById("btn-auto");
       const statusText = this.shadow.getElementById("status-text");
-      Storage.get("gemini_model").then(({ gemini_model }) => {
-        if (gemini_model) selectModel.value = gemini_model;
-      });
-      selectModel.addEventListener("change", () => {
-        Storage.set({ gemini_model: selectModel.value });
-        Toast.info(`Model diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
-      });
+      if (selectModel) {
+        selectModel.value = this.activeModel;
+        selectModel.addEventListener("change", () => {
+          const chosen = selectModel.value;
+          if (chosen && VALID_MODEL_IDS.includes(chosen)) {
+            this.activeModel = chosen;
+            Storage.set({ gemini_model: chosen });
+            const label = selectModel.options[selectModel.selectedIndex]?.text || chosen;
+            Toast.info(`Model diubah ke: ${label}`);
+          }
+        });
+      }
       btnSingle.addEventListener("click", async () => {
         btnSingle.disabled = true;
         statusText.textContent = "Menganalisis soal saat ini...";
@@ -792,7 +852,7 @@
       const prompt = this._buildPrompt(questionText, options);
       const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
       const selectModel = this.shadow?.getElementById("quiz-select-model");
-      const chosenModel = selectModel ? selectModel.value : null;
+      const chosenModel = selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
       const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
           action: "generateGeminiContent",

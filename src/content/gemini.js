@@ -283,16 +283,36 @@ class GeminiChatbot {
     const sendBtn = this.shadow.getElementById('btn-send');
     const body = this.shadow.getElementById('chat-body');
     const modelSelect = this.shadow.getElementById('chat-model-select');
+    const validModelIds = ALL_MODELS.map(m => m.id);
 
     // Sinkronisasi model yang tersimpan
     Storage.get('gemini_model').then(({ gemini_model }) => {
-      if (gemini_model) modelSelect.value = gemini_model;
+      if (gemini_model && validModelIds.includes(gemini_model)) {
+        modelSelect.value = gemini_model;
+      } else {
+        modelSelect.value = 'gemini-2.5-flash';
+        Storage.set({ gemini_model: 'gemini-2.5-flash' });
+      }
     });
 
     modelSelect.addEventListener('change', () => {
-      Storage.set({ gemini_model: modelSelect.value });
-      Toast.info(`Model Chat diubah ke: ${modelSelect.options[modelSelect.selectedIndex].text}`);
+      const chosen = modelSelect.value;
+      if (chosen && validModelIds.includes(chosen)) {
+        Storage.set({ gemini_model: chosen });
+        Toast.info(`Model Chat diubah ke: ${modelSelect.options[modelSelect.selectedIndex].text}`);
+      }
     });
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes.gemini_model) {
+          const newModel = changes.gemini_model.newValue;
+          if (newModel && validModelIds.includes(newModel) && modelSelect.value !== newModel) {
+            modelSelect.value = newModel;
+          }
+        }
+      });
+    }
 
     trigger.addEventListener('click', () => {
       this.isOpen = !this.isOpen;

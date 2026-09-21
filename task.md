@@ -4,6 +4,7 @@
 - [ ] Smart Question Memory: Cache kunci jawaban Pre-Test untuk auto-answer kilat pada Post-Test (durasi adaptif 12–18 detik, hemat kuota 0 token AI)
 
 ## Arsip
+- [x] Persistensi & Anti-Blank Model Selector: Perbaikan sinkronisasi storage model AI Gemini, proteksi dari overwrite auto-migrasi legacy storage, pre-render active model selected pada Quiz Assistant, auto-fallback ke model valid jika nilai storage korup/usang, dan listener onChanged real-time multi-komponen
 - [x] Single-Open Exclusive Accordion Kuis/Evaluasi: Seluruh accordion mata kuliah tertutup secara default saat pertama kali dibuka (all-collapsed); saat satu mata kuliah diklik buka, mata kuliah lain otomatis tertutup sehingga hanya 1 mata kuliah yang aktif terbuka untuk menjaga fokus
 - [x] UI/UX Accordion & Pencarian Kuis/Evaluasi: Penataan daftar evaluasi per mata kuliah dengan Accordion collapsible, Search Bar real-time, filter dropdown tipe evaluasi (Pre-Test, Post-Test, Kuesioner), tombol Buka/Tutup Semua, dan proteksi tab tunggal (target=_self) tanpa alert/stock emoji
 - [x] Navigasi Tab Tunggal: Menghilangkan target=_blank pada tombol Buka Kelas, Buka Forum, dan Kerjakan Kuis agar langsung terbuka di tab aktif tanpa menumpuk tab baru
