@@ -1192,8 +1192,19 @@ class MentariDashboard {
     const existing = this.shadow.getElementById('mentari-autopilot-modal-overlay');
     if (existing) existing.remove();
 
+    // Baca kuis yang sudah selesai secara permanen dari storage
+    const storeComp = await Storage.get('mentari_completed_quiz_ids');
+    const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
+
+    // Sinkronkan status completion pada this.evaluations
+    this.evaluations.forEach(e => {
+      if (completedQuizIds.includes(e.subId)) {
+        e.completion = true;
+      }
+    });
+
     // Dapatkan daftar courses yang memiliki kuis belum selesai
-    const pendingEvals = this.evaluations.filter(e => !e.completion && !e.locked && (e.type === 'PRE_TEST' || e.type === 'POST_TEST'));
+    const pendingEvals = this.evaluations.filter(e => !e.completion && !e.locked && !completedQuizIds.includes(e.subId) && (e.type === 'PRE_TEST' || e.type === 'POST_TEST'));
     const coursesWithPending = [];
     const courseMap = {};
 
@@ -1814,7 +1825,7 @@ class MentariDashboard {
     const calculateQueue = () => {
       const selectedCourse = courseSelect.value;
 
-      let candidates = this.evaluations.filter(e => !e.completion && !e.locked);
+      let candidates = this.evaluations.filter(e => !e.completion && !e.locked && !completedQuizIds.includes(e.subId));
       if (selectedCourse !== 'all') {
         candidates = candidates.filter(e => e.courseCode === selectedCourse);
       }
@@ -2391,6 +2402,9 @@ class MentariDashboard {
         const evalItems = [];
         const chunkSize = 3;
 
+        const storeComp = await Storage.get('mentari_completed_quiz_ids');
+        const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
+
         for (let i = 0; i < list.length; i += chunkSize) {
           const chunk = list.slice(i, i + chunkSize);
           await Promise.allSettled(chunk.map(async (c) => {
@@ -2473,6 +2487,21 @@ class MentariDashboard {
                   // ─── Pre-Test, Post-Test, Kuesioner ────────────────────
                   if (['PRE_TEST', 'POST_TEST', 'KUESIONER'].includes(sub.kode_template) && sub.id) {
                     const isLocked = !!(sub.warningAlert && sub.warningAlert.length > 0);
+                    const isDone = Boolean(
+                      sub.completion === true ||
+                      sub.completion === 1 ||
+                      sub.completion === '1' ||
+                      sub.completion === 'true' ||
+                      sub.is_completed === true ||
+                      sub.completed === true ||
+                      sub.is_done === true ||
+                      sub.status === 'completed' ||
+                      sub.status === 'done' ||
+                      (sub.nilai !== undefined && sub.nilai !== null && sub.nilai !== '') ||
+                      (sub.score !== undefined && sub.score !== null && sub.score !== '') ||
+                      (Array.isArray(sub.history) && sub.history.length > 0) ||
+                      completedQuizIds.includes(sub.id)
+                    );
                     evalItems.push({
                       courseCode,
                       courseTitle,
@@ -2480,7 +2509,7 @@ class MentariDashboard {
                       subId: sub.id,
                       type: sub.kode_template,
                       name: sub.nama_sub_section || sub.judul || sub.kode_template,
-                      completion: Boolean(sub.completion === true),
+                      completion: isDone,
                       locked: isLocked,
                       lockReason: sub.warningAlert || ''
                     });

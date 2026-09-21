@@ -190,3 +190,16 @@ Mentari-Unpam-v2.0_2/
 - **Strict "Already Done" Verification**: Memastikan status kuis selesai HANYA dievaluasi jika tidak ada tombol mulai dan tidak ada container soal, serta ditemukan tabel riwayat skor spesifik guna mencegah false-positive dari teks petunjuk pengerjaan dosen.
 - **Explicit Gemini Model Selection**: Pilihan 9 model AI Gemini tersedia langsung di modal konfigurasi Auto-Pilot (`token.js`), tersimpan persisten ke `gemini_model` & `mentari_auto_pilot_state.model`, tersinkronisasi real-time ke card kontrol mini, dan ditampilkan secara elegan dengan badge SVG inline pada Floating HUD Tracker.
 
+### 10. Proteksi Anti-Waste Quota AI & Validasi Status Kuis Selesai / Review Mode
+- **Review Mode Detection (`_checkIfExamAlreadyCompleted`)**: Deteksi komprehensif mode review kuis yang sudah diselesaikan sebelumnya melalui teks heading ('Quiz Sudah Selesai', 'Hasil Kuis', 'Nilai Akhir'), URL bertanda `?page=` dengan ketiadaan tombol submit, serta seluruh radio button disabled/read-only.
+- **Top-Priority Gatekeeper Execution**: Evaluasi kuis selesai diposisikan pada baris PERTAMA di `_waitForExamReady()`, dieksekusi SEBELUM mencari container soal. Ini mengeliminasi bug fatal di mana radio button pada halaman review terdeteksi sebagai kuis aktif yang memicu pemanggilan Gemini AI secara sia-sia.
+- **4-Tier Defense Anti-Bocor Token**:
+  1. *Tier 1 (Gatekeeper)*: `_waitForExamReady()` membatalkan kuis dan mengembalikan `reason: 'completed'`.
+  2. *Tier 2 (Loop Guard)*: `runAutoLoop()` memeriksa status kuis selesai sebelum memulai dan sebelum menjawab setiap nomor soal.
+  3. *Tier 3 (AI Call Guard)*: `processCurrentQuestion()` membatalkan pembuatan prompt dan pengiriman request ke Gemini jika kuis sudah selesai.
+  4. *Tier 4 (Manual Action Guard)*: Tombol floating card mini (`btnSingle` & `btnAuto`) memblokir interaksi manual jika berada pada halaman review kuis selesai.
+- **URL Alignment Guard**: Mencegah salah eksekusi saat Next.js me-redirect ke `?page=1` dari kuis lama pasca-submit. Jika ID exam pada URL tidak cocok dengan `currentItem.id`, sistem langsung mengeksekusi `window.location.replace(currentItem.url)` ke kuis aktif yang benar.
+- **DOM Type & Title Verification (`_extractExamTitleAndTypeFromDOM`)**: Mengekstrak judul kuis, nama pertemuan, dan tipe evaluasi (`PRE_TEST` vs `POST_TEST`) langsung dari breadcrumb dan heading halaman untuk sinkronisasi akurat dan pelaporan transparan pada HUD.
+- **Persistent Completed Storage (`mentari_completed_quiz_ids`)**: ID kuis yang selesai dikerjakan atau terdeteksi selesai langsung dicatat ke `chrome.storage.local` dan cache evaluasi, sehingga kuis tersebut dieliminasi secara otomatis dari antrean batch pengerjaan berikutnya.
+- **Fast-Skip Cooldown**: Kuis yang dilewati (karena sudah selesai atau terkunci) menggunakan jeda cepat (2 detik) alih-alih normal cooldown (15 detik), menghemat waktu pengguna secara signifikan.
+

@@ -233,6 +233,19 @@ class QuizAssistant {
     }
 
     btnSingle.addEventListener('click', async () => {
+      const comp = this._checkIfExamAlreadyCompleted();
+      if (comp.isCompleted) {
+        Toast.warning(`Kuis ini sudah selesai (${comp.reason}).`);
+        statusText.textContent = 'Kuis sudah selesai dikerjakan.';
+        return;
+      }
+      const locked = this._checkIfExamLocked();
+      if (locked.isLocked) {
+        Toast.warning(`Kuis terkunci: ${locked.reason}`);
+        statusText.textContent = 'Kuis terkunci / belum dapat diakses.';
+        return;
+      }
+
       btnSingle.disabled = true;
       statusText.textContent = 'Menganalisis soal saat ini...';
       try {
@@ -255,6 +268,19 @@ class QuizAssistant {
         return;
       }
 
+      const comp = this._checkIfExamAlreadyCompleted();
+      if (comp.isCompleted) {
+        Toast.warning(`Kuis ini sudah selesai (${comp.reason}). Otomatisasi dinonaktifkan.`);
+        statusText.textContent = 'Kuis sudah selesai dikerjakan.';
+        return;
+      }
+      const locked = this._checkIfExamLocked();
+      if (locked.isLocked) {
+        Toast.warning(`Kuis terkunci: ${locked.reason}`);
+        statusText.textContent = 'Kuis terkunci / belum dapat diakses.';
+        return;
+      }
+
       this.isRunning = true;
       btnAuto.textContent = 'Hentikan';
       statusText.textContent = 'Menjalankan kuis secara bertahap...';
@@ -269,6 +295,245 @@ class QuizAssistant {
         btnAuto.textContent = 'Auto Semua';
       }
     });
+  }
+
+  /**
+   * Ekstrak informasi judul kuis, pertemuan, dan tipe evaluasi dari DOM Mentari
+   */
+  _extractExamTitleAndTypeFromDOM() {
+    let rawText = '';
+
+    // 1. Breadcrumbs / Navigasi dekat tombol Kembali
+    const backBtn = Array.from(document.querySelectorAll('a, button, div, span')).find(el => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      return t === 'kembali' || t === '← kembali' || t.startsWith('kembali');
+    });
+
+    if (backBtn) {
+      const parent = backBtn.closest('.MuiBox-root, .MuiToolbar-root, header, nav, div');
+      if (parent) {
+        rawText += ' ' + parent.textContent;
+      }
+    }
+
+    // 2. Headings halaman (h1 - h6, Typography)
+    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, .MuiTypography-root'));
+    for (const h of headings.slice(0, 15)) {
+      rawText += ' ' + (h.textContent || '');
+    }
+
+    // 3. Document Title
+    rawText += ' ' + (document.title || '');
+
+    const lower = rawText.toLowerCase();
+
+    // Deteksi Tipe Kuis
+    let detectedType = 'UNKNOWN';
+    if (/(?:pre[\s\-_]*test|pretest)/i.test(lower)) {
+      detectedType = 'PRE_TEST';
+    } else if (/(?:post[\s\-_]*test|posttest)/i.test(lower)) {
+      detectedType = 'POST_TEST';
+    } else if (/(?:kuesioner|kuisioner|angket|survey)/i.test(lower)) {
+      detectedType = 'KUESIONER';
+    }
+
+    // Deteksi nomor pertemuan
+    const meetMatch = lower.match(/(?:pertemuan|sesi|p)[\s\-_]*(\d+)/i);
+    const meetingName = meetMatch ? `Pertemuan ${meetMatch[1]}` : '';
+
+    // Cari judul kuis terbersih dari heading
+    let cleanTitle = '';
+    for (const h of headings) {
+      const t = (h.textContent || '').trim();
+      if (/(?:pre[\s\-_]*test|post[\s\-_]*test|kuis|quiz|ujian)/i.test(t) && t.length < 60 && !t.toLowerCase().includes('sudah selesai')) {
+        cleanTitle = t;
+        break;
+      }
+    }
+
+    if (!cleanTitle) {
+      cleanTitle = detectedType === 'PRE_TEST' ? `Pre-Test ${meetingName}`.trim() : (detectedType === 'POST_TEST' ? `Post-Test ${meetingName}`.trim() : 'Kuis');
+    }
+
+    return {
+      detectedType,
+      meetingName,
+      cleanTitle,
+      rawText
+    };
+  }
+
+  /**
+   * Deteksi apakah kuis saat ini sudah selesai (Review Mode / Skor Akhir)
+   * PRIORITAS TERTINGGI: Dicek SEBELUM mencari container soal untuk mencegah kuota AI terbuang sia-sia!
+   */
+  _checkIfExamAlreadyCompleted() {
+    const domInfo = this._extractExamTitleAndTypeFromDOM();
+
+    // 1. Cek teks eksplisit penyelesaian kuis pada heading atau elemen teks
+    const completedKeywords = [
+      'quiz sudah selesai',
+      'kuis sudah selesai',
+      'ujian sudah selesai',
+      'tes sudah selesai',
+      'telah diselesaikan',
+      'sudah diselesaikan',
+      'hasil kuis',
+      'hasil ujian',
+      'nilai akhir',
+      'skor anda',
+      'nilai anda',
+      'anda telah menyelesaikan kuis ini',
+      'anda sudah mengerjakan kuis ini',
+      'attempt 1 of 1',
+      'percobaan 1 dari 1'
+    ];
+
+    const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div'));
+    for (const el of allHeaders) {
+      if (el.closest('#mentari-autopilot-hud-host') ||
+          el.closest('#mentari-quiz-control-host') ||
+          el.closest('#mentari-token-mod-host') ||
+          el.closest('.mentari-toast-container')) {
+        continue;
+      }
+      const t = (el.textContent || '').trim().toLowerCase();
+      for (const kw of completedKeywords) {
+        if (t.includes(kw)) {
+          return {
+            isCompleted: true,
+            reason: `Teks '${kw}' terdeteksi pada layar`,
+            detectedType: domInfo.detectedType,
+            title: domInfo.cleanTitle
+          };
+        }
+      }
+    }
+
+    // 2. Cek elemen tabel skor / riwayat nilai
+    const scoreTable = document.querySelector('table.MuiTable-root, .hasil-ujian, .skor-container');
+    if (scoreTable) {
+      const tableText = (scoreTable.textContent || '').toLowerCase();
+      if (tableText.includes('nilai') || tableText.includes('skor') || tableText.includes('grade') || tableText.includes('selesai')) {
+        return {
+          isCompleted: true,
+          reason: 'Tabel riwayat nilai/skor terdeteksi',
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+    }
+
+    // 3. Deteksi Mode Review Next.js SPA:
+    // URL mengandung ?page= dan tombol aksi BUKAN submit melainkan hanya navigasi pagination (Prev / Next)
+    if (window.location.search.includes('page=')) {
+      const allButtons = Array.from(document.querySelectorAll('button, a[role="button"]')).filter(b => {
+        return !b.closest('#mentari-autopilot-hud-host') && !b.closest('#mentari-quiz-control-host');
+      });
+
+      const hasSubmitBtn = allButtons.some(b => {
+        const bt = (b.textContent || '').trim().toLowerCase();
+        return bt.includes('selesai') || bt.includes('submit') || bt.includes('kumpulkan') || bt.includes('akhiri');
+      });
+
+      const hasPaginationBtn = allButtons.some(b => {
+        const bt = (b.textContent || '').trim().toLowerCase();
+        return bt.includes('next') || bt.includes('prev') || bt.includes('sebelumnya') || bt.includes('selanjutnya');
+      });
+
+      if (!hasSubmitBtn && hasPaginationBtn) {
+        return {
+          isCompleted: true,
+          reason: 'Mode review soal kuis (?page= tanpa tombol submit)',
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+    }
+
+    // 4. Deteksi seluruh radio button disabled (Read-only review mode)
+    const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
+    if (radioInputs.length > 0 && radioInputs.every(r => r.disabled || r.getAttribute('aria-disabled') === 'true')) {
+      return {
+        isCompleted: true,
+        reason: 'Seluruh opsi pilihan kuis disabled (Read-only review)',
+        detectedType: domInfo.detectedType,
+        title: domInfo.cleanTitle
+      };
+    }
+
+    return {
+      isCompleted: false,
+      reason: '',
+      detectedType: domInfo.detectedType,
+      title: domInfo.cleanTitle
+    };
+  }
+
+  /**
+   * Deteksi apakah kuis sedang terkunci (misal forum diskusi belum diselesaikan atau waktu belum buka)
+   */
+  _checkIfExamLocked() {
+    const alertEl = document.querySelector('.MuiAlert-root, [role="alert"], .alert-warning, .alert-danger');
+    if (alertEl) {
+      const t = (alertEl.textContent || '').trim().toLowerCase();
+      if (t.includes('terkunci') || t.includes('belum dapat diakses') || t.includes('prasyarat') || t.includes('selesaikan terlebih dahulu')) {
+        return {
+          isLocked: true,
+          reason: alertEl.textContent.trim()
+        };
+      }
+    }
+
+    // Cek tombol mulai yang disabled
+    const startBtn = this._findStartExamButton();
+    if (startBtn && (startBtn.disabled || startBtn.classList.contains('Mui-disabled'))) {
+      return {
+        isLocked: true,
+        reason: 'Tombol mulai kuis berstatus disabled (Terkunci)'
+      };
+    }
+
+    return { isLocked: false, reason: '' };
+  }
+
+  /**
+   * Catat ID kuis yang selesai ke storage lokal persisten (mentari_completed_quiz_ids & cache)
+   * agar kuis ini TIDAK PERNAH DIJALANKAN ULANG dan kuota token pengguna tetap aman.
+   */
+  async _markQuizAsCompletedPermanently(state, currentItem) {
+    try {
+      const quizId = currentItem?.id;
+      if (!quizId) return;
+
+      const store = await Storage.get('mentari_completed_quiz_ids');
+      const completedIds = Array.isArray(store?.mentari_completed_quiz_ids) ? store.mentari_completed_quiz_ids : [];
+
+      if (!completedIds.includes(quizId)) {
+        completedIds.push(quizId);
+        await Storage.set({ mentari_completed_quiz_ids: completedIds });
+        console.log(`[Auto-Pilot] Kuis ID ${quizId} (${currentItem.courseTitle} - ${currentItem.sectionName}) ditandai selesai secara permanen.`);
+      }
+
+      // Tandai juga pada cache evaluasi jika tersedia
+      const allStorage = await Storage.getAll();
+      for (const [key, val] of Object.entries(allStorage)) {
+        if (key.startsWith('mentari_cached_data_') && val && Array.isArray(val.evaluations)) {
+          let updated = false;
+          val.evaluations.forEach(ev => {
+            if (ev.subId === quizId || ev.id === quizId) {
+              ev.completion = true;
+              updated = true;
+            }
+          });
+          if (updated) {
+            await Storage.set({ [key]: val });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Auto-Pilot] Gagal menyimpan status kuis selesai permanen:', e);
+    }
   }
 
   /**
@@ -342,6 +607,14 @@ class QuizAssistant {
    * Eksekusi loop menjawab seluruh soal dengan jeda natural manusia
    */
   async runAutoLoop(statusEl, isAutoPilot = false) {
+    // 0. Cek apakah kuis saat ini sudah selesai sebelum memulai
+    const initialComp = this._checkIfExamAlreadyCompleted();
+    if (initialComp.isCompleted) {
+      if (statusEl) statusEl.textContent = `${initialComp.title || 'Kuis'} sudah selesai dikerjakan (${initialComp.reason}).`;
+      this.isRunning = false;
+      return;
+    }
+
     // 1. Jika masih di landing page kuis (container soal belum muncul), coba mulai kuis terlebih dahulu
     let qContainer = this._findQuestionContainer();
     if (!qContainer) {
@@ -372,6 +645,15 @@ class QuizAssistant {
       while (this.isPaused && this.isRunning) {
         if (statusEl) statusEl.textContent = 'Auto-Pilot dijeda sementara.';
         await Humanizer.delay(600);
+      }
+
+      // Gatekeeper Anti-Waste Quota: Cek sebelum setiap nomor soal agar AI tidak pernah menjawab di halaman selesai/review
+      const stepComp = this._checkIfExamAlreadyCompleted();
+      if (stepComp.isCompleted) {
+        console.log('[Auto-Pilot] Kuis selesai terdeteksi di tengah loop. Menghentikan.');
+        if (statusEl) statusEl.textContent = `${stepComp.title || 'Kuis'} telah selesai dikerjakan.`;
+        this.isRunning = false;
+        break;
       }
 
       if (statusEl) statusEl.textContent = 'Menganalisis soal...';
@@ -466,6 +748,19 @@ class QuizAssistant {
     }
 
     const currentItem = state.queue[state.currentIndex];
+    if (!currentItem) return;
+
+    // URL Alignment Guard: Pastikan URL saat ini benar-benar sesuai dengan kuis aktif di antrean
+    // Mencegah Auto-Pilot salah mengeksekusi kuis sebelumnya saat Next.js me-redirect ke ?page=1 dari kuis lama
+    const urlMatch = window.location.pathname.match(/\/exam\/([^\/\?]+)/);
+    const currentUrlExamId = urlMatch ? urlMatch[1] : null;
+
+    if (currentUrlExamId && currentItem.id && currentUrlExamId !== currentItem.id) {
+      console.warn(`[Auto-Pilot Guard] URL exam ID (${currentUrlExamId}) tidak cocok dengan kuis saat ini (${currentItem.id}). Segera redirect ke kuis yang benar...`);
+      window.location.replace(currentItem.url);
+      return;
+    }
+
     console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
 
     // Injeksi Glassmorphic Floating HUD Tracker
@@ -751,16 +1046,31 @@ class QuizAssistant {
   async _executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar) {
     statusEl.textContent = 'Memeriksa kesiapan halaman kuis...';
 
-    // 1. Tunggu halaman kuis siap (deteksi tombol Mulai Kuis atau langsung soal)
-    const isReady = await this._waitForExamReady(statusEl);
-    if (!isReady) {
-      statusEl.textContent = 'Kuis tidak dapat dimulai atau sudah selesai. Melompat ke kuis berikutnya...';
-      await Humanizer.delay(1500);
-      await this._advanceToNextQuiz(state, statusEl);
+    // 1. Ekstrak dan validasi judul serta tipe kuis dari DOM
+    const domInfo = this._extractExamTitleAndTypeFromDOM();
+    console.log('[Auto-Pilot] Validasi DOM kuis:', domInfo);
+
+    // 2. Tunggu kesiapan kuis dengan gatekeeper prioritas (selesai / terkunci / tombol mulai)
+    const readyResult = await this._waitForExamReady(statusEl);
+    if (!readyResult.ready) {
+      if (readyResult.reason === 'completed') {
+        await this._markQuizAsCompletedPermanently(state, currentItem);
+      }
+
+      const isFastSkip = readyResult.reason === 'completed' || readyResult.reason === 'locked';
+      const skipMsg = readyResult.reason === 'completed'
+        ? `${domInfo.cleanTitle || 'Kuis'} sudah selesai dikerjakan sebelumnya. Melompat ke antrean berikutnya...`
+        : `Kuis tidak dapat dimulai (${readyResult.reason}). Melompat ke kuis berikutnya...`;
+
+      statusEl.textContent = skipMsg;
+      Toast.info(skipMsg);
+
+      await Humanizer.delay(800);
+      await this._advanceToNextQuiz(state, statusEl, isFastSkip);
       return;
     }
 
-    // 2. Mulai menjawab seluruh soal kuis
+    // 3. Mulai menjawab seluruh soal kuis
     statusEl.textContent = 'Menjawab seluruh soal otomatis via AI...';
     this.isRunning = true;
 
@@ -771,26 +1081,40 @@ class QuizAssistant {
       statusEl.textContent = `Peringatan: ${e.message}`;
     }
 
-    // 3. Setelah submit kuis selesai, beralih ke kuis berikutnya dengan cooldown
-    await this._advanceToNextQuiz(state, statusEl);
+    // 4. Setelah submit kuis selesai, tandai permanen & beralih ke kuis berikutnya
+    await this._markQuizAsCompletedPermanently(state, currentItem);
+    await this._advanceToNextQuiz(state, statusEl, false);
   }
 
   async _waitForExamReady(statusEl) {
     const maxRetries = 60; // 60 x 500ms = 30 detik
     for (let i = 0; i < maxRetries; i++) {
-      if (!this.isAutoPilot) return false;
+      if (!this.isAutoPilot) return { ready: false, reason: 'cancelled' };
 
       while (this.isPaused && this.isAutoPilot) {
         await Humanizer.delay(500);
       }
 
-      // a) Cek apakah container soal sudah ada di layar
-      const qContainer = this._findQuestionContainer();
-      if (qContainer) {
-        return true;
+      // a) PRIORITAS 1: Cek apakah kuis SUDAH SELESAI
+      // Wajib diperiksa sebelum mengecek container soal agar review page tidak dianggap kuis aktif!
+      const completionCheck = this._checkIfExamAlreadyCompleted();
+      if (completionCheck.isCompleted) {
+        if (statusEl) {
+          statusEl.textContent = `${completionCheck.title || 'Kuis'} sudah diselesaikan (${completionCheck.reason}).`;
+        }
+        return { ready: false, reason: 'completed' };
       }
 
-      // b) Cek apakah ada tombol Mulai Kuis / Kerjakan / Start Exam
+      // b) PRIORITAS 2: Cek apakah kuis TERKUNCI (Misal prasyarat forum belum selesai)
+      const lockCheck = this._checkIfExamLocked();
+      if (lockCheck.isLocked) {
+        if (statusEl) {
+          statusEl.textContent = `Kuis terkunci: ${lockCheck.reason}`;
+        }
+        return { ready: false, reason: 'locked' };
+      }
+
+      // c) PRIORITAS 3: Cek apakah ada tombol Mulai Kuis / Kerjakan / Start Exam
       const startBtn = this._findStartExamButton();
       if (startBtn) {
         if (statusEl) statusEl.textContent = 'Menemukan tombol mulai kuis... Memulai!';
@@ -808,35 +1132,32 @@ class QuizAssistant {
         if (statusEl) statusEl.textContent = 'Menunggu soal kuis dimuat...';
         const readyQ = await this._waitForQuestionContainer(15000);
         if (readyQ) {
-          return true;
+          const recheckComp = this._checkIfExamAlreadyCompleted();
+          if (recheckComp.isCompleted) {
+            return { ready: false, reason: 'completed' };
+          }
+          return { ready: true, reason: 'started' };
         }
         continue;
       }
 
-      // c) Cek apakah kuis ini memang sudah selesai (halaman hasil / skor kuis)
-      // HANYA jika tombol mulai dan container soal TIDAK ditemukan!
-      const scoreTable = document.querySelector('table.MuiTable-root, .hasil-ujian, .skor-container');
-      const hasScoreHeader = Array.from(document.querySelectorAll('.MuiTypography-h4, .MuiTypography-h5, .MuiTypography-h6, h2, h3, h4'))
-        .some(el => {
-          const t = el.textContent.toLowerCase();
-          return t.includes('hasil kuis') || t.includes('hasil ujian') || t.includes('nilai akhir');
-        });
-
-      if (scoreTable && hasScoreHeader) {
-        if (statusEl) statusEl.textContent = 'Kuis ini sudah diselesaikan sebelumnya.';
-        return false;
+      // d) PRIORITAS 4: Cek apakah container soal sudah ada di layar (dan BUKAN review mode)
+      const qContainer = this._findQuestionContainer();
+      if (qContainer) {
+        const recheckComp = this._checkIfExamAlreadyCompleted();
+        if (recheckComp.isCompleted) {
+          return { ready: false, reason: 'completed' };
+        }
+        return { ready: true, reason: 'already_active' };
       }
 
       await Humanizer.delay(500);
     }
 
-    // Double check container soal terakhir sebelum menyerah
-    if (this._findQuestionContainer()) return true;
-
-    return false;
+    return { ready: false, reason: 'timeout' };
   }
 
-  async _advanceToNextQuiz(state, statusEl) {
+  async _advanceToNextQuiz(state, statusEl, isSkipped = false) {
     if (!this.isAutoPilot) return;
 
     // Perbarui status item saat ini menjadi 'completed'
@@ -851,8 +1172,13 @@ class QuizAssistant {
       const nextItem = state.queue[state.currentIndex];
       await Storage.set({ mentari_auto_pilot_state: state });
 
-      const cooldown = state.cooldownSec || 15;
-      if (statusEl) statusEl.textContent = `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
+      // Fast cooldown jika dilewati (2 detik), normal cooldown jika baru selesai dikerjakan (15 detik)
+      const cooldown = isSkipped ? 2 : (state.cooldownSec || 15);
+      if (statusEl) {
+        statusEl.textContent = isSkipped
+          ? `Kuis dilewati. Melompat ke kuis berikutnya...`
+          : `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
+      }
 
       for (let s = cooldown; s > 0; s--) {
         if (!this.isAutoPilot) return;
@@ -862,15 +1188,19 @@ class QuizAssistant {
           await Humanizer.delay(500);
         }
 
-        if (statusEl) statusEl.textContent = `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+        if (statusEl) {
+          statusEl.textContent = isSkipped
+            ? `Melompat ke kuis berikutnya dalam ${s} detik...`
+            : `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+        }
         await Humanizer.delay(1000);
       }
 
       if (statusEl) statusEl.textContent = `Menuju: ${nextItem.courseTitle} (${nextItem.sectionName})...`;
-      await Humanizer.delay(600);
+      await Humanizer.delay(500);
 
       // Pindah ke kuis berikutnya di tab yang sama (Single-Tab)
-      window.location.href = nextItem.url;
+      window.location.replace(nextItem.url);
     } else {
       // Seluruh antrean selesai
       state.active = false;
@@ -890,6 +1220,12 @@ class QuizAssistant {
    * Memproses satu soal kuis yang sedang terbuka di layar
    */
   async processCurrentQuestion(isAuto = false) {
+    // Gatekeeper Anti-Waste Quota: Pastikan bukan di halaman review/selesai
+    const compCheck = this._checkIfExamAlreadyCompleted();
+    if (compCheck.isCompleted) {
+      throw new Error(`Kuis ${compCheck.title || ''} sudah selesai dikerjakan.`);
+    }
+
     const questionContainer = this._findQuestionContainer();
     if (!questionContainer) {
       throw new Error('Elemen soal kuis tidak ditemukan pada halaman.');

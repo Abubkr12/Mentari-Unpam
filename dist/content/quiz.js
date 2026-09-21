@@ -752,6 +752,18 @@
         });
       }
       btnSingle.addEventListener("click", async () => {
+        const comp = this._checkIfExamAlreadyCompleted();
+        if (comp.isCompleted) {
+          Toast.warning(`Kuis ini sudah selesai (${comp.reason}).`);
+          statusText.textContent = "Kuis sudah selesai dikerjakan.";
+          return;
+        }
+        const locked = this._checkIfExamLocked();
+        if (locked.isLocked) {
+          Toast.warning(`Kuis terkunci: ${locked.reason}`);
+          statusText.textContent = "Kuis terkunci / belum dapat diakses.";
+          return;
+        }
         btnSingle.disabled = true;
         statusText.textContent = "Menganalisis soal saat ini...";
         try {
@@ -772,6 +784,18 @@
           Toast.info("Otomatisasi kuis dihentikan pengguna.");
           return;
         }
+        const comp = this._checkIfExamAlreadyCompleted();
+        if (comp.isCompleted) {
+          Toast.warning(`Kuis ini sudah selesai (${comp.reason}). Otomatisasi dinonaktifkan.`);
+          statusText.textContent = "Kuis sudah selesai dikerjakan.";
+          return;
+        }
+        const locked = this._checkIfExamLocked();
+        if (locked.isLocked) {
+          Toast.warning(`Kuis terkunci: ${locked.reason}`);
+          statusText.textContent = "Kuis terkunci / belum dapat diakses.";
+          return;
+        }
         this.isRunning = true;
         btnAuto.textContent = "Hentikan";
         statusText.textContent = "Menjalankan kuis secara bertahap...";
@@ -785,6 +809,201 @@
           btnAuto.textContent = "Auto Semua";
         }
       });
+    }
+    /**
+     * Ekstrak informasi judul kuis, pertemuan, dan tipe evaluasi dari DOM Mentari
+     */
+    _extractExamTitleAndTypeFromDOM() {
+      let rawText = "";
+      const backBtn = Array.from(document.querySelectorAll("a, button, div, span")).find((el) => {
+        const t = (el.textContent || "").trim().toLowerCase();
+        return t === "kembali" || t === "\u2190 kembali" || t.startsWith("kembali");
+      });
+      if (backBtn) {
+        const parent = backBtn.closest(".MuiBox-root, .MuiToolbar-root, header, nav, div");
+        if (parent) {
+          rawText += " " + parent.textContent;
+        }
+      }
+      const headings = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root"));
+      for (const h of headings.slice(0, 15)) {
+        rawText += " " + (h.textContent || "");
+      }
+      rawText += " " + (document.title || "");
+      const lower = rawText.toLowerCase();
+      let detectedType = "UNKNOWN";
+      if (/(?:pre[\s\-_]*test|pretest)/i.test(lower)) {
+        detectedType = "PRE_TEST";
+      } else if (/(?:post[\s\-_]*test|posttest)/i.test(lower)) {
+        detectedType = "POST_TEST";
+      } else if (/(?:kuesioner|kuisioner|angket|survey)/i.test(lower)) {
+        detectedType = "KUESIONER";
+      }
+      const meetMatch = lower.match(/(?:pertemuan|sesi|p)[\s\-_]*(\d+)/i);
+      const meetingName = meetMatch ? `Pertemuan ${meetMatch[1]}` : "";
+      let cleanTitle = "";
+      for (const h of headings) {
+        const t = (h.textContent || "").trim();
+        if (/(?:pre[\s\-_]*test|post[\s\-_]*test|kuis|quiz|ujian)/i.test(t) && t.length < 60 && !t.toLowerCase().includes("sudah selesai")) {
+          cleanTitle = t;
+          break;
+        }
+      }
+      if (!cleanTitle) {
+        cleanTitle = detectedType === "PRE_TEST" ? `Pre-Test ${meetingName}`.trim() : detectedType === "POST_TEST" ? `Post-Test ${meetingName}`.trim() : "Kuis";
+      }
+      return {
+        detectedType,
+        meetingName,
+        cleanTitle,
+        rawText
+      };
+    }
+    /**
+     * Deteksi apakah kuis saat ini sudah selesai (Review Mode / Skor Akhir)
+     * PRIORITAS TERTINGGI: Dicek SEBELUM mencari container soal untuk mencegah kuota AI terbuang sia-sia!
+     */
+    _checkIfExamAlreadyCompleted() {
+      const domInfo = this._extractExamTitleAndTypeFromDOM();
+      const completedKeywords = [
+        "quiz sudah selesai",
+        "kuis sudah selesai",
+        "ujian sudah selesai",
+        "tes sudah selesai",
+        "telah diselesaikan",
+        "sudah diselesaikan",
+        "hasil kuis",
+        "hasil ujian",
+        "nilai akhir",
+        "skor anda",
+        "nilai anda",
+        "anda telah menyelesaikan kuis ini",
+        "anda sudah mengerjakan kuis ini",
+        "attempt 1 of 1",
+        "percobaan 1 dari 1"
+      ];
+      const allHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
+      for (const el of allHeaders) {
+        if (el.closest("#mentari-autopilot-hud-host") || el.closest("#mentari-quiz-control-host") || el.closest("#mentari-token-mod-host") || el.closest(".mentari-toast-container")) {
+          continue;
+        }
+        const t = (el.textContent || "").trim().toLowerCase();
+        for (const kw of completedKeywords) {
+          if (t.includes(kw)) {
+            return {
+              isCompleted: true,
+              reason: `Teks '${kw}' terdeteksi pada layar`,
+              detectedType: domInfo.detectedType,
+              title: domInfo.cleanTitle
+            };
+          }
+        }
+      }
+      const scoreTable = document.querySelector("table.MuiTable-root, .hasil-ujian, .skor-container");
+      if (scoreTable) {
+        const tableText = (scoreTable.textContent || "").toLowerCase();
+        if (tableText.includes("nilai") || tableText.includes("skor") || tableText.includes("grade") || tableText.includes("selesai")) {
+          return {
+            isCompleted: true,
+            reason: "Tabel riwayat nilai/skor terdeteksi",
+            detectedType: domInfo.detectedType,
+            title: domInfo.cleanTitle
+          };
+        }
+      }
+      if (window.location.search.includes("page=")) {
+        const allButtons = Array.from(document.querySelectorAll('button, a[role="button"]')).filter((b) => {
+          return !b.closest("#mentari-autopilot-hud-host") && !b.closest("#mentari-quiz-control-host");
+        });
+        const hasSubmitBtn = allButtons.some((b) => {
+          const bt = (b.textContent || "").trim().toLowerCase();
+          return bt.includes("selesai") || bt.includes("submit") || bt.includes("kumpulkan") || bt.includes("akhiri");
+        });
+        const hasPaginationBtn = allButtons.some((b) => {
+          const bt = (b.textContent || "").trim().toLowerCase();
+          return bt.includes("next") || bt.includes("prev") || bt.includes("sebelumnya") || bt.includes("selanjutnya");
+        });
+        if (!hasSubmitBtn && hasPaginationBtn) {
+          return {
+            isCompleted: true,
+            reason: "Mode review soal kuis (?page= tanpa tombol submit)",
+            detectedType: domInfo.detectedType,
+            title: domInfo.cleanTitle
+          };
+        }
+      }
+      const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
+      if (radioInputs.length > 0 && radioInputs.every((r) => r.disabled || r.getAttribute("aria-disabled") === "true")) {
+        return {
+          isCompleted: true,
+          reason: "Seluruh opsi pilihan kuis disabled (Read-only review)",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+      return {
+        isCompleted: false,
+        reason: "",
+        detectedType: domInfo.detectedType,
+        title: domInfo.cleanTitle
+      };
+    }
+    /**
+     * Deteksi apakah kuis sedang terkunci (misal forum diskusi belum diselesaikan atau waktu belum buka)
+     */
+    _checkIfExamLocked() {
+      const alertEl = document.querySelector('.MuiAlert-root, [role="alert"], .alert-warning, .alert-danger');
+      if (alertEl) {
+        const t = (alertEl.textContent || "").trim().toLowerCase();
+        if (t.includes("terkunci") || t.includes("belum dapat diakses") || t.includes("prasyarat") || t.includes("selesaikan terlebih dahulu")) {
+          return {
+            isLocked: true,
+            reason: alertEl.textContent.trim()
+          };
+        }
+      }
+      const startBtn = this._findStartExamButton();
+      if (startBtn && (startBtn.disabled || startBtn.classList.contains("Mui-disabled"))) {
+        return {
+          isLocked: true,
+          reason: "Tombol mulai kuis berstatus disabled (Terkunci)"
+        };
+      }
+      return { isLocked: false, reason: "" };
+    }
+    /**
+     * Catat ID kuis yang selesai ke storage lokal persisten (mentari_completed_quiz_ids & cache)
+     * agar kuis ini TIDAK PERNAH DIJALANKAN ULANG dan kuota token pengguna tetap aman.
+     */
+    async _markQuizAsCompletedPermanently(state, currentItem) {
+      try {
+        const quizId = currentItem?.id;
+        if (!quizId) return;
+        const store = await Storage.get("mentari_completed_quiz_ids");
+        const completedIds = Array.isArray(store?.mentari_completed_quiz_ids) ? store.mentari_completed_quiz_ids : [];
+        if (!completedIds.includes(quizId)) {
+          completedIds.push(quizId);
+          await Storage.set({ mentari_completed_quiz_ids: completedIds });
+          console.log(`[Auto-Pilot] Kuis ID ${quizId} (${currentItem.courseTitle} - ${currentItem.sectionName}) ditandai selesai secara permanen.`);
+        }
+        const allStorage = await Storage.getAll();
+        for (const [key, val] of Object.entries(allStorage)) {
+          if (key.startsWith("mentari_cached_data_") && val && Array.isArray(val.evaluations)) {
+            let updated = false;
+            val.evaluations.forEach((ev) => {
+              if (ev.subId === quizId || ev.id === quizId) {
+                ev.completion = true;
+                updated = true;
+              }
+            });
+            if (updated) {
+              await Storage.set({ [key]: val });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Auto-Pilot] Gagal menyimpan status kuis selesai permanen:", e);
+      }
     }
     /**
      * Cari tombol mulai kuis / ujian dengan pencarian keyword fleksibel & tahan banting
@@ -863,6 +1082,12 @@
      * Eksekusi loop menjawab seluruh soal dengan jeda natural manusia
      */
     async runAutoLoop(statusEl, isAutoPilot = false) {
+      const initialComp = this._checkIfExamAlreadyCompleted();
+      if (initialComp.isCompleted) {
+        if (statusEl) statusEl.textContent = `${initialComp.title || "Kuis"} sudah selesai dikerjakan (${initialComp.reason}).`;
+        this.isRunning = false;
+        return;
+      }
       let qContainer = this._findQuestionContainer();
       if (!qContainer) {
         const startBtn = this._findStartExamButton();
@@ -886,6 +1111,13 @@
         while (this.isPaused && this.isRunning) {
           if (statusEl) statusEl.textContent = "Auto-Pilot dijeda sementara.";
           await Humanizer.delay(600);
+        }
+        const stepComp = this._checkIfExamAlreadyCompleted();
+        if (stepComp.isCompleted) {
+          console.log("[Auto-Pilot] Kuis selesai terdeteksi di tengah loop. Menghentikan.");
+          if (statusEl) statusEl.textContent = `${stepComp.title || "Kuis"} telah selesai dikerjakan.`;
+          this.isRunning = false;
+          break;
         }
         if (statusEl) statusEl.textContent = "Menganalisis soal...";
         let success = false;
@@ -962,6 +1194,14 @@
         }
       }
       const currentItem = state.queue[state.currentIndex];
+      if (!currentItem) return;
+      const urlMatch = window.location.pathname.match(/\/exam\/([^\/\?]+)/);
+      const currentUrlExamId = urlMatch ? urlMatch[1] : null;
+      if (currentUrlExamId && currentItem.id && currentUrlExamId !== currentItem.id) {
+        console.warn(`[Auto-Pilot Guard] URL exam ID (${currentUrlExamId}) tidak cocok dengan kuis saat ini (${currentItem.id}). Segera redirect ke kuis yang benar...`);
+        window.location.replace(currentItem.url);
+        return;
+      }
       console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
       const { statusEl, badgeEl, btnPause, progressBar } = this._injectAutoPilotHUD(state, currentItem);
       this._executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar);
@@ -1228,11 +1468,19 @@
     }
     async _executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar) {
       statusEl.textContent = "Memeriksa kesiapan halaman kuis...";
-      const isReady = await this._waitForExamReady(statusEl);
-      if (!isReady) {
-        statusEl.textContent = "Kuis tidak dapat dimulai atau sudah selesai. Melompat ke kuis berikutnya...";
-        await Humanizer.delay(1500);
-        await this._advanceToNextQuiz(state, statusEl);
+      const domInfo = this._extractExamTitleAndTypeFromDOM();
+      console.log("[Auto-Pilot] Validasi DOM kuis:", domInfo);
+      const readyResult = await this._waitForExamReady(statusEl);
+      if (!readyResult.ready) {
+        if (readyResult.reason === "completed") {
+          await this._markQuizAsCompletedPermanently(state, currentItem);
+        }
+        const isFastSkip = readyResult.reason === "completed" || readyResult.reason === "locked";
+        const skipMsg = readyResult.reason === "completed" ? `${domInfo.cleanTitle || "Kuis"} sudah selesai dikerjakan sebelumnya. Melompat ke antrean berikutnya...` : `Kuis tidak dapat dimulai (${readyResult.reason}). Melompat ke kuis berikutnya...`;
+        statusEl.textContent = skipMsg;
+        Toast.info(skipMsg);
+        await Humanizer.delay(800);
+        await this._advanceToNextQuiz(state, statusEl, isFastSkip);
         return;
       }
       statusEl.textContent = "Menjawab seluruh soal otomatis via AI...";
@@ -1243,18 +1491,29 @@
         console.error("[Auto-Pilot] Error saat menjawab kuis:", e);
         statusEl.textContent = `Peringatan: ${e.message}`;
       }
-      await this._advanceToNextQuiz(state, statusEl);
+      await this._markQuizAsCompletedPermanently(state, currentItem);
+      await this._advanceToNextQuiz(state, statusEl, false);
     }
     async _waitForExamReady(statusEl) {
       const maxRetries = 60;
       for (let i = 0; i < maxRetries; i++) {
-        if (!this.isAutoPilot) return false;
+        if (!this.isAutoPilot) return { ready: false, reason: "cancelled" };
         while (this.isPaused && this.isAutoPilot) {
           await Humanizer.delay(500);
         }
-        const qContainer = this._findQuestionContainer();
-        if (qContainer) {
-          return true;
+        const completionCheck = this._checkIfExamAlreadyCompleted();
+        if (completionCheck.isCompleted) {
+          if (statusEl) {
+            statusEl.textContent = `${completionCheck.title || "Kuis"} sudah diselesaikan (${completionCheck.reason}).`;
+          }
+          return { ready: false, reason: "completed" };
+        }
+        const lockCheck = this._checkIfExamLocked();
+        if (lockCheck.isLocked) {
+          if (statusEl) {
+            statusEl.textContent = `Kuis terkunci: ${lockCheck.reason}`;
+          }
+          return { ready: false, reason: "locked" };
         }
         const startBtn = this._findStartExamButton();
         if (startBtn) {
@@ -1269,25 +1528,27 @@
           if (statusEl) statusEl.textContent = "Menunggu soal kuis dimuat...";
           const readyQ = await this._waitForQuestionContainer(15e3);
           if (readyQ) {
-            return true;
+            const recheckComp = this._checkIfExamAlreadyCompleted();
+            if (recheckComp.isCompleted) {
+              return { ready: false, reason: "completed" };
+            }
+            return { ready: true, reason: "started" };
           }
           continue;
         }
-        const scoreTable = document.querySelector("table.MuiTable-root, .hasil-ujian, .skor-container");
-        const hasScoreHeader = Array.from(document.querySelectorAll(".MuiTypography-h4, .MuiTypography-h5, .MuiTypography-h6, h2, h3, h4")).some((el) => {
-          const t = el.textContent.toLowerCase();
-          return t.includes("hasil kuis") || t.includes("hasil ujian") || t.includes("nilai akhir");
-        });
-        if (scoreTable && hasScoreHeader) {
-          if (statusEl) statusEl.textContent = "Kuis ini sudah diselesaikan sebelumnya.";
-          return false;
+        const qContainer = this._findQuestionContainer();
+        if (qContainer) {
+          const recheckComp = this._checkIfExamAlreadyCompleted();
+          if (recheckComp.isCompleted) {
+            return { ready: false, reason: "completed" };
+          }
+          return { ready: true, reason: "already_active" };
         }
         await Humanizer.delay(500);
       }
-      if (this._findQuestionContainer()) return true;
-      return false;
+      return { ready: false, reason: "timeout" };
     }
-    async _advanceToNextQuiz(state, statusEl) {
+    async _advanceToNextQuiz(state, statusEl, isSkipped = false) {
       if (!this.isAutoPilot) return;
       if (state.queue && state.queue[state.currentIndex]) {
         state.queue[state.currentIndex].status = "completed";
@@ -1296,20 +1557,24 @@
       if (state.currentIndex < state.queue.length) {
         const nextItem = state.queue[state.currentIndex];
         await Storage.set({ mentari_auto_pilot_state: state });
-        const cooldown = state.cooldownSec || 15;
-        if (statusEl) statusEl.textContent = `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
+        const cooldown = isSkipped ? 2 : state.cooldownSec || 15;
+        if (statusEl) {
+          statusEl.textContent = isSkipped ? `Kuis dilewati. Melompat ke kuis berikutnya...` : `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
+        }
         for (let s = cooldown; s > 0; s--) {
           if (!this.isAutoPilot) return;
           while (this.isPaused && this.isAutoPilot) {
             if (statusEl) statusEl.textContent = `Istirahat dijeda (${s}s). Klik Lanjutkan untuk lanjut.`;
             await Humanizer.delay(500);
           }
-          if (statusEl) statusEl.textContent = `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+          if (statusEl) {
+            statusEl.textContent = isSkipped ? `Melompat ke kuis berikutnya dalam ${s} detik...` : `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+          }
           await Humanizer.delay(1e3);
         }
         if (statusEl) statusEl.textContent = `Menuju: ${nextItem.courseTitle} (${nextItem.sectionName})...`;
-        await Humanizer.delay(600);
-        window.location.href = nextItem.url;
+        await Humanizer.delay(500);
+        window.location.replace(nextItem.url);
       } else {
         state.active = false;
         state.finished = true;
@@ -1325,6 +1590,10 @@
      * Memproses satu soal kuis yang sedang terbuka di layar
      */
     async processCurrentQuestion(isAuto = false) {
+      const compCheck = this._checkIfExamAlreadyCompleted();
+      if (compCheck.isCompleted) {
+        throw new Error(`Kuis ${compCheck.title || ""} sudah selesai dikerjakan.`);
+      }
       const questionContainer = this._findQuestionContainer();
       if (!questionContainer) {
         throw new Error("Elemen soal kuis tidak ditemukan pada halaman.");
