@@ -4,6 +4,7 @@
 - [ ] Smart Question Memory: Cache kunci jawaban Pre-Test untuk auto-answer kilat pada Post-Test (durasi adaptif 12–18 detik, hemat kuota 0 token AI)
 
 ## Arsip
+- [x] UI/UX Accordion & Pencarian Kuis/Evaluasi: Penataan daftar evaluasi per mata kuliah dengan Accordion collapsible, Smart Default Expansion (auto-buka MK dengan tugas belum selesai, tutup MK 100% tuntas), Search Bar real-time, filter dropdown tipe evaluasi (Pre-Test, Post-Test, Kuesioner), tombol Buka/Tutup Semua, dan proteksi tab tunggal (target=_self) tanpa alert/stock emoji
 - [x] Navigasi Tab Tunggal: Menghilangkan target=_blank pada tombol Buka Kelas, Buka Forum, dan Kerjakan Kuis agar langsung terbuka di tab aktif tanpa menumpuk tab baru
 - [x] Final verifikasi bundle `dist/`, build 14 module via esbuild, dan sinkronisasi push ke GitHub fork (`main` & `feat/modern-v2-refactor`)
 - [x] Auto-Answer Cerdas Kuisioner: 3 mode otomatisasi terintegrasi (Auto Iya/Sangat Baik, Auto Tidak, dan Auto AI dengan Gemini analisis konteks & respon saran)

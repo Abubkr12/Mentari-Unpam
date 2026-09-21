@@ -682,6 +682,10 @@
       this.evaluations = [];
       this.forumFilter = "all";
       this.evalFilter = "all";
+      this.evalSearchQuery = "";
+      this.evalTypeFilter = "all";
+      this.expandedCourses = /* @__PURE__ */ new Set();
+      this._userModifiedAccordion = false;
       this._currentFetchPromise = null;
       this._studentName = "";
       this._studentNim = "";
@@ -943,27 +947,159 @@
         background: rgba(107, 114, 128, 0.15);
       }
 
-      /* Evaluasi Tab */
-      .eval-course-header {
-        font-size: 14px;
-        font-weight: 700;
-        color: #d4af37;
-        padding: 12px 0 8px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      /* Evaluasi Tab & Accordion */
+      .eval-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .eval-search-wrap {
+        flex: 1;
+        min-width: 220px;
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .eval-search-icon {
+        position: absolute;
+        left: 12px;
+        color: #888;
+        pointer-events: none;
+      }
+      .eval-search-input {
+        width: 100%;
+        background: #19191f;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+        padding: 8px 32px 8px 34px;
+        border-radius: 8px;
+        font-size: 12px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .eval-search-input:focus {
+        border-color: #d4af37;
+      }
+      .eval-search-clear {
+        position: absolute;
+        right: 10px;
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 16px;
+        cursor: pointer;
+        display: none;
+        line-height: 1;
+      }
+      .eval-search-clear:hover { color: #fff; }
+      .eval-filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .eval-type-select {
+        background: #19191f;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        outline: none;
+        cursor: pointer;
+      }
+      .eval-type-select:focus {
+        border-color: #d4af37;
+      }
+      .eval-toggle-all-btn {
+        background: rgba(255, 255, 255, 0.06);
+        color: #ddd;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .eval-toggle-all-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      .eval-course-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
         margin-bottom: 10px;
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .eval-course-card:hover {
+        border-color: rgba(212, 175, 55, 0.2);
+      }
+      .eval-accordion-header {
+        padding: 12px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        user-select: none;
+        background: rgba(255, 255, 255, 0.02);
+        transition: background 0.15s;
+      }
+      .eval-accordion-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .eval-accordion-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        min-width: 0;
+      }
+      .eval-accordion-title span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .eval-accordion-meta {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-shrink: 0;
       }
-      .eval-course-header:not(:first-child) {
-        margin-top: 20px;
+      .eval-accordion-chevron {
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        color: #888;
+      }
+      .eval-accordion-chevron.open {
+        transform: rotate(180deg);
+        color: #d4af37;
+      }
+      .eval-accordion-content {
+        display: none;
+        padding: 10px 14px 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .eval-accordion-content.open {
+        display: block;
       }
       .eval-section-label {
-        font-size: 12px;
-        font-weight: 600;
-        color: #777;
+        font-size: 11px;
+        font-weight: 700;
+        color: #d4af37;
         padding: 6px 0 4px;
-        margin-top: 4px;
+        margin-top: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
       .eval-item {
         background: rgba(255, 255, 255, 0.03);
@@ -1165,6 +1301,7 @@
         <div class="tab-content" id="tab-evaluations">
           <div id="eval-filter-bar"></div>
           <div id="eval-summary-bar"></div>
+          <div id="eval-controls-bar"></div>
           <div id="eval-list-container">
             <div class="loading-text">Memuat data kuis & evaluasi...</div>
           </div>
@@ -1222,7 +1359,15 @@
       this.shadow.getElementById("btn-close").addEventListener("click", close);
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close();
-        if (e.target.closest("a[href]")) close();
+        const link = e.target.closest("a[href]");
+        if (link) {
+          const href = link.getAttribute("href");
+          if (href && !href.startsWith("#") && !link.hasAttribute("download")) {
+            e.preventDefault();
+            close();
+            window.location.href = href;
+          }
+        }
       });
       const tabBtns = this.shadow.querySelectorAll(".tab-btn");
       const tabContents = this.shadow.querySelectorAll(".tab-content");
@@ -1313,7 +1458,7 @@
           <div class="forum-title">${courseTitle}</div>
           <div class="forum-course">Kode: ${courseCode} | SKS: ${sks}</div>
         </div>
-        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Buka Kelas</a>
+        <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Buka Kelas</a>
       `;
         courseContainer.appendChild(item);
       });
@@ -1374,7 +1519,7 @@
               <div class="forum-title">${courseTitle}</div>
               <div class="forum-course">Buka kelas untuk memeriksa forum diskusi</div>
             </div>
-            <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Lihat Kelas</a>
+            <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Lihat Kelas</a>
           `;
             forumContainer.appendChild(item);
           });
@@ -1412,7 +1557,7 @@
           </div>
           <div class="forum-course">${f.sectionName} &bull; ${f.forumName}</div>
         </div>
-        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
+        <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
       `;
         forumContainer.appendChild(item);
       });
@@ -1441,7 +1586,7 @@
       pills.querySelectorAll(".filter-pill").forEach((pill) => {
         pill.addEventListener("click", () => {
           this.evalFilter = pill.dataset.filter;
-          this._renderEvaluations(this.evaluations);
+          this._renderEvaluations(this.evaluations, false);
         });
       });
       filterBar.appendChild(pills);
@@ -1476,27 +1621,157 @@
       </div>
     `;
     }
-    _renderEvaluations(evalItems) {
+    _renderEvalControls(evals) {
+      const controlsBar = this.shadow?.getElementById("eval-controls-bar");
+      if (!controlsBar) return;
+      let controlsWrap = controlsBar.querySelector(".eval-controls");
+      if (!controlsWrap) {
+        controlsBar.innerHTML = `
+        <div class="eval-controls">
+          <div class="eval-search-wrap">
+            <svg class="eval-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" class="eval-search-input" id="eval-search-input" placeholder="Cari kuis, evaluasi, mata kuliah, pertemuan..." value="${this.evalSearchQuery}">
+            <button class="eval-search-clear" id="eval-search-clear" title="Hapus pencarian">&times;</button>
+          </div>
+          <div class="eval-filter-actions">
+            <select class="eval-type-select" id="eval-type-select">
+              <option value="all">Semua Tipe</option>
+              <option value="PRE_TEST">Pre-Test</option>
+              <option value="POST_TEST">Post-Test</option>
+              <option value="KUESIONER">Kuesioner</option>
+            </select>
+            <button class="eval-toggle-all-btn" id="eval-toggle-all-btn" title="Buka / Tutup Semua Accordion">
+              <svg id="eval-toggle-all-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+              </svg>
+              <span id="eval-toggle-all-text">Buka Semua</span>
+            </button>
+          </div>
+        </div>
+      `;
+        const searchInput = controlsBar.querySelector("#eval-search-input");
+        const clearBtn = controlsBar.querySelector("#eval-search-clear");
+        const typeSelect = controlsBar.querySelector("#eval-type-select");
+        const toggleAllBtn = controlsBar.querySelector("#eval-toggle-all-btn");
+        if (this.evalSearchQuery) {
+          clearBtn.style.display = "block";
+        }
+        searchInput.addEventListener("input", (e) => {
+          this.evalSearchQuery = e.target.value.trim().toLowerCase();
+          clearBtn.style.display = this.evalSearchQuery ? "block" : "none";
+          this._renderEvaluations(this.evaluations, false);
+        });
+        clearBtn.addEventListener("click", () => {
+          searchInput.value = "";
+          this.evalSearchQuery = "";
+          clearBtn.style.display = "none";
+          searchInput.focus();
+          this._renderEvaluations(this.evaluations, false);
+        });
+        typeSelect.value = this.evalTypeFilter;
+        typeSelect.addEventListener("change", (e) => {
+          this.evalTypeFilter = e.target.value;
+          this._renderEvaluations(this.evaluations, false);
+        });
+        toggleAllBtn.addEventListener("click", () => {
+          this._handleToggleAllCourses();
+        });
+      }
+      this._updateToggleAllBtn();
+    }
+    _handleToggleAllCourses() {
+      if (!this._visibleCourseCodes || this._visibleCourseCodes.length === 0) return;
+      const allExpanded = this._visibleCourseCodes.every((code) => this.expandedCourses.has(code));
+      if (allExpanded) {
+        this._visibleCourseCodes.forEach((code) => this.expandedCourses.delete(code));
+      } else {
+        this._visibleCourseCodes.forEach((code) => this.expandedCourses.add(code));
+      }
+      this._userModifiedAccordion = true;
+      this._renderEvaluations(this.evaluations, false);
+    }
+    _updateToggleAllBtn() {
+      const toggleBtn = this.shadow?.getElementById("eval-toggle-all-btn");
+      const toggleText = this.shadow?.getElementById("eval-toggle-all-text");
+      const toggleIcon = this.shadow?.getElementById("eval-toggle-all-icon");
+      if (!toggleBtn || !toggleText || !this._visibleCourseCodes) return;
+      const hasCourses = this._visibleCourseCodes.length > 0;
+      const allExpanded = hasCourses && this._visibleCourseCodes.every((code) => this.expandedCourses.has(code));
+      toggleText.textContent = allExpanded ? "Tutup Semua" : "Buka Semua";
+      if (toggleIcon) {
+        toggleIcon.innerHTML = allExpanded ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>' : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
+      }
+    }
+    _renderEvaluations(evalItems, updateControls = true) {
       const evalContainer = this.shadow?.getElementById("eval-list-container");
       if (!evalContainer) return;
       if (evalItems && evalItems.length > 0) {
         this._renderEvalFilterPills(evalItems);
         this._renderEvalSummary(evalItems);
+        if (updateControls) {
+          this._renderEvalControls(evalItems);
+        }
       }
       evalContainer.innerHTML = "";
       if (!evalItems || evalItems.length === 0) {
         evalContainer.innerHTML = '<div class="empty-state">Tidak ada kuis atau evaluasi ditemukan.</div>';
+        this._visibleCourseCodes = [];
+        this._updateToggleAllBtn();
         return;
       }
       let filtered = evalItems;
       if (this.evalFilter === "pending") {
-        filtered = evalItems.filter((e) => !e.completion && !e.locked);
+        filtered = filtered.filter((e) => !e.completion && !e.locked);
       } else if (this.evalFilter === "done") {
-        filtered = evalItems.filter((e) => e.completion);
+        filtered = filtered.filter((e) => e.completion);
+      }
+      if (this.evalTypeFilter !== "all") {
+        filtered = filtered.filter((e) => e.type === this.evalTypeFilter);
+      }
+      if (this.evalSearchQuery) {
+        const q = this.evalSearchQuery;
+        const typeKeywords = {
+          PRE_TEST: "pre-test pre test pretest",
+          POST_TEST: "post-test post test posttest",
+          KUESIONER: "kuesioner kuisioner evaluasi survei angket"
+        };
+        filtered = filtered.filter((e) => {
+          const title = (e.courseTitle || "").toLowerCase();
+          const name = (e.name || "").toLowerCase();
+          const sec = (e.sectionName || "").toLowerCase();
+          const code = (e.courseCode || "").toLowerCase();
+          const kw = typeKeywords[e.type] || "";
+          return title.includes(q) || name.includes(q) || sec.includes(q) || code.includes(q) || kw.includes(q);
+        });
       }
       if (filtered.length === 0) {
-        const filterLabel = this.evalFilter === "pending" ? "belum dikerjakan" : "sudah selesai";
-        evalContainer.innerHTML = `<div class="empty-state">Tidak ada evaluasi yang ${filterLabel}.</div>`;
+        this._visibleCourseCodes = [];
+        this._updateToggleAllBtn();
+        if (this.evalSearchQuery || this.evalTypeFilter !== "all") {
+          evalContainer.innerHTML = `
+          <div class="empty-state">
+            <p>Tidak ada evaluasi yang cocok dengan pencarian atau filter tipe.</p>
+            <button class="btn-config" id="btn-reset-eval-filters" style="margin-top:12px;">Reset Filter & Pencarian</button>
+          </div>
+        `;
+          evalContainer.querySelector("#btn-reset-eval-filters")?.addEventListener("click", () => {
+            this.evalSearchQuery = "";
+            this.evalTypeFilter = "all";
+            this.evalFilter = "all";
+            const input = this.shadow?.getElementById("eval-search-input");
+            if (input) input.value = "";
+            const clear = this.shadow?.getElementById("eval-search-clear");
+            if (clear) clear.style.display = "none";
+            const sel = this.shadow?.getElementById("eval-type-select");
+            if (sel) sel.value = "all";
+            this._renderEvaluations(this.evaluations, true);
+          });
+        } else {
+          const filterLabel = this.evalFilter === "pending" ? "belum dikerjakan" : "sudah selesai";
+          evalContainer.innerHTML = `<div class="empty-state">Tidak ada evaluasi yang ${filterLabel}.</div>`;
+        }
         return;
       }
       const grouped = {};
@@ -1506,6 +1781,20 @@
         }
         grouped[e.courseCode].items.push(e);
       });
+      const courseCodes = Object.keys(grouped);
+      this._visibleCourseCodes = courseCodes;
+      if (this.evalSearchQuery) {
+        courseCodes.forEach((code) => this.expandedCourses.add(code));
+      } else if (!this._userModifiedAccordion) {
+        courseCodes.forEach((code) => {
+          const hasPending = grouped[code].items.some((e) => !e.completion && !e.locked);
+          if (hasPending) {
+            this.expandedCourses.add(code);
+          } else {
+            this.expandedCourses.delete(code);
+          }
+        });
+      }
       const typeIcons = {
         PRE_TEST: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
         POST_TEST: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
@@ -1516,18 +1805,34 @@
         POST_TEST: "Post-Test",
         KUESIONER: "Kuesioner"
       };
-      for (const courseCode of Object.keys(grouped)) {
+      for (const courseCode of courseCodes) {
         const group = grouped[courseCode];
+        const pendingInCourse = group.items.filter((e) => !e.completion && !e.locked).length;
+        const isExpanded = this.expandedCourses.has(courseCode);
+        const card = document.createElement("div");
+        card.className = "eval-course-card";
+        card.dataset.course = courseCode;
         const header = document.createElement("div");
-        header.className = "eval-course-header";
+        header.className = "eval-accordion-header";
+        header.dataset.course = courseCode;
         header.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d4af37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-        ${group.courseTitle}
+        <div class="eval-accordion-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d4af37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span title="${group.courseTitle}">${group.courseTitle}</span>
+        </div>
+        <div class="eval-accordion-meta">
+          ${pendingInCourse > 0 ? `<span class="badge badge-pending">${pendingInCourse} Belum</span>` : `<span class="badge badge-done">Selesai Semua</span>`}
+          <span class="badge" style="background:rgba(255,255,255,0.06); color:#aaa;">${group.items.length} Item</span>
+          <svg class="eval-accordion-chevron ${isExpanded ? "open" : ""}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
       `;
-        evalContainer.appendChild(header);
+        const content = document.createElement("div");
+        content.className = `eval-accordion-content ${isExpanded ? "open" : ""}`;
         const bySection = {};
         group.items.forEach((item) => {
           const secKey = item.sectionName || "Lainnya";
@@ -1538,10 +1843,10 @@
           const secLabel = document.createElement("div");
           secLabel.className = "eval-section-label";
           secLabel.textContent = secName;
-          evalContainer.appendChild(secLabel);
+          content.appendChild(secLabel);
           bySection[secName].forEach((e) => {
-            const card = document.createElement("div");
-            card.className = "eval-item";
+            const itemDiv = document.createElement("div");
+            itemDiv.className = "eval-item";
             let btnHtml = "";
             if (e.completion) {
               btnHtml = `<span class="eval-btn-action eval-btn-done">Selesai</span>`;
@@ -1549,9 +1854,9 @@
               btnHtml = `<span class="eval-btn-action eval-btn-locked" title="${e.lockReason || "Terkunci"}">Terkunci</span>`;
             } else {
               const url = e.type === "KUESIONER" ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/kuesioner/${e.subId}` : `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/exam/${e.subId}`;
-              btnHtml = `<a class="eval-btn-action" href="${url}">Kerjakan</a>`;
+              btnHtml = `<a class="eval-btn-action" target="_self" href="${url}">Kerjakan</a>`;
             }
-            card.innerHTML = `
+            itemDiv.innerHTML = `
             <div class="eval-item-info">
               <div class="eval-item-title">
                 ${typeIcons[e.type] || ""}
@@ -1562,10 +1867,26 @@
             </div>
             ${btnHtml}
           `;
-            evalContainer.appendChild(card);
+            content.appendChild(itemDiv);
           });
         }
+        header.addEventListener("click", () => {
+          this._userModifiedAccordion = true;
+          const chevron = header.querySelector(".eval-accordion-chevron");
+          const isOpen = content.classList.toggle("open");
+          chevron?.classList.toggle("open", isOpen);
+          if (isOpen) {
+            this.expandedCourses.add(courseCode);
+          } else {
+            this.expandedCourses.delete(courseCode);
+          }
+          this._updateToggleAllBtn();
+        });
+        card.appendChild(header);
+        card.appendChild(content);
+        evalContainer.appendChild(card);
       }
+      this._updateToggleAllBtn();
     }
     // ─── Session Warning ──────────────────────────────────────────────────────────
     _showSessionWarning(msg) {
