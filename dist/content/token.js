@@ -2844,6 +2844,18 @@
       };
     },
     /**
+     * Alias kompatibilitas untuk getToken
+     */
+    async getToken() {
+      return this.getAuthToken();
+    },
+    /**
+     * Alias kompatibilitas untuk getXSRFToken
+     */
+    getXSRFToken() {
+      return this.getXsrfToken();
+    },
+    /**
      * Pasang pendengar event dari Main World Sniffer dan fallback DOM injection
      */
     installLiveSniffer() {
@@ -5221,14 +5233,13 @@
         }
         Toast.info(`Menyiapkan rekap untuk ${pendingForums.length} tugas forum diskusi...`);
         await this._resolveStudentIdentity();
-        const token = await UnpamAuth.getToken();
-        const xsrf = await UnpamAuth.getXSRFToken();
-        const headers = { "Accept": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        if (xsrf) headers["X-XSRF-TOKEN"] = xsrf;
-        const fetchOpts = { headers, credentials: "omit" };
+        let fetchOpts = { headers: { "Accept": "application/json" }, credentials: "include" };
+        try {
+          fetchOpts = await UnpamAuth.getFetchOptions();
+        } catch {
+        }
         const missingTopicForums = pendingForums.filter((f) => !f.topics || f.topics.length === 0);
-        if (missingTopicForums.length > 0 && token) {
+        if (missingTopicForums.length > 0) {
           if (textEl) textEl.textContent = "Mengambil Soal...";
           await Promise.allSettled(missingTopicForums.map(async (f) => {
             try {

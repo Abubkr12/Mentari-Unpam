@@ -440,6 +440,18 @@
       };
     },
     /**
+     * Alias kompatibilitas untuk getToken
+     */
+    async getToken() {
+      return this.getAuthToken();
+    },
+    /**
+     * Alias kompatibilitas untuk getXSRFToken
+     */
+    getXSRFToken() {
+      return this.getXsrfToken();
+    },
+    /**
      * Pasang pendengar event dari Main World Sniffer dan fallback DOM injection
      */
     installLiveSniffer() {

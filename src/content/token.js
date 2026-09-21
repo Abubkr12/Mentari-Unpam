@@ -1845,15 +1845,13 @@ class MentariDashboard {
       await this._resolveStudentIdentity();
 
       // 3. Cek apakah ada topik yang belum termuat detail pesannya
-      const token = await UnpamAuth.getToken();
-      const xsrf = await UnpamAuth.getXSRFToken();
-      const headers = { 'Accept': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
-      const fetchOpts = { headers, credentials: 'omit' };
+      let fetchOpts = { headers: { 'Accept': 'application/json' }, credentials: 'include' };
+      try {
+        fetchOpts = await UnpamAuth.getFetchOptions();
+      } catch {}
 
       const missingTopicForums = pendingForums.filter(f => !f.topics || f.topics.length === 0);
-      if (missingTopicForums.length > 0 && token) {
+      if (missingTopicForums.length > 0) {
         if (textEl) textEl.textContent = 'Mengambil Soal...';
         await Promise.allSettled(missingTopicForums.map(async (f) => {
           try {
