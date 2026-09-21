@@ -16,5 +16,8 @@
   "license": "MIT",
   "devDependencies": {
     "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "jszip": "^3.10.2"
   }
 }

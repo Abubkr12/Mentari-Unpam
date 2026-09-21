@@ -6,6 +6,7 @@
 import { Storage } from '../utils/storage.js';
 import { UnpamAuth } from '../utils/unpam-auth.js';
 import { Toast } from '../utils/toast.js';
+import { DocxGenerator } from '../utils/docx-generator.js';
 
 const ALL_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Rekomendasi)' },
@@ -418,6 +419,16 @@ class MentariDashboard {
       .forum-toggle-all-btn:hover {
         background: rgba(255, 255, 255, 0.12);
         color: #fff;
+      }
+      .forum-export-docx-btn {
+        background: rgba(37, 99, 235, 0.15);
+        border-color: rgba(59, 130, 246, 0.35);
+        color: #60a5fa;
+      }
+      .forum-export-docx-btn:hover {
+        background: rgba(37, 99, 235, 0.28);
+        border-color: rgba(59, 130, 246, 0.55);
+        color: #93c5fd;
       }
       .forum-sync-time {
         font-size: 11px;
@@ -1046,6 +1057,16 @@ class MentariDashboard {
         background: #e2e8f0;
         color: #0f172a;
       }
+      .modal.theme-light .forum-export-docx-btn {
+        background: rgba(37, 99, 235, 0.1);
+        border-color: rgba(59, 130, 246, 0.35);
+        color: #1d4ed8;
+      }
+      .modal.theme-light .forum-export-docx-btn:hover {
+        background: rgba(37, 99, 235, 0.18);
+        border-color: rgba(59, 130, 246, 0.5);
+        color: #1e40af;
+      }
       .modal.theme-light .forum-sync-time {
         color: #64748b;
       }
@@ -1672,6 +1693,16 @@ class MentariDashboard {
               </svg>
               <span id="forum-toggle-all-text">Buka Semua</span>
             </button>
+            <button class="forum-toggle-all-btn forum-export-docx-btn" id="forum-export-docx-btn" title="Unduh Rekap Soal Forum yang Belum Dikerjakan (.docx)">
+              <svg id="forum-export-docx-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span id="forum-export-docx-text">Rekap Tugas (.docx)</span>
+            </button>
             <button class="forum-toggle-all-btn" id="forum-refresh-status-btn" title="Periksa dan Sinkronkan Status Forum Diskusi dari Server UNPAM">
               <svg id="forum-refresh-status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="23 4 23 10 17 10"></polyline>
@@ -1693,6 +1724,9 @@ class MentariDashboard {
       const refreshStatusBtn = controlsBar.querySelector('#forum-refresh-status-btn');
       const refreshIcon = controlsBar.querySelector('#forum-refresh-status-icon');
       const refreshText = controlsBar.querySelector('#forum-refresh-status-text');
+      const exportDocxBtn = controlsBar.querySelector('#forum-export-docx-btn');
+      const exportDocxIcon = controlsBar.querySelector('#forum-export-docx-icon');
+      const exportDocxText = controlsBar.querySelector('#forum-export-docx-text');
 
       if (this.forumSearchQuery) {
         clearBtn.style.display = 'block';
@@ -1716,6 +1750,12 @@ class MentariDashboard {
       toggleAllBtn.addEventListener('click', () => {
         this._handleToggleAllForumCourses();
       });
+
+      if (exportDocxBtn) {
+        exportDocxBtn.addEventListener('click', async () => {
+          await this._handleExportForumRecap(exportDocxBtn, exportDocxIcon, exportDocxText);
+        });
+      }
 
       if (refreshStatusBtn) {
         refreshStatusBtn.addEventListener('click', async () => {
@@ -1778,6 +1818,122 @@ class MentariDashboard {
       toggleIcon.innerHTML = allExpanded
         ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>'
         : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
+    }
+  }
+
+  async _handleExportForumRecap(btn, icon, textEl) {
+    if (this._isExportingDocx) return;
+    this._isExportingDocx = true;
+
+    const originalText = textEl ? textEl.textContent : 'Rekap Tugas (.docx)';
+    if (btn) btn.disabled = true;
+    if (textEl) textEl.textContent = 'Menyiapkan...';
+    if (icon) icon.classList.add('spin-animation');
+
+    try {
+      // 1. Dapatkan daftar forum aktif yang BELUM dijawab / belum selesai
+      let pendingForums = (this.activeForums || []).filter(f => !f.completion && !f.answered);
+
+      if (!pendingForums || pendingForums.length === 0) {
+        Toast.info('Luar biasa! Tidak ada tugas forum diskusi yang pending (semua sudah selesai).');
+        return;
+      }
+
+      Toast.info(`Menyiapkan rekap untuk ${pendingForums.length} tugas forum diskusi...`);
+
+      // 2. Pastikan data identitas mahasiswa (Nama & NIM) terambil
+      await this._resolveStudentIdentity();
+
+      // 3. Cek apakah ada topik yang belum termuat detail pesannya
+      const token = await UnpamAuth.getToken();
+      const xsrf = await UnpamAuth.getXSRFToken();
+      const headers = { 'Accept': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
+      const fetchOpts = { headers, credentials: 'omit' };
+
+      const missingTopicForums = pendingForums.filter(f => !f.topics || f.topics.length === 0);
+      if (missingTopicForums.length > 0 && token) {
+        if (textEl) textEl.textContent = 'Mengambil Soal...';
+        await Promise.allSettled(missingTopicForums.map(async (f) => {
+          try {
+            const res = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${f.forumId}`, fetchOpts);
+            if (res.ok) {
+              const topicData = await res.json();
+              const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
+              f.topics = topics.map(t => ({
+                id: t.id,
+                title: t.judul || t.title || t.name || '',
+                message: t.deskripsi || t.pesan || t.message || t.content || t.body || ''
+              }));
+            }
+          } catch {}
+        }));
+      }
+
+      if (textEl) textEl.textContent = 'Menyusun Docx...';
+
+      // 4. Kelompokkan per Mata Kuliah -> Pertemuan
+      const courseMap = new Map();
+      for (const forum of pendingForums) {
+        const cKey = forum.courseCode || forum.courseTitle || 'UNKNOWN';
+        if (!courseMap.has(cKey)) {
+          courseMap.set(cKey, {
+            courseCode: forum.courseCode,
+            courseTitle: forum.courseTitle,
+            meetings: []
+          });
+        }
+
+        const cData = courseMap.get(cKey);
+        const topics = (forum.topics && forum.topics.length > 0)
+          ? forum.topics
+          : [{ title: '', message: '' }];
+
+        for (const top of topics) {
+          cData.meetings.push({
+            meetingNum: forum.meetingNum,
+            sectionName: forum.sectionName,
+            forumName: forum.forumName,
+            topicTitle: top.title,
+            rawMessage: top.message
+          });
+        }
+      }
+
+      // Urutkan per pertemuan secara ascending
+      const coursesPayload = Array.from(courseMap.values()).map(c => {
+        c.meetings.sort((a, b) => {
+          const mA = a.meetingNum !== null ? a.meetingNum : 999;
+          const mB = b.meetingNum !== null ? b.meetingNum : 999;
+          return mA - mB;
+        });
+        return c;
+      });
+
+      // 5. Generate Word DOCX
+      const dateString = DocxGenerator.getIndonesianDayAndDate(new Date());
+      const safeName = DocxGenerator.sanitizeFileName(this._studentName || 'Mahasiswa');
+      const safeNim = DocxGenerator.sanitizeFileName(this._studentNim || 'NIM');
+      const fileName = `Rekap Tugas_${dateString}_${safeName}_${safeNim}.docx`;
+
+      const docxBlob = await DocxGenerator.generateForumRecap({
+        studentName: this._studentName,
+        studentNim: this._studentNim,
+        dateString,
+        courses: coursesPayload
+      });
+
+      DocxGenerator.downloadFile(docxBlob, fileName);
+      Toast.success(`Dokumen berhasil dibuat dan diunduh: ${fileName}`);
+    } catch (err) {
+      console.error('[Mentari] Gagal mengekspor rekap forum ke DOCX:', err);
+      Toast.error('Gagal membuat dokumen Word rekap tugas: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      this._isExportingDocx = false;
+      if (btn) btn.disabled = false;
+      if (textEl) textEl.textContent = originalText;
+      if (icon) icon.classList.remove('spin-animation');
     }
   }
 
@@ -3841,6 +3997,7 @@ class MentariDashboard {
                 let isAnswered = isLmsCompleted;
                 let hasTopics = true;
 
+                let topicDetails = [];
                 if (!isLmsCompleted) {
                   try {
                     const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
@@ -3848,6 +4005,13 @@ class MentariDashboard {
                       const topicData = await topicRes.json();
                       const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
                       hasTopics = topics.length > 0;
+                      if (hasTopics) {
+                        topicDetails = topics.map(t => ({
+                          id: t.id,
+                          title: t.judul || t.title || t.name || '',
+                          message: t.deskripsi || t.pesan || t.message || t.content || t.body || ''
+                        }));
+                      }
 
                       if (hasTopics && (this._studentName || this._studentNim)) {
                         const searchName = (this._studentName || '').toLowerCase();
@@ -3894,7 +4058,8 @@ class MentariDashboard {
                     forumId: sub.id,
                     forumName: sub.nama_sub_section || sub.judul || 'Forum Diskusi',
                     completion: isLmsCompleted,
-                    answered: isAnswered
+                    answered: isAnswered,
+                    topics: topicDetails
                   });
                 }
               }));
