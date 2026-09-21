@@ -860,11 +860,56 @@
       };
     }
     /**
+     * Ekstrak status navigasi nomor soal dari sidebar kanan (Navigasi Soal)
+     * Mengembalikan jumlah soal, daftar nomor, dan apakah semua sudah terjawab (berwarna hijau)
+     */
+    _getExamNavigationStatus() {
+      const navHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
+      const navHeader = navHeaders.find((el) => (el.textContent || "").trim().toLowerCase() === "navigasi soal");
+      if (!navHeader) return null;
+      const navContainer = navHeader.closest(".MuiPaper-root, .MuiBox-root, aside, div");
+      if (!navContainer) return null;
+      const numberBtns = Array.from(navContainer.querySelectorAll('button, a[role="button"], div[role="button"]')).filter((b) => {
+        const t = (b.textContent || "").trim();
+        return /^\d+$/.test(t);
+      });
+      if (numberBtns.length === 0) return null;
+      const totalQuestions = numberBtns.length;
+      const questions = numberBtns.map((btn) => {
+        const num = parseInt(btn.textContent.trim(), 10);
+        const isCurrent = btn.classList.contains("active") || btn.classList.contains("Mui-selected") || Boolean(btn.style.border && btn.style.border.length > 0);
+        const style = window.getComputedStyle(btn);
+        const bg = style.backgroundColor || "";
+        const isAnswered = bg.includes("46, 125, 50") || bg.includes("76, 175, 80") || bg.includes("green") || btn.classList.contains("answered") || btn.classList.contains("completed");
+        return { num, btn, isAnswered, isCurrent };
+      });
+      const unanswered = questions.filter((q) => !q.isAnswered);
+      return {
+        totalQuestions,
+        questions,
+        unansweredCount: unanswered.length,
+        allAnswered: unanswered.length === 0
+      };
+    }
+    /**
      * Deteksi apakah kuis saat ini sudah selesai (Review Mode / Skor Akhir)
      * PRIORITAS TERTINGGI: Dicek SEBELUM mencari container soal untuk mencegah kuota AI terbuang sia-sia!
      */
     _checkIfExamAlreadyCompleted() {
       const domInfo = this._extractExamTitleAndTypeFromDOM();
+      const pageText = (document.body?.innerText || "").toLowerCase();
+      const hasActiveTimer = pageText.includes("waktu tersisa") || pageText.includes("sisa waktu") || pageText.includes("time remaining");
+      const hasUnansweredBadge = pageText.includes("belum dijawab");
+      const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
+      const hasActiveRadios = activeRadios.length > 0;
+      if (hasActiveTimer || hasUnansweredBadge || hasActiveRadios) {
+        return {
+          isCompleted: false,
+          reason: "",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
       const completedKeywords = [
         "quiz sudah selesai",
         "kuis sudah selesai",
@@ -906,27 +951,6 @@
           return {
             isCompleted: true,
             reason: "Tabel riwayat nilai/skor terdeteksi",
-            detectedType: domInfo.detectedType,
-            title: domInfo.cleanTitle
-          };
-        }
-      }
-      if (window.location.search.includes("page=")) {
-        const allButtons = Array.from(document.querySelectorAll('button, a[role="button"]')).filter((b) => {
-          return !b.closest("#mentari-autopilot-hud-host") && !b.closest("#mentari-quiz-control-host");
-        });
-        const hasSubmitBtn = allButtons.some((b) => {
-          const bt = (b.textContent || "").trim().toLowerCase();
-          return bt.includes("selesai") || bt.includes("submit") || bt.includes("kumpulkan") || bt.includes("akhiri");
-        });
-        const hasPaginationBtn = allButtons.some((b) => {
-          const bt = (b.textContent || "").trim().toLowerCase();
-          return bt.includes("next") || bt.includes("prev") || bt.includes("sebelumnya") || bt.includes("selanjutnya");
-        });
-        if (!hasSubmitBtn && hasPaginationBtn) {
-          return {
-            isCompleted: true,
-            reason: "Mode review soal kuis (?page= tanpa tombol submit)",
             detectedType: domInfo.detectedType,
             title: domInfo.cleanTitle
           };
@@ -1086,7 +1110,7 @@
       if (initialComp.isCompleted) {
         if (statusEl) statusEl.textContent = `${initialComp.title || "Kuis"} sudah selesai dikerjakan (${initialComp.reason}).`;
         this.isRunning = false;
-        return;
+        return { isFinished: true, submitted: true, reason: initialComp.reason };
       }
       let qContainer = this._findQuestionContainer();
       if (!qContainer) {
@@ -1107,17 +1131,23 @@
           }
         }
       }
-      while (this.isRunning) {
+      let loopIterations = 0;
+      const maxSafetyIterations = 60;
+      while (this.isRunning && loopIterations < maxSafetyIterations) {
+        loopIterations++;
         while (this.isPaused && this.isRunning) {
           if (statusEl) statusEl.textContent = "Auto-Pilot dijeda sementara.";
           await Humanizer.delay(600);
+        }
+        if (!this.isRunning) {
+          return { isFinished: false, submitted: false, reason: "Dibatalkan oleh pengguna" };
         }
         const stepComp = this._checkIfExamAlreadyCompleted();
         if (stepComp.isCompleted) {
           console.log("[Auto-Pilot] Kuis selesai terdeteksi di tengah loop. Menghentikan.");
           if (statusEl) statusEl.textContent = `${stepComp.title || "Kuis"} telah selesai dikerjakan.`;
           this.isRunning = false;
-          break;
+          return { isFinished: true, submitted: true, reason: stepComp.reason };
         }
         if (statusEl) statusEl.textContent = "Menganalisis soal...";
         let success = false;
@@ -1130,44 +1160,88 @@
             success = await this.processCurrentQuestion(true);
           } catch (retryErr) {
             if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
-            break;
           }
         }
-        if (!success) {
-          if (statusEl) statusEl.textContent = "Selesai atau tidak ada soal aktif.";
-          this.isRunning = false;
-          break;
+        await Humanizer.delay(700);
+        let nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
+        if (!nextBtn) {
+          const waitStart = Date.now();
+          while (Date.now() - waitStart < 2500 && !nextBtn) {
+            await Humanizer.delay(300);
+            nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
+          }
         }
-        const nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
         if (nextBtn) {
           if (statusEl) statusEl.textContent = "Menuju soal berikutnya...";
           await Humanizer.randomDelay(700, 1500);
           await Humanizer.naturalClick(nextBtn);
           await Humanizer.delay(1200);
-        } else {
-          this.isRunning = false;
-          const finishBtn = DOM.findButtonByText(["selesai quiz", "selesai kuis", "selesai ujian", "selesai", "finish", "kumpulkan", "akhiri"]);
-          if (finishBtn) {
-            if (statusEl) statusEl.textContent = "Semua soal terjawab. Menyelesaikan kuis...";
-            Toast.success("Semua soal kuis berhasil dijawab dengan sukses!");
-            const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
-            if (mentari_auto_finish_quiz || isAutoPilot) {
-              await Humanizer.randomDelay(1200, 2200);
-              await Humanizer.naturalClick(finishBtn);
-              await Humanizer.delay(800);
-              const confirmBtn = DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
-              if (confirmBtn) {
-                await Humanizer.naturalClick(confirmBtn);
-              }
-              await Humanizer.delay(1500);
-            }
-          } else {
-            if (statusEl) statusEl.textContent = "Semua soal telah terjawab!";
-            Toast.success("Seluruh nomor soal telah berhasil dijawab!");
+          continue;
+        }
+        const navStatus = this._getExamNavigationStatus();
+        if (navStatus && navStatus.questions && navStatus.questions.length > 0) {
+          const nextUnanswered = navStatus.questions.find((q) => !q.isAnswered && !q.isCurrent);
+          if (nextUnanswered && nextUnanswered.btn) {
+            if (statusEl) statusEl.textContent = `Navigasi ke Soal ${nextUnanswered.num} yang belum dijawab...`;
+            await Humanizer.randomDelay(600, 1200);
+            await Humanizer.naturalClick(nextUnanswered.btn);
+            await Humanizer.delay(1200);
+            continue;
           }
-          break;
+        }
+        const finishKeywords = [
+          "selesai quiz",
+          "selesai kuis",
+          "selesai ujian",
+          "selesai",
+          "finish quiz",
+          "finish exam",
+          "finish attempt",
+          "finish",
+          "kumpulkan jawaban",
+          "kumpulkan",
+          "akhiri kuis",
+          "akhiri ujian",
+          "akhiri",
+          "submit quiz",
+          "submit exam",
+          "submit"
+        ];
+        const finishBtn = DOM.findButtonByText(finishKeywords);
+        if (finishBtn) {
+          if (statusEl) statusEl.textContent = "Semua soal terjawab. Menyelesaikan kuis...";
+          Toast.success("Semua soal kuis berhasil dijawab!");
+          const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
+          if (mentari_auto_finish_quiz || isAutoPilot) {
+            await Humanizer.randomDelay(1200, 2200);
+            await Humanizer.naturalClick(finishBtn);
+            await Humanizer.delay(800);
+            const confirmBtn = this._findDialogConfirmButton(finishBtn) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
+            if (confirmBtn) {
+              await Humanizer.naturalClick(confirmBtn);
+            }
+            if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan. Menunggu konfirmasi sistem...";
+            await Humanizer.delay(2e3);
+            this.isRunning = false;
+            return { isFinished: true, submitted: true, reason: "Kuis telah dikumpulkan dan diserahkan" };
+          } else {
+            this.isRunning = false;
+            return { isFinished: true, submitted: false, reason: "Menunggu konfirmasi selesai manual dari pengguna" };
+          }
+        } else {
+          const postCheck = this._checkIfExamAlreadyCompleted();
+          if (postCheck.isCompleted) {
+            this.isRunning = false;
+            return { isFinished: true, submitted: true, reason: postCheck.reason };
+          }
+          if (statusEl) statusEl.textContent = "Semua nomor soal telah dikerjakan.";
+          Toast.success("Seluruh nomor soal telah berhasil dijawab!");
+          this.isRunning = false;
+          return { isFinished: true, submitted: false, reason: "Semua soal telah dikerjakan" };
         }
       }
+      this.isRunning = false;
+      return { isFinished: false, submitted: false, reason: "Loop mencapai batas maksimum atau dihentikan" };
     }
     // ─── Auto-Pilot Kuis (Single-Tab Batch Runner) ────────────────────────────────
     async _checkAndInitAutoPilot() {
@@ -1337,6 +1411,23 @@
         padding: 7px 10px;
         line-height: 1.4;
       }
+      .hud-model-select {
+        background: rgba(212, 175, 55, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+        border-radius: 4px;
+        padding: 1px 4px;
+        font-size: 10px;
+        font-weight: 700;
+        outline: none;
+        cursor: pointer;
+        margin-left: auto;
+        max-width: 140px;
+      }
+      .hud-model-select option {
+        background: #18181b;
+        color: #fff;
+      }
       .hud-actions {
         display: flex;
         gap: 8px;
@@ -1381,8 +1472,6 @@
       const totalCount = state.queue.length;
       const progressPercent = Math.round(currentIdx / totalCount * 100);
       const currentModelId = state.model || this.activeModel;
-      const currentModelObj = ALL_MODELS.find((m) => m.id === currentModelId);
-      const modelLabel = currentModelObj ? currentModelObj.name.split(" (")[0] : currentModelId || "Gemini";
       hudCard.innerHTML = `
       <div class="hud-header">
         <div class="hud-brand">
@@ -1403,12 +1492,9 @@
             ${currentItem.type === "PRE_TEST" ? "Pre-Test" : "Post-Test"}
           </span>
           <span>${currentItem.sectionName}</span>
-          <span class="hud-tag" style="background:rgba(212,175,55,0.18); color:#fbbf24; border:1px solid rgba(212,175,55,0.35); margin-left:auto; display:flex; align-items:center; gap:4px;" title="Model AI Aktif: ${modelLabel}">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-            ${modelLabel}
-          </span>
+          <select class="hud-model-select" id="hud-select-model" title="Ganti Model AI Saat Ini">
+            ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === currentModelId ? "selected" : ""}>${m.name.split(" (")[0]}</option>`).join("")}
+          </select>
         </div>
       </div>
 
@@ -1443,6 +1529,28 @@
       const btnPause = this.hudShadow.getElementById("hud-btn-pause");
       const btnCancel = this.hudShadow.getElementById("hud-btn-cancel");
       const progressBar = this.hudShadow.getElementById("hud-progress-fill");
+      const hudModelSelect = this.hudShadow.getElementById("hud-select-model");
+      if (hudModelSelect) {
+        hudModelSelect.value = currentModelId;
+        hudModelSelect.addEventListener("change", async () => {
+          const newModel = hudModelSelect.value;
+          if (newModel && VALID_MODEL_IDS.includes(newModel)) {
+            this.activeModel = newModel;
+            await Storage.set({ gemini_model: newModel });
+            const curStore = await Storage.get("mentari_auto_pilot_state");
+            if (curStore?.mentari_auto_pilot_state) {
+              curStore.mentari_auto_pilot_state.model = newModel;
+              await Storage.set({ mentari_auto_pilot_state: curStore.mentari_auto_pilot_state });
+            }
+            const selectModel = this.shadow?.getElementById("quiz-select-model");
+            if (selectModel && selectModel.value !== newModel) {
+              selectModel.value = newModel;
+            }
+            const label = hudModelSelect.options[hudModelSelect.selectedIndex]?.text || newModel;
+            Toast.info(`Model AI diubah ke: ${label}`);
+          }
+        });
+      }
       btnPause.addEventListener("click", async () => {
         this.isPaused = !this.isPaused;
         badgeEl.className = `hud-badge ${this.isPaused ? "paused" : "running"}`;
@@ -1485,14 +1593,34 @@
       }
       statusEl.textContent = "Menjawab seluruh soal otomatis via AI...";
       this.isRunning = true;
+      let loopResult = { isFinished: false, submitted: false };
       try {
-        await this.runAutoLoop(statusEl, true);
+        loopResult = await this.runAutoLoop(statusEl, true);
       } catch (e) {
         console.error("[Auto-Pilot] Error saat menjawab kuis:", e);
         statusEl.textContent = `Peringatan: ${e.message}`;
       }
-      await this._markQuizAsCompletedPermanently(state, currentItem);
-      await this._advanceToNextQuiz(state, statusEl, false);
+      const finalComp = this._checkIfExamAlreadyCompleted();
+      const isReallyDone = Boolean(loopResult?.submitted || finalComp.isCompleted);
+      if (isReallyDone) {
+        await this._markQuizAsCompletedPermanently(state, currentItem);
+        statusEl.textContent = "Kuis berhasil diselesaikan 100%! Mempersiapkan kuis berikutnya...";
+        Toast.success(`Kuis ${currentItem.courseTitle} selesai 100%!`);
+        await this._advanceToNextQuiz(state, statusEl, false);
+      } else {
+        console.warn("[Auto-Pilot] Kuis belum selesai diserahkan. TIDAK menandai selesai dan TIDAK melompat ke kuis berikutnya.", loopResult);
+        statusEl.textContent = `Pengerjaan belum selesai (${loopResult?.reason || "soal belum lengkap"}). Auto-Pilot dijeda untuk verifikasi pengguna.`;
+        Toast.warning("Auto-Pilot dijeda: Kuis belum sepenuhnya selesai diserahkan. Periksa halaman kuis.");
+        this.isRunning = false;
+        this.isPaused = true;
+        if (badgeEl) {
+          badgeEl.className = "hud-badge paused";
+          badgeEl.textContent = "Perlu Cek";
+        }
+        if (btnPause) {
+          btnPause.textContent = "Lanjutkan";
+        }
+      }
     }
     async _waitForExamReady(statusEl) {
       const maxRetries = 60;
@@ -1620,8 +1748,9 @@
       }
       const prompt = this._buildPrompt(questionText, options);
       const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
+      const hudModelSelect = this.hudShadow?.getElementById("hud-select-model");
       const selectModel = this.shadow?.getElementById("quiz-select-model");
-      const chosenModel = this.isAutoPilot ? this.activeModel || DEFAULT_MODEL : selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
+      const chosenModel = hudModelSelect && hudModelSelect.value && VALID_MODEL_IDS.includes(hudModelSelect.value) ? hudModelSelect.value : selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
       const response = await new Promise((resolve) => {
         chrome.runtime.sendMessage({
           action: "generateGeminiContent",
