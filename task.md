@@ -4,6 +4,7 @@
 - [ ] Smart Question Memory: Cache kunci jawaban Pre-Test untuk auto-answer kilat pada Post-Test (durasi adaptif 12–18 detik, hemat kuota 0 token AI)
 
 ## Arsip
+- [x] Navigasi Tab Tunggal: Menghilangkan target=_blank pada tombol Buka Kelas, Buka Forum, dan Kerjakan Kuis agar langsung terbuka di tab aktif tanpa menumpuk tab baru
 - [x] Final verifikasi bundle `dist/`, build 14 module via esbuild, dan sinkronisasi push ke GitHub fork (`main` & `feat/modern-v2-refactor`)
 - [x] Auto-Answer Cerdas Kuisioner: 3 mode otomatisasi terintegrasi (Auto Iya/Sangat Baik, Auto Tidak, dan Auto AI dengan Gemini analisis konteks & respon saran)
 - [x] Auto Jawab Cerdas Pre-Test & Post-Test: Deteksi instan kunci jawaban yang sudah terbuka/bocor pada DOM sebelum fallback ke Gemini AI berakurasi tinggi
