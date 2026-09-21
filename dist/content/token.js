@@ -715,6 +715,8 @@
       const overlay = this.shadow.querySelector(".overlay");
       overlay.classList.add("open");
       this.isOpen = true;
+      this.expandedCourses.clear();
+      this._userModifiedAccordion = false;
       await this._renderFromCache();
       this._loadCoursesAndForums();
     }
@@ -1666,6 +1668,7 @@
         clearBtn.addEventListener("click", () => {
           searchInput.value = "";
           this.evalSearchQuery = "";
+          this.expandedCourses.clear();
           clearBtn.style.display = "none";
           searchInput.focus();
           this._renderEvaluations(this.evaluations, false);
@@ -1760,6 +1763,7 @@
             this.evalSearchQuery = "";
             this.evalTypeFilter = "all";
             this.evalFilter = "all";
+            this.expandedCourses.clear();
             const input = this.shadow?.getElementById("eval-search-input");
             if (input) input.value = "";
             const clear = this.shadow?.getElementById("eval-search-clear");
@@ -1785,15 +1789,6 @@
       this._visibleCourseCodes = courseCodes;
       if (this.evalSearchQuery) {
         courseCodes.forEach((code) => this.expandedCourses.add(code));
-      } else if (!this._userModifiedAccordion) {
-        courseCodes.forEach((code) => {
-          const hasPending = grouped[code].items.some((e) => !e.completion && !e.locked);
-          if (hasPending) {
-            this.expandedCourses.add(code);
-          } else {
-            this.expandedCourses.delete(code);
-          }
-        });
       }
       const typeIcons = {
         PRE_TEST: `<svg class="eval-type-icon" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
@@ -1872,13 +1867,16 @@
         }
         header.addEventListener("click", () => {
           this._userModifiedAccordion = true;
-          const chevron = header.querySelector(".eval-accordion-chevron");
-          const isOpen = content.classList.toggle("open");
-          chevron?.classList.toggle("open", isOpen);
-          if (isOpen) {
+          const isCurrentlyOpen = content.classList.contains("open");
+          evalContainer.querySelectorAll(".eval-course-card").forEach((otherCard) => {
+            otherCard.querySelector(".eval-accordion-content")?.classList.remove("open");
+            otherCard.querySelector(".eval-accordion-chevron")?.classList.remove("open");
+          });
+          this.expandedCourses.clear();
+          if (!isCurrentlyOpen) {
+            content.classList.add("open");
+            header.querySelector(".eval-accordion-chevron")?.classList.add("open");
             this.expandedCourses.add(courseCode);
-          } else {
-            this.expandedCourses.delete(courseCode);
           }
           this._updateToggleAllBtn();
         });

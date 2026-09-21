@@ -71,6 +71,8 @@ class MentariDashboard {
     const overlay = this.shadow.querySelector('.overlay');
     overlay.classList.add('open');
     this.isOpen = true;
+    this.expandedCourses.clear();
+    this._userModifiedAccordion = false;
 
     // 1. Cache-First: tampilkan data cache seketika jika tersedia (zero loading delay)
     await this._renderFromCache();
@@ -1091,6 +1093,7 @@ class MentariDashboard {
       clearBtn.addEventListener('click', () => {
         searchInput.value = '';
         this.evalSearchQuery = '';
+        this.expandedCourses.clear();
         clearBtn.style.display = 'none';
         searchInput.focus();
         this._renderEvaluations(this.evaluations, false);
@@ -1208,6 +1211,7 @@ class MentariDashboard {
           this.evalSearchQuery = '';
           this.evalTypeFilter = 'all';
           this.evalFilter = 'all';
+          this.expandedCourses.clear();
           const input = this.shadow?.getElementById('eval-search-input');
           if (input) input.value = '';
           const clear = this.shadow?.getElementById('eval-search-clear');
@@ -1235,20 +1239,10 @@ class MentariDashboard {
     const courseCodes = Object.keys(grouped);
     this._visibleCourseCodes = courseCodes;
 
-    // Smart Default Expansion:
-    // Jika ada search query aktif -> otomatis buka semua accordion yang cocok
-    // Jika belum pernah dimodifikasi manual oleh user -> buka mata kuliah yang punya tugas 'Belum Dikerjakan', tutup yang 100% selesai
+    // Expansion default: Awalnya ketutup semua agar rapi dan fokus.
+    // Hanya jika ada pencarian aktif yang cocok, buka otomatis yang sesuai.
     if (this.evalSearchQuery) {
       courseCodes.forEach(code => this.expandedCourses.add(code));
-    } else if (!this._userModifiedAccordion) {
-      courseCodes.forEach(code => {
-        const hasPending = grouped[code].items.some(e => !e.completion && !e.locked);
-        if (hasPending) {
-          this.expandedCourses.add(code);
-        } else {
-          this.expandedCourses.delete(code);
-        }
-      });
     }
 
     const typeIcons = {
@@ -1343,17 +1337,25 @@ class MentariDashboard {
         });
       }
 
-      // Accordion toggle click handler
+      // Single-Open (Exclusive Accordion): hanya 1 mata kuliah yang terbuka dalam satu waktu
       header.addEventListener('click', () => {
         this._userModifiedAccordion = true;
-        const chevron = header.querySelector('.eval-accordion-chevron');
-        const isOpen = content.classList.toggle('open');
-        chevron?.classList.toggle('open', isOpen);
-        if (isOpen) {
+        const isCurrentlyOpen = content.classList.contains('open');
+
+        // Tutup semua accordion mata kuliah lain terlebih dahulu
+        evalContainer.querySelectorAll('.eval-course-card').forEach(otherCard => {
+          otherCard.querySelector('.eval-accordion-content')?.classList.remove('open');
+          otherCard.querySelector('.eval-accordion-chevron')?.classList.remove('open');
+        });
+        this.expandedCourses.clear();
+
+        // Jika mata kuliah yang diklik sebelumnya sedang tertutup, buka hanya mata kuliah ini
+        if (!isCurrentlyOpen) {
+          content.classList.add('open');
+          header.querySelector('.eval-accordion-chevron')?.classList.add('open');
           this.expandedCourses.add(courseCode);
-        } else {
-          this.expandedCourses.delete(courseCode);
         }
+
         this._updateToggleAllBtn();
       });
 
