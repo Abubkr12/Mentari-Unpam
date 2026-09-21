@@ -363,7 +363,10 @@ class ApiKeyManager {
               https://aistudio.google.com/api-keys
             </a>
             <div style="margin-top:6px; font-size:11px; color:#9ca3af;">
-              <b>Multi-Key Failover:</b> Kamu bisa menambahkan lebih dari satu API Key. Saat key utama terkena limit kuota / HTTP 429, sistem otomatis beralih ke key cadangan berikutnya tanpa henti.
+              <b>Multi-Key Failover:</b> Kamu bisa menambahkan banyak API Key. Saat key utama terkena limit kuota / HTTP 429, sistem otomatis beralih ke key cadangan berikutnya tanpa henti.
+            </div>
+            <div style="margin-top:6px; font-size:11px; color:#fbbf24; border-top:1px dashed rgba(255,255,255,0.08); padding-top:6px;">
+              <b>Info Kuota (RPD/RPM):</b> Limit harian (RPD) akan reset otomatis setiap hari oleh Google. API Key yang limit <b>tidak perlu dihapus</b> karena tetap tersimpan di laptop dan otomatis bisa dipakai kembali besok saat kuota reset.
             </div>
           </div>
 
