@@ -89,6 +89,46 @@ export const Storage = {
     });
   },
 
+  /**
+   * Mengambil semua data dari chrome.storage.local (atau fallback localStorage)
+   */
+  async getAll() {
+    return new Promise((resolve) => {
+      try {
+        if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get(null, (result) => {
+            if (chrome.runtime?.lastError) {
+              console.log('[Storage] Info reading all storage:', chrome.runtime.lastError.message);
+              resolve(this._getAllLocalStorageFallback());
+            } else {
+              resolve(result || {});
+            }
+          });
+        } else {
+          resolve(this._getAllLocalStorageFallback());
+        }
+      } catch (e) {
+        resolve(this._getAllLocalStorageFallback());
+      }
+    });
+  },
+
+  _getAllLocalStorageFallback() {
+    const res = {};
+    if (typeof localStorage === 'undefined') return res;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      try {
+        const val = localStorage.getItem(k);
+        if (val !== null) {
+          try { res[k] = JSON.parse(val); } catch { res[k] = val; }
+        }
+      } catch {}
+    }
+    return res;
+  },
+
   _getLocalStorageFallback(keys, defaults = {}) {
     const res = Object.assign({}, defaults);
     if (typeof localStorage === 'undefined') return res;

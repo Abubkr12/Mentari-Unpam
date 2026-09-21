@@ -578,9 +578,9 @@ class QuizAssistant {
       }
 
       // Tandai juga pada cache evaluasi jika tersedia
-      const allStorage = await Storage.getAll();
-      for (const [key, val] of Object.entries(allStorage)) {
-        if (key.startsWith('mentari_cached_data_') && val && Array.isArray(val.evaluations)) {
+      const allStorage = (Storage && typeof Storage.getAll === 'function') ? await Storage.getAll() : {};
+      for (const [key, val] of Object.entries(allStorage || {})) {
+        if (key && key.startsWith('mentari_cached_data_') && val && Array.isArray(val.evaluations)) {
           let updated = false;
           val.evaluations.forEach(ev => {
             if (ev.subId === quizId || ev.id === quizId) {
