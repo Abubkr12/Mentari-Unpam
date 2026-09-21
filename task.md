@@ -1,7 +1,7 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
-## Aktif
-*(Semua task utama telah selesai dikerjakan dan disinkronisasikan ke GitHub)*
+## Aktif / Rencana Mendatang
+- [ ] Smart Question Memory: Cache kunci jawaban Pre-Test untuk auto-answer kilat pada Post-Test (durasi adaptif 12–18 detik, hemat kuota 0 token AI)
 
 ## Arsip
 - [x] Final verifikasi bundle `dist/`, build 14 module via esbuild, dan sinkronisasi push ke GitHub fork (`main` & `feat/modern-v2-refactor`)

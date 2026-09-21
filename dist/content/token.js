@@ -1222,6 +1222,7 @@
       this.shadow.getElementById("btn-close").addEventListener("click", close);
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close();
+        if (e.target.closest("a[href]")) close();
       });
       const tabBtns = this.shadow.querySelectorAll(".tab-btn");
       const tabContents = this.shadow.querySelectorAll(".tab-content");
@@ -1312,7 +1313,7 @@
           <div class="forum-title">${courseTitle}</div>
           <div class="forum-course">Kode: ${courseCode} | SKS: ${sks}</div>
         </div>
-        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}" target="_blank">Buka Kelas</a>
+        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Buka Kelas</a>
       `;
         courseContainer.appendChild(item);
       });
@@ -1373,7 +1374,7 @@
               <div class="forum-title">${courseTitle}</div>
               <div class="forum-course">Buka kelas untuk memeriksa forum diskusi</div>
             </div>
-            <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}" target="_blank">Lihat Kelas</a>
+            <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Lihat Kelas</a>
           `;
             forumContainer.appendChild(item);
           });
@@ -1411,7 +1412,7 @@
           </div>
           <div class="forum-course">${f.sectionName} &bull; ${f.forumName}</div>
         </div>
-        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}" target="_blank">Buka Forum</a>
+        <a class="btn-open-forum" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
       `;
         forumContainer.appendChild(item);
       });
@@ -1548,7 +1549,7 @@
               btnHtml = `<span class="eval-btn-action eval-btn-locked" title="${e.lockReason || "Terkunci"}">Terkunci</span>`;
             } else {
               const url = e.type === "KUESIONER" ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/kuesioner/${e.subId}` : `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/exam/${e.subId}`;
-              btnHtml = `<a class="eval-btn-action" href="${url}" target="_blank">Kerjakan</a>`;
+              btnHtml = `<a class="eval-btn-action" href="${url}">Kerjakan</a>`;
             }
             card.innerHTML = `
             <div class="eval-item-info">
