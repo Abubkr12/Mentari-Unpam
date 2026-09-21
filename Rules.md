@@ -212,3 +212,20 @@ Mentari-Unpam-v2.0_2/
   - **Proteksi Tombol Mulai/Lanjutkan**: `_markQuizAsCompletedPermanently` dilarang keras menandai kuis selesai jika tombol "Mulai Quiz" atau "Lanjutkan Quiz" masih aktif pada halaman.
 - **Fast-Skip Cooldown**: Kuis yang dilewati (karena sudah selesai atau terkunci) menggunakan jeda cepat (2 detik) alih-alih normal cooldown (15 detik), menghemat waktu pengguna secara signifikan.
 
+### 11. Arsitektur Tab Forum Aktif (Model Accordion, Kompak Range Pertemuan Belum Tersedia & Paralelisasi Fetch)
+- **Model Accordion per Mata Kuliah**: Menggantikan list flat usang menjadi format Accordion per mata kuliah yang konsisten dengan Tab Kuis & Evaluasi. Seluruh mata kuliah tertutup secara default (all-collapsed) saat pertama kali dibuka.
+- **Single-Open Exclusive Accordion**: Mengklik satu accordion mata kuliah akan membuka mata kuliah tersebut dan otomatis menutup seluruh accordion mata kuliah lainnya untuk menjaga kerapian dan fokus.
+- **Rangkuman Kompak Pertemuan Belum Tersedia (`_computeUnavailableRanges`)**:
+  - Jika suatu pertemuan belum memiliki topik diskusi yang dibuat oleh dosen pengampu atau modulnya belum dibuka, item tidak ditampilkan satu per satu sebagai card kosong.
+  - Sistem mengelompokkan urutan pertemuan secara kontigu menjadi kotak ringkasan kompak: `Pertemuan x - y belum tersedia (Alasan: Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka)` (atau `Pertemuan x` jika single pertemuan).
+- **Paralelisasi Fetch Request (`Promise.allSettled`)**:
+  - Pengecekan topik forum (`api/forum/topic/{id}`) dan reply mahasiswa (`api/forum/reply/{id}`) dijalankan secara konkuren/paralel dengan `Promise.allSettled()`, memangkas durasi pemindaian dari 50–70 detik menjadi hanya 2–4 detik (percepatan ~15x–20x).
+- **Tombol 'Periksa Status' (Sync UNPAM) & Waktu Sinkronisasi**:
+  - Tombol aksi langsung pada header kontrol Forum dilengkapi animasi SVG perputaran (`.spin-animation`) saat memuat, debounce state, dan toast pemberitahuan.
+  - Label `#forum-sync-time` menampilkan waktu sinkronisasi relatif terkini ('Baru saja', 'x menit lalu', atau jam format 'Pukul HH:mm').
+- **Pencarian Real-Time & Filter Status**:
+  - Filter pills cepat: `Semua`, `Belum Dijawab`, dan `Sudah Dijawab`.
+  - Search input dinamis: secara otomatis membuka (auto-expand) accordion mata kuliah yang cocok dengan kata kunci pencarian.
+  - Tombol Buka/Tutup Semua untuk navigasi cepat seluruh accordion.
+- **Standar Ekstensi Bersih**: 100% icon inline SVG (bebas stock emoji), bebas `window.alert()` browser (menggunakan Toast), dan navigasi single-tab (`target="_self"`).
+

@@ -751,6 +751,12 @@
       this.activeForums = [];
       this.evaluations = [];
       this.forumFilter = "all";
+      this.forumSearchQuery = "";
+      this.expandedForumCourses = /* @__PURE__ */ new Set();
+      this._userModifiedForumAccordion = false;
+      this.courseForumsMeta = {};
+      this._lastSyncedAt = null;
+      this._isRefreshingForums = false;
       this.evalFilter = "all";
       this.evalSearchQuery = "";
       this.evalTypeFilter = "all";
@@ -787,6 +793,8 @@
       this.isOpen = true;
       this.expandedCourses.clear();
       this._userModifiedAccordion = false;
+      this.expandedForumCourses.clear();
+      this._userModifiedForumAccordion = false;
       await this._renderFromCache();
       this._loadCoursesAndForums();
     }
@@ -957,7 +965,229 @@
         color: #fff;
       }
 
-      /* Forum Card */
+      /* Forum Controls & Search */
+      .forum-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .forum-search-wrap {
+        flex: 1;
+        min-width: 220px;
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      .forum-search-icon {
+        position: absolute;
+        left: 12px;
+        color: #888;
+        pointer-events: none;
+      }
+      .forum-search-input {
+        width: 100%;
+        background: #19191f;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #fff;
+        padding: 8px 32px 8px 34px;
+        border-radius: 8px;
+        font-size: 12px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .forum-search-input:focus {
+        border-color: #d4af37;
+      }
+      .forum-search-clear {
+        position: absolute;
+        right: 10px;
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 16px;
+        cursor: pointer;
+        display: none;
+        line-height: 1;
+      }
+      .forum-search-clear:hover { color: #fff; }
+      .forum-filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .forum-toggle-all-btn {
+        background: rgba(255, 255, 255, 0.06);
+        color: #ddd;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .forum-toggle-all-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      .forum-sync-time {
+        font-size: 11px;
+        color: #888;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 4px;
+      }
+
+      /* Forum Accordion Card & Items */
+      .forum-course-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        margin-bottom: 10px;
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .forum-course-card:hover {
+        border-color: rgba(212, 175, 55, 0.2);
+      }
+      .forum-accordion-header {
+        padding: 12px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        user-select: none;
+        background: rgba(255, 255, 255, 0.02);
+        transition: background 0.15s;
+      }
+      .forum-accordion-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .forum-accordion-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        min-width: 0;
+      }
+      .forum-accordion-title span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .forum-accordion-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .forum-accordion-chevron {
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        color: #888;
+      }
+      .forum-accordion-chevron.open {
+        transform: rotate(180deg);
+        color: #d4af37;
+      }
+      .forum-accordion-content {
+        display: none;
+        padding: 10px 14px 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      .forum-accordion-content.open {
+        display: block;
+      }
+      .forum-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        transition: all 0.2s;
+      }
+      .forum-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(212, 175, 55, 0.2);
+      }
+      .forum-item-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .forum-item-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .forum-item-meta {
+        font-size: 10px;
+        color: #777;
+        margin-top: 2px;
+      }
+      .forum-btn-action {
+        background: rgba(212, 175, 55, 0.15);
+        color: #d4af37;
+        border: 1px solid rgba(212, 175, 55, 0.35);
+        padding: 5px 12px;
+        border-radius: 7px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        text-decoration: none;
+      }
+      .forum-btn-action:hover {
+        background: #d4af37;
+        color: #121212;
+      }
+      .forum-unavailable-box {
+        background: rgba(245, 158, 11, 0.06);
+        border: 1px dashed rgba(245, 158, 11, 0.25);
+        border-radius: 9px;
+        padding: 10px 14px;
+        margin-top: 8px;
+        margin-bottom: 6px;
+      }
+      .forum-unavailable-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #fbbf24;
+      }
+      .forum-unavailable-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #fbbf24;
+      }
+      .forum-unavailable-reason {
+        font-size: 11px;
+        color: #aaa;
+        margin-top: 4px;
+        margin-left: 22px;
+        line-height: 1.4;
+      }
+
+      /* Legacy Forum Card & Open Button Fallback */
       .forum-card {
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1372,6 +1602,7 @@
 
         <div class="tab-content active" id="tab-forums">
           <div id="forum-filter-bar"></div>
+          <div id="forum-controls-bar"></div>
           <div id="forum-list-container">
             <div class="loading-text">Memuat forum aktif...</div>
           </div>
@@ -1520,11 +1751,13 @@
         const cachedCourses = userCache?.courses || stored.mentari_cached_courses || [];
         const cachedForums = userCache?.forums || stored.mentari_cached_forums || [];
         const cachedEvals = userCache?.evaluations || [];
+        this.courseForumsMeta = userCache?.courseForumsMeta || {};
+        this._lastSyncedAt = userCache?.lastSyncedAt || userCache?.updatedAt || null;
         if (cachedCourses.length > 0) {
           this.courses = cachedCourses;
           this._renderCourses(cachedCourses);
         }
-        if (cachedForums.length > 0) {
+        if (cachedForums.length > 0 || Object.keys(this.courseForumsMeta).length > 0 || cachedCourses.length > 0) {
           this.activeForums = cachedForums;
           this._renderForums(cachedForums, cachedCourses);
         }
@@ -1570,6 +1803,66 @@
     _isForumDone(f) {
       return Boolean(f.completion === true || f.answered === true);
     }
+    _computeUnavailableRanges(meetingNums) {
+      if (!meetingNums || meetingNums.length === 0) return [];
+      const sorted = Array.from(new Set(meetingNums)).sort((a, b) => a - b);
+      const ranges = [];
+      let rangeStart = sorted[0];
+      let rangeEnd = sorted[0];
+      for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i];
+        if (current === rangeEnd + 1) {
+          rangeEnd = current;
+        } else {
+          ranges.push({
+            start: rangeStart,
+            end: rangeEnd,
+            text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`,
+            reason: "Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka"
+          });
+          rangeStart = current;
+          rangeEnd = current;
+        }
+      }
+      ranges.push({
+        start: rangeStart,
+        end: rangeEnd,
+        text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`,
+        reason: "Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka"
+      });
+      return ranges;
+    }
+    _formatLastSyncTime() {
+      if (!this._lastSyncedAt) {
+        return `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span>Belum sinkron</span>
+      `;
+      }
+      const diffSec = Math.floor((Date.now() - this._lastSyncedAt) / 1e3);
+      let timeLabel = "";
+      if (diffSec < 45) {
+        timeLabel = "Baru saja";
+      } else if (diffSec < 3600) {
+        const min = Math.floor(diffSec / 60);
+        timeLabel = `${min} menit lalu`;
+      } else {
+        const d = new Date(this._lastSyncedAt);
+        const hours = String(d.getHours()).padStart(2, "0");
+        const mins = String(d.getMinutes()).padStart(2, "0");
+        timeLabel = `Pukul ${hours}:${mins}`;
+      }
+      return `
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.7;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+      <span>Sinkron: ${timeLabel}</span>
+    `;
+    }
     _renderForumFilterPills(forums) {
       const filterBar = this.shadow?.getElementById("forum-filter-bar");
       if (!filterBar) return;
@@ -1598,67 +1891,330 @@
       });
       filterBar.appendChild(pills);
     }
+    _renderForumControls() {
+      const controlsBar = this.shadow?.getElementById("forum-controls-bar");
+      if (!controlsBar) return;
+      let controlsWrap = controlsBar.querySelector(".forum-controls");
+      if (!controlsWrap) {
+        controlsBar.innerHTML = `
+        <div class="forum-controls">
+          <div class="forum-search-wrap">
+            <svg class="forum-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" class="forum-search-input" id="forum-search-input" placeholder="Cari forum diskusi, mata kuliah, pertemuan..." value="${this.forumSearchQuery}">
+            <button class="forum-search-clear" id="forum-search-clear" title="Hapus pencarian">&times;</button>
+          </div>
+          <div class="forum-filter-actions">
+            <button class="forum-toggle-all-btn" id="forum-toggle-all-btn" title="Buka / Tutup Semua Accordion">
+              <svg id="forum-toggle-all-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+              </svg>
+              <span id="forum-toggle-all-text">Buka Semua</span>
+            </button>
+            <button class="forum-toggle-all-btn" id="forum-refresh-status-btn" title="Periksa dan Sinkronkan Status Forum Diskusi dari Server UNPAM">
+              <svg id="forum-refresh-status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span id="forum-refresh-status-text">Periksa Status</span>
+            </button>
+            <div class="forum-sync-time" id="forum-sync-time" title="Waktu sinkronisasi status terakhir dengan server UNPAM">
+              ${this._formatLastSyncTime()}
+            </div>
+          </div>
+        </div>
+      `;
+        const searchInput = controlsBar.querySelector("#forum-search-input");
+        const clearBtn = controlsBar.querySelector("#forum-search-clear");
+        const toggleAllBtn = controlsBar.querySelector("#forum-toggle-all-btn");
+        const refreshStatusBtn = controlsBar.querySelector("#forum-refresh-status-btn");
+        const refreshIcon = controlsBar.querySelector("#forum-refresh-status-icon");
+        const refreshText = controlsBar.querySelector("#forum-refresh-status-text");
+        if (this.forumSearchQuery) {
+          clearBtn.style.display = "block";
+        }
+        searchInput.addEventListener("input", (e) => {
+          this.forumSearchQuery = e.target.value.trim().toLowerCase();
+          clearBtn.style.display = this.forumSearchQuery ? "block" : "none";
+          this._renderForums(this.activeForums, this.courses);
+        });
+        clearBtn.addEventListener("click", () => {
+          searchInput.value = "";
+          this.forumSearchQuery = "";
+          this.expandedForumCourses.clear();
+          clearBtn.style.display = "none";
+          searchInput.focus();
+          this._renderForums(this.activeForums, this.courses);
+        });
+        toggleAllBtn.addEventListener("click", () => {
+          this._handleToggleAllForumCourses();
+        });
+        if (refreshStatusBtn) {
+          refreshStatusBtn.addEventListener("click", async () => {
+            if (this._isRefreshingForums) return;
+            this._isRefreshingForums = true;
+            refreshStatusBtn.disabled = true;
+            if (refreshIcon) refreshIcon.classList.add("spin-animation");
+            if (refreshText) refreshText.textContent = "Memeriksa...";
+            Toast.info("Memeriksa status forum diskusi terbaru langsung dari server UNPAM...");
+            try {
+              this._currentFetchPromise = null;
+              await this._loadCoursesAndForums();
+              Toast.success("Status forum diskusi berhasil disinkronkan dengan server UNPAM!");
+            } catch (err) {
+              console.error("[Mentari] Gagal sinkronisasi status forum:", err);
+              Toast.error("Gagal memperbarui status forum dari server. Silakan coba lagi.");
+            } finally {
+              this._isRefreshingForums = false;
+              refreshStatusBtn.disabled = false;
+              if (refreshIcon) refreshIcon.classList.remove("spin-animation");
+              if (refreshText) refreshText.textContent = "Periksa Status";
+            }
+          });
+        }
+      } else {
+        const timeEl = controlsBar.querySelector("#forum-sync-time");
+        if (timeEl) {
+          timeEl.innerHTML = this._formatLastSyncTime();
+        }
+      }
+      this._updateForumToggleAllBtn();
+    }
+    _handleToggleAllForumCourses() {
+      if (!this._visibleForumCourseCodes || this._visibleForumCourseCodes.length === 0) return;
+      const allExpanded = this._visibleForumCourseCodes.every((code) => this.expandedForumCourses.has(code));
+      if (allExpanded) {
+        this._visibleForumCourseCodes.forEach((code) => this.expandedForumCourses.delete(code));
+      } else {
+        this._visibleForumCourseCodes.forEach((code) => this.expandedForumCourses.add(code));
+      }
+      this._userModifiedForumAccordion = true;
+      this._renderForums(this.activeForums, this.courses);
+    }
+    _updateForumToggleAllBtn() {
+      const toggleBtn = this.shadow?.getElementById("forum-toggle-all-btn");
+      const toggleText = this.shadow?.getElementById("forum-toggle-all-text");
+      const toggleIcon = this.shadow?.getElementById("forum-toggle-all-icon");
+      if (!toggleBtn || !toggleText || !this._visibleForumCourseCodes) return;
+      const hasCourses = this._visibleForumCourseCodes.length > 0;
+      const allExpanded = hasCourses && this._visibleForumCourseCodes.every((code) => this.expandedForumCourses.has(code));
+      toggleText.textContent = allExpanded ? "Tutup Semua" : "Buka Semua";
+      if (toggleIcon) {
+        toggleIcon.innerHTML = allExpanded ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>' : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
+      }
+    }
     _renderForums(forumItems, coursesFallback = []) {
       const forumContainer = this.shadow?.getElementById("forum-list-container");
       if (!forumContainer) return;
-      if (forumItems && forumItems.length > 0) {
-        this._renderForumFilterPills(forumItems);
-      }
+      this._renderForumFilterPills(forumItems || []);
+      this._renderForumControls();
       forumContainer.innerHTML = "";
-      if (!forumItems || forumItems.length === 0) {
-        if (coursesFallback && coursesFallback.length > 0) {
-          coursesFallback.forEach((c) => {
-            const courseCode = c.kode_course || c.kode || c.course_code || c.id;
-            const courseTitle = c.nama_mata_kuliah || c.coursename || c.name || "Mata Kuliah";
-            const item = document.createElement("div");
-            item.className = "forum-card";
-            item.innerHTML = `
-            <div>
-              <div class="forum-title">${courseTitle}</div>
-              <div class="forum-course">Buka kelas untuk memeriksa forum diskusi</div>
-            </div>
-            <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Lihat Kelas</a>
-          `;
-            forumContainer.appendChild(item);
+      const allCourses = this.courses && this.courses.length > 0 ? this.courses : coursesFallback;
+      if ((!allCourses || allCourses.length === 0) && (!forumItems || forumItems.length === 0)) {
+        forumContainer.innerHTML = '<div class="empty-state">Tidak ada data forum atau mata kuliah aktif saat ini.</div>';
+        this._visibleForumCourseCodes = [];
+        this._updateForumToggleAllBtn();
+        return;
+      }
+      const courseMap = /* @__PURE__ */ new Map();
+      if (allCourses && allCourses.length > 0) {
+        allCourses.forEach((c) => {
+          const code = c.kode_course || c.kode || c.course_code || c.id;
+          const title = c.nama_mata_kuliah || c.coursename || c.name || "Mata Kuliah";
+          if (code && !courseMap.has(code)) {
+            courseMap.set(code, { courseCode: code, courseTitle: title, items: [] });
+          }
+        });
+      }
+      if (forumItems && forumItems.length > 0) {
+        forumItems.forEach((f) => {
+          if (!courseMap.has(f.courseCode)) {
+            courseMap.set(f.courseCode, {
+              courseCode: f.courseCode,
+              courseTitle: f.courseTitle || "Mata Kuliah",
+              items: []
+            });
+          }
+          courseMap.get(f.courseCode).items.push(f);
+        });
+      }
+      for (const [code, cData] of courseMap.entries()) {
+        cData.items.sort((a, b) => {
+          const aNum = a.meetingNum || 0;
+          const bNum = b.meetingNum || 0;
+          if (aNum !== bNum) return aNum - bNum;
+          return (a.sectionName || "").localeCompare(b.sectionName || "");
+        });
+      }
+      const visibleCourseCodes = [];
+      const q = (this.forumSearchQuery || "").toLowerCase();
+      for (const [code, cData] of courseMap.entries()) {
+        const allCourseItems = cData.items;
+        const meta = this.courseForumsMeta[code] || {};
+        const unavailableRanges = meta.unavailableRanges || [];
+        let filteredCourseItems = allCourseItems;
+        if (this.forumFilter === "pending") {
+          filteredCourseItems = allCourseItems.filter((f) => !this._isForumDone(f));
+          if (filteredCourseItems.length === 0) continue;
+        } else if (this.forumFilter === "done") {
+          filteredCourseItems = allCourseItems.filter((f) => this._isForumDone(f));
+          if (filteredCourseItems.length === 0) continue;
+        }
+        if (q) {
+          const titleMatches = cData.courseTitle.toLowerCase().includes(q) || code.toLowerCase().includes(q);
+          const matchingItems = filteredCourseItems.filter((f) => {
+            const fn = (f.forumName || "").toLowerCase();
+            const sn = (f.sectionName || "").toLowerCase();
+            return fn.includes(q) || sn.includes(q);
+          });
+          const matchingRanges = unavailableRanges.filter((r) => r.text.toLowerCase().includes(q));
+          if (!titleMatches && matchingItems.length === 0 && matchingRanges.length === 0) {
+            continue;
+          }
+          if (!titleMatches && matchingItems.length > 0) {
+            filteredCourseItems = matchingItems;
+          }
+        }
+        visibleCourseCodes.push(code);
+      }
+      this._visibleForumCourseCodes = visibleCourseCodes;
+      if (visibleCourseCodes.length === 0) {
+        this._updateForumToggleAllBtn();
+        if (this.forumSearchQuery || this.forumFilter !== "all") {
+          forumContainer.innerHTML = `
+          <div class="empty-state">
+            <p>Tidak ada forum yang cocok dengan pencarian atau filter yang dipilih.</p>
+            <button class="btn-config" id="btn-reset-forum-filters" style="margin-top:12px;">Reset Filter & Pencarian</button>
+          </div>
+        `;
+          forumContainer.querySelector("#btn-reset-forum-filters")?.addEventListener("click", () => {
+            this.forumSearchQuery = "";
+            this.forumFilter = "all";
+            this.expandedForumCourses.clear();
+            const input = this.shadow?.getElementById("forum-search-input");
+            if (input) input.value = "";
+            const clear = this.shadow?.getElementById("forum-search-clear");
+            if (clear) clear.style.display = "none";
+            this._renderForums(this.activeForums, this.courses);
           });
         } else {
           forumContainer.innerHTML = '<div class="empty-state">Tidak ada forum aktif saat ini.</div>';
         }
         return;
       }
-      const sorted = [...forumItems].sort((a, b) => {
-        const aDone = this._isForumDone(a) ? 1 : 0;
-        const bDone = this._isForumDone(b) ? 1 : 0;
-        return aDone - bDone;
-      });
-      let filtered = sorted;
-      if (this.forumFilter === "pending") {
-        filtered = sorted.filter((f) => !this._isForumDone(f));
-      } else if (this.forumFilter === "done") {
-        filtered = sorted.filter((f) => this._isForumDone(f));
+      if (this.forumSearchQuery) {
+        visibleCourseCodes.forEach((c) => this.expandedForumCourses.add(c));
       }
-      if (filtered.length === 0) {
-        const filterLabel = this.forumFilter === "pending" ? "belum dijawab" : "sudah dijawab";
-        forumContainer.innerHTML = `<div class="empty-state">Tidak ada forum yang ${filterLabel}.</div>`;
-        return;
-      }
-      filtered.forEach((f) => {
-        const item = document.createElement("div");
-        item.className = "forum-card";
-        const isDone = this._isForumDone(f);
-        const statusBadge = isDone ? '<span class="badge badge-done">Sudah Dijawab</span>' : '<span class="badge badge-pending">Belum Dijawab</span>';
-        item.innerHTML = `
-        <div>
-          <div class="forum-title" style="display:flex; align-items:center; gap:4px;">
-            ${f.courseTitle}
-            ${statusBadge}
-          </div>
-          <div class="forum-course">${f.sectionName} &bull; ${f.forumName}</div>
+      for (const code of visibleCourseCodes) {
+        const cData = courseMap.get(code);
+        const allCourseItems = cData.items;
+        const meta = this.courseForumsMeta[code] || {};
+        const unavailableRanges = meta.unavailableRanges || [];
+        let displayItems = allCourseItems;
+        if (this.forumFilter === "pending") {
+          displayItems = allCourseItems.filter((f) => !this._isForumDone(f));
+        } else if (this.forumFilter === "done") {
+          displayItems = allCourseItems.filter((f) => this._isForumDone(f));
+        }
+        if (q) {
+          const titleMatches = cData.courseTitle.toLowerCase().includes(q) || code.toLowerCase().includes(q);
+          if (!titleMatches) {
+            displayItems = displayItems.filter((f) => {
+              const fn = (f.forumName || "").toLowerCase();
+              const sn = (f.sectionName || "").toLowerCase();
+              return fn.includes(q) || sn.includes(q);
+            });
+          }
+        }
+        const pendingInCourse = allCourseItems.filter((f) => !this._isForumDone(f)).length;
+        const isExpanded = this.expandedForumCourses.has(code);
+        const card = document.createElement("div");
+        card.className = "forum-course-card";
+        card.dataset.course = code;
+        const header = document.createElement("div");
+        header.className = "forum-accordion-header";
+        header.dataset.course = code;
+        header.innerHTML = `
+        <div class="forum-accordion-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d4af37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span title="${cData.courseTitle}">${cData.courseTitle}</span>
         </div>
-        <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
+        <div class="forum-accordion-meta">
+          ${allCourseItems.length === 0 ? `<span class="badge" style="background:rgba(245,158,11,0.12); color:#fbbf24;">0 Forum Aktif</span>` : pendingInCourse > 0 ? `<span class="badge badge-pending">${pendingInCourse} Belum</span>` : `<span class="badge badge-done">Selesai Semua</span>`}
+          <span class="badge" style="background:rgba(255,255,255,0.06); color:#aaa;">${allCourseItems.length} Forum</span>
+          <svg class="forum-accordion-chevron ${isExpanded ? "open" : ""}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
       `;
-        forumContainer.appendChild(item);
-      });
+        const content = document.createElement("div");
+        content.className = `forum-accordion-content ${isExpanded ? "open" : ""}`;
+        displayItems.forEach((f) => {
+          const isDone = this._isForumDone(f);
+          const itemDiv = document.createElement("div");
+          itemDiv.className = "forum-item";
+          itemDiv.innerHTML = `
+          <div class="forum-item-info">
+            <div class="forum-item-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isDone ? "#10b981" : "#f59e0b"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>${f.sectionName} &bull; ${f.forumName}</span>
+              ${isDone ? '<span class="badge badge-done">Sudah Dijawab</span>' : '<span class="badge badge-pending">Belum Dijawab</span>'}
+            </div>
+            <div class="forum-item-meta">${f.courseTitle} &bull; ${f.sectionName}</div>
+          </div>
+          <a class="forum-btn-action" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
+        `;
+          content.appendChild(itemDiv);
+        });
+        if (this.forumFilter === "all" && unavailableRanges.length > 0) {
+          unavailableRanges.forEach((range) => {
+            const unDiv = document.createElement("div");
+            unDiv.className = "forum-unavailable-box";
+            unDiv.innerHTML = `
+            <div class="forum-unavailable-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span class="forum-unavailable-title">${range.text} Belum Tersedia</span>
+            </div>
+            <div class="forum-unavailable-reason">
+              Alasan: ${range.reason}
+            </div>
+          `;
+            content.appendChild(unDiv);
+          });
+        } else if (displayItems.length === 0 && unavailableRanges.length === 0) {
+          content.innerHTML = `<div style="font-size:12px; color:#888; padding:8px 4px;">Tidak ada forum untuk mata kuliah ini.</div>`;
+        }
+        header.addEventListener("click", () => {
+          this._userModifiedForumAccordion = true;
+          const isCurrentlyOpen = content.classList.contains("open");
+          forumContainer.querySelectorAll(".forum-course-card").forEach((otherCard) => {
+            otherCard.querySelector(".forum-accordion-content")?.classList.remove("open");
+            otherCard.querySelector(".forum-accordion-chevron")?.classList.remove("open");
+          });
+          this.expandedForumCourses.clear();
+          if (!isCurrentlyOpen) {
+            content.classList.add("open");
+            header.querySelector(".forum-accordion-chevron")?.classList.add("open");
+            this.expandedForumCourses.add(code);
+          }
+          this._updateForumToggleAllBtn();
+        });
+        card.appendChild(header);
+        card.appendChild(content);
+        forumContainer.appendChild(card);
+      }
+      this._updateForumToggleAllBtn();
     }
     // ─── Render: Evaluations ──────────────────────────────────────────────────────
     _renderEvalFilterPills(evals) {
@@ -2955,61 +3511,27 @@
                 if (!cRes.ok) return;
                 const cData = await cRes.json();
                 const sections = Array.isArray(cData) ? cData : cData.data || [];
+                const forumCandidates = [];
+                const knownMeetings = /* @__PURE__ */ new Set();
+                const activeMeetingNums = /* @__PURE__ */ new Set();
                 for (const section of sections) {
+                  let meetingNum = null;
+                  const match = (section.nama_section || "").match(/(?:Pertemuan|Meeting)\s*(\d+)/i);
+                  if (match) {
+                    meetingNum = parseInt(match[1], 10);
+                  } else if (typeof section.urutan === "number" && section.urutan > 0) {
+                    meetingNum = section.urutan;
+                  }
+                  if (meetingNum !== null) knownMeetings.add(meetingNum);
                   const subSections = section.sub_section || [];
-                  const sectionName = section.nama_section || `Pertemuan ${section.urutan || ""}`;
+                  const sectionName = section.nama_section || (meetingNum ? `Pertemuan ${meetingNum}` : `Pertemuan ${section.urutan || ""}`);
                   for (const sub of subSections) {
                     if (sub.kode_template === "FORUM_DISKUSI" && sub.id) {
-                      const isLmsCompleted = Boolean(sub.completion === true);
-                      let isAnswered = isLmsCompleted;
-                      let hasTopics = true;
-                      if (!isLmsCompleted) {
-                        try {
-                          const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
-                          if (topicRes.ok) {
-                            const topicData = await topicRes.json();
-                            const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
-                            hasTopics = topics.length > 0;
-                            if (hasTopics && (this._studentName || this._studentNim)) {
-                              let totalReplies = 0;
-                              const searchName = (this._studentName || "").toLowerCase();
-                              const searchNim = (this._studentNim || "").toLowerCase();
-                              for (const topic of topics) {
-                                try {
-                                  const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
-                                  if (replyRes.ok) {
-                                    const replyData = await replyRes.json();
-                                    const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
-                                    const myReplies = replies.filter((r) => {
-                                      const rName = (r.fullname || r.nama || "").toLowerCase();
-                                      const rNim = (r.nim || r.username || "").toLowerCase();
-                                      return searchName && rName.includes(searchName) || searchNim && rNim === searchNim;
-                                    });
-                                    totalReplies += myReplies.length;
-                                  }
-                                } catch {
-                                }
-                                if (totalReplies >= 2) {
-                                  isAnswered = true;
-                                  break;
-                                }
-                              }
-                            }
-                          }
-                        } catch {
-                        }
-                      }
-                      if (hasTopics) {
-                        forumItems.push({
-                          courseCode,
-                          courseTitle,
-                          sectionName,
-                          forumId: sub.id,
-                          forumName: sub.nama_sub_section || sub.judul || "Forum Diskusi",
-                          completion: isLmsCompleted,
-                          answered: isAnswered
-                        });
-                      }
+                      forumCandidates.push({
+                        sub,
+                        meetingNum,
+                        sectionName
+                      });
                     }
                     if (["PRE_TEST", "POST_TEST", "KUESIONER"].includes(sub.kode_template) && sub.id) {
                       const isLocked = !!(sub.warningAlert && sub.warningAlert.length > 0);
@@ -3033,6 +3555,80 @@
                     }
                   }
                 }
+                const courseForumItems = [];
+                await Promise.allSettled(forumCandidates.map(async (fc) => {
+                  const { sub, meetingNum, sectionName } = fc;
+                  const isLmsCompleted = Boolean(sub.completion === true);
+                  let isAnswered = isLmsCompleted;
+                  let hasTopics = true;
+                  if (!isLmsCompleted) {
+                    try {
+                      const topicRes = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${sub.id}`, options);
+                      if (topicRes.ok) {
+                        const topicData = await topicRes.json();
+                        const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
+                        hasTopics = topics.length > 0;
+                        if (hasTopics && (this._studentName || this._studentNim)) {
+                          const searchName = (this._studentName || "").toLowerCase();
+                          const searchNim = (this._studentNim || "").toLowerCase();
+                          const replyResults = await Promise.allSettled(topics.map(async (topic) => {
+                            try {
+                              const replyRes = await fetch(`https://mentari.unpam.ac.id/api/forum/reply/${topic.id}`, options);
+                              if (replyRes.ok) {
+                                const replyData = await replyRes.json();
+                                const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
+                                return replies.filter((r) => {
+                                  const rName = (r.fullname || r.nama || "").toLowerCase();
+                                  const rNim = (r.nim || r.username || "").toLowerCase();
+                                  return searchName && rName.includes(searchName) || searchNim && rNim === searchNim;
+                                }).length;
+                              }
+                            } catch {
+                            }
+                            return 0;
+                          }));
+                          let totalReplies = 0;
+                          for (const r of replyResults) {
+                            if (r.status === "fulfilled") {
+                              totalReplies += r.value;
+                            }
+                          }
+                          if (totalReplies >= 2) {
+                            isAnswered = true;
+                          }
+                        }
+                      }
+                    } catch {
+                    }
+                  }
+                  if (hasTopics) {
+                    if (meetingNum !== null) activeMeetingNums.add(meetingNum);
+                    courseForumItems.push({
+                      courseCode,
+                      courseTitle,
+                      sectionName,
+                      meetingNum,
+                      forumId: sub.id,
+                      forumName: sub.nama_sub_section || sub.judul || "Forum Diskusi",
+                      completion: isLmsCompleted,
+                      answered: isAnswered
+                    });
+                  }
+                }));
+                const unavailableMeetings = [];
+                for (const mNum of knownMeetings) {
+                  if (!activeMeetingNums.has(mNum)) {
+                    unavailableMeetings.push(mNum);
+                  }
+                }
+                const unavailableRanges = this._computeUnavailableRanges(unavailableMeetings);
+                this.courseForumsMeta[courseCode] = {
+                  courseTitle,
+                  totalSections: sections.length,
+                  activeCount: courseForumItems.length,
+                  unavailableRanges
+                };
+                forumItems.push(...courseForumItems);
               } catch (err) {
               }
             }));
@@ -3044,6 +3640,7 @@
           }
           this.activeForums = forumItems;
           this.evaluations = evalItems;
+          this._lastSyncedAt = Date.now();
           if (this.isOpen) {
             this._renderForums(forumItems, list);
             this._renderEvaluations(evalItems);
@@ -3056,6 +3653,8 @@
               courses: list,
               forums: forumItems,
               evaluations: evalItems,
+              courseForumsMeta: this.courseForumsMeta,
+              lastSyncedAt: this._lastSyncedAt,
               updatedAt: Date.now()
             },
             mentari_cached_courses: list,
