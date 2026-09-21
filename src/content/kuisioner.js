@@ -22,6 +22,7 @@ class KuisionerAssistant {
   _init() {
     console.log('[Mentari Mod] Kuisioner Assistant siap.');
     this._injectFloatingCard();
+    this._checkAndInitAutoPilot();
   }
 
   _injectFloatingCard() {
@@ -39,6 +40,32 @@ class KuisionerAssistant {
     const style = document.createElement('style');
     style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+      /* Custom Modern Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(16, 185, 129, 0.35);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(16, 185, 129, 0.65);
+      }
+      ::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(16, 185, 129, 0.35) transparent;
+      }
+
       .kues-card {
         background: rgba(18, 18, 22, 0.96);
         backdrop-filter: blur(14px);
@@ -376,6 +403,165 @@ class KuisionerAssistant {
         ta.dispatchEvent(new Event('change', { bubbles: true }));
       }
     }
+  }
+
+  // ─── Auto-Pilot Kuesioner Runner ──────────────────────────────────────────────
+
+  async _checkAndInitAutoPilot() {
+    try {
+      const store = await Storage.get('mentari_auto_pilot_state');
+      const state = store?.mentari_auto_pilot_state;
+
+      if (!state || !state.active || !Array.isArray(state.queue)) {
+        return;
+      }
+
+      if (state.currentIndex >= state.queue.length) {
+        await Storage.set({
+          mentari_auto_pilot_state: { ...state, active: false, finished: true }
+        });
+        Toast.success('Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!');
+        return;
+      }
+
+      const currentItem = state.queue[state.currentIndex];
+      if (!currentItem) return;
+
+      // URL Alignment Guard
+      const urlMatch = window.location.pathname.match(/\/kuesioner\/([^\/\?]+)/);
+      const currentUrlKuesId = urlMatch ? urlMatch[1] : null;
+
+      if (currentUrlKuesId && currentItem.id && currentUrlKuesId !== currentItem.id) {
+        console.warn(`[Auto-Pilot Guard] ID kuesioner aktif (${currentUrlKuesId}) tidak cocok dengan antrean (${currentItem.id}). Redirect ke item yang benar...`);
+        window.location.replace(currentItem.url);
+        return;
+      }
+
+      // Jika item saat ini bukan kuesioner (misal kuis exam), redirect ke URL kuis
+      if (currentItem.type !== 'KUESIONER' && currentItem.url) {
+        window.location.replace(currentItem.url);
+        return;
+      }
+
+      console.log(`[Auto-Pilot] Memulai Kuesioner ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
+      this._executeAutoPilotKuesioner(state, currentItem);
+    } catch (e) {
+      console.error('[Auto-Pilot Kuesioner Error]', e);
+    }
+  }
+
+  async _executeAutoPilotKuesioner(state, currentItem) {
+    const statusText = this.shadow?.getElementById('kues-status');
+    const titleEl = this.shadow?.querySelector('.kues-title');
+    if (titleEl) {
+      titleEl.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        Auto-Pilot (${state.currentIndex + 1}/${state.queue.length})
+      `;
+    }
+    if (statusText) {
+      statusText.textContent = `Mengisi kuesioner otomatis: ${currentItem.sectionName || ''} (${currentItem.courseTitle || ''})...`;
+    }
+
+    // Berikan jeda sejenak agar DOM form kuesioner siap
+    await Humanizer.randomDelay(1200, 1800);
+
+    try {
+      // 1. Isi kuesioner dengan mode 'iya' (jawaban positif objektif standar)
+      await this.fillKuisioner('iya');
+      if (statusText) statusText.textContent = 'Kuesioner terisi. Mengirim jawaban...';
+
+      await Humanizer.randomDelay(800, 1400);
+
+      // 2. Temukan tombol Simpan / Kirim Kuesioner
+      const submitBtn = this._findSubmitButton();
+      if (submitBtn) {
+        await Humanizer.naturalClick(submitBtn);
+        // Konfirmasi modal dialog MUI jika muncul konfirmasi
+        await this._confirmDialogIfPresent();
+      }
+
+      await Humanizer.randomDelay(1200, 2000);
+
+      // 3. Update status antrean
+      state.currentIndex++;
+      await Storage.set({ mentari_auto_pilot_state: state });
+
+      // 4. Cooldown antar item
+      const cooldown = state.cooldownSec || 15;
+      for (let s = cooldown; s > 0; s--) {
+        const curStore = await Storage.get('mentari_auto_pilot_state');
+        if (!curStore?.mentari_auto_pilot_state?.active) {
+          if (statusText) statusText.textContent = 'Auto-Pilot dibatalkan.';
+          return;
+        }
+        if (statusText) {
+          statusText.textContent = `Kuesioner selesai! Istirahat ${s} detik sebelum lanjut...`;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      // 5. Lanjut ke item berikutnya
+      if (state.currentIndex < state.queue.length) {
+        const nextItem = state.queue[state.currentIndex];
+        if (statusText) statusText.textContent = `Menuju ke: ${nextItem.name || nextItem.sectionName}...`;
+        setTimeout(() => {
+          window.location.replace(nextItem.url);
+        }, 500);
+      } else {
+        // Selesai seluruh antrean
+        state.active = false;
+        state.finished = true;
+        await Storage.set({ mentari_auto_pilot_state: state });
+        if (statusText) statusText.textContent = 'Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!';
+        Toast.success('Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!');
+      }
+    } catch (err) {
+      console.error('[Auto-Pilot Kuesioner Execution Failed]', err);
+      if (statusText) statusText.textContent = `Peringatan: ${err.message}. Mencoba lanjut...`;
+      Toast.warning(`Kuesioner: ${err.message}`);
+
+      // Tetap lanjutkan antrean agar tidak stuck permanen
+      state.currentIndex++;
+      await Storage.set({ mentari_auto_pilot_state: state });
+      setTimeout(() => {
+        if (state.currentIndex < state.queue.length) {
+          window.location.replace(state.queue[state.currentIndex].url);
+        }
+      }, 3000);
+    }
+  }
+
+  _findSubmitButton() {
+    const candidates = Array.from(document.querySelectorAll('button, input[type="submit"], .MuiButton-root'));
+    const submitKeywords = ['simpan', 'kirim', 'submit', 'selesai', 'kirim kuesioner', 'kirim kuisioner'];
+
+    for (const btn of candidates) {
+      const text = (btn.textContent || btn.value || '').trim().toLowerCase();
+      if (submitKeywords.some(kw => text.includes(kw))) {
+        return btn;
+      }
+    }
+    return null;
+  }
+
+  async _confirmDialogIfPresent() {
+    await Humanizer.randomDelay(600, 1000);
+    const dialogs = document.querySelectorAll('[role="dialog"], .MuiDialog-root, .swal2-popup, .MuiModal-root');
+    for (const d of dialogs) {
+      const buttons = d.querySelectorAll('button, .MuiButton-root');
+      const confirmKeywords = ['ya', 'setuju', 'kirim', 'simpan', 'lanjutkan', 'ok', 'yes', 'benar'];
+      for (const b of buttons) {
+        const text = (b.textContent || '').trim().toLowerCase();
+        if (confirmKeywords.some(kw => text === kw || text.startsWith(kw))) {
+          await Humanizer.naturalClick(b);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }
 

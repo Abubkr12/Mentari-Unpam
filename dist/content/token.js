@@ -765,10 +765,18 @@
       this._currentFetchPromise = null;
       this._studentName = "";
       this._studentNim = "";
+      this.currentTheme = "dark";
       this._init();
     }
     async _init() {
       console.log("[Mentari Mod] Dashboard & Token Engine aktif.");
+      try {
+        const { mentari_theme } = await Storage.get("mentari_theme", { mentari_theme: "dark" });
+        if (mentari_theme === "light" || mentari_theme === "dark") {
+          this.currentTheme = mentari_theme;
+        }
+      } catch {
+      }
       UnpamAuth.installLiveSniffer();
       window.addEventListener("mentari-toggle-popup", () => {
         this.toggleModal();
@@ -788,6 +796,7 @@
       if (!this.host) {
         this._buildDashboardDOM();
       }
+      this._applyTheme(this.currentTheme);
       const overlay = this.shadow.querySelector(".overlay");
       overlay.classList.add("open");
       this.isOpen = true;
@@ -811,6 +820,58 @@
       const style = document.createElement("style");
       style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+      /* Custom Modern Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(212, 175, 55, 0.28);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(212, 175, 55, 0.55);
+      }
+      ::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(212, 175, 55, 0.3) transparent;
+      }
+
+      /* Modern Range Slider */
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        outline: none;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #d4af37;
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+        transition: transform 0.15s ease, background-color 0.15s ease;
+      }
+      input[type="range"]::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+        background: #f3cf55;
+      }
+
       .overlay {
         position: fixed;
         inset: 0;
@@ -841,6 +902,7 @@
         flex-direction: column;
         overflow: hidden;
         color: #e5e5e5;
+        position: relative;
       }
       .header {
         padding: 16px 22px;
@@ -850,6 +912,32 @@
         align-items: center;
         justify-content: space-between;
         flex-shrink: 0;
+        cursor: grab;
+        user-select: none;
+      }
+      .header:active {
+        cursor: grabbing;
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .theme-toggle-btn {
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: all 0.2s;
+      }
+      .theme-toggle-btn:hover {
+        color: #d4af37;
+        background: rgba(255, 255, 255, 0.06);
       }
       .brand {
         display: flex;
@@ -1561,12 +1649,200 @@
         color: #888;
         font-size: 13px;
       }
+
+      /* \u2500\u2500\u2500 Light Mode Overrides \u2500\u2500\u2500 */
+      .modal.theme-light {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+        color: #1e293b;
+        scrollbar-color: rgba(217, 119, 6, 0.35) transparent;
+      }
+      .modal.theme-light ::-webkit-scrollbar-thumb {
+        background: rgba(217, 119, 6, 0.35);
+      }
+      .modal.theme-light ::-webkit-scrollbar-thumb:hover {
+        background: rgba(217, 119, 6, 0.65);
+      }
+      .modal.theme-light .header {
+        background: #ffffff;
+        border-bottom-color: #e2e8f0;
+      }
+      .modal.theme-light .brand {
+        color: #0f172a;
+      }
+      .modal.theme-light .brand-badge {
+        background: rgba(217, 119, 6, 0.15);
+        color: #b45309;
+      }
+      .modal.theme-light .close-btn,
+      .modal.theme-light .theme-toggle-btn {
+        color: #64748b;
+      }
+      .modal.theme-light .close-btn:hover,
+      .modal.theme-light .theme-toggle-btn:hover {
+        color: #0f172a;
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .modal.theme-light .tabs-bar {
+        background: #f1f5f9;
+        border-bottom-color: #e2e8f0;
+      }
+      .modal.theme-light .tab-btn {
+        color: #64748b;
+      }
+      .modal.theme-light .tab-btn:hover {
+        color: #0f172a;
+        background: rgba(0, 0, 0, 0.04);
+      }
+      .modal.theme-light .tab-btn.active {
+        color: #b45309;
+        border-bottom-color: #d97706;
+        background: rgba(217, 119, 6, 0.08);
+      }
+      .modal.theme-light .filter-pill {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #64748b;
+      }
+      .modal.theme-light .filter-pill:hover {
+        background: #e2e8f0;
+        color: #1e293b;
+      }
+      .modal.theme-light .filter-pill.active {
+        background: rgba(217, 119, 6, 0.15);
+        border-color: rgba(217, 119, 6, 0.6);
+        color: #b45309;
+      }
+      .modal.theme-light .filter-pill .pill-count {
+        background: rgba(0, 0, 0, 0.08);
+      }
+      .modal.theme-light .filter-pill.active .pill-count {
+        background: rgba(217, 119, 6, 0.25);
+        color: #78350f;
+      }
+      .modal.theme-light .forum-search-input,
+      .modal.theme-light .eval-search-input,
+      .modal.theme-light .eval-type-select,
+      .modal.theme-light .select-field {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .modal.theme-light .forum-search-input:focus,
+      .modal.theme-light .eval-search-input:focus,
+      .modal.theme-light .eval-type-select:focus,
+      .modal.theme-light .select-field:focus {
+        border-color: #d97706;
+      }
+      .modal.theme-light .forum-search-icon,
+      .modal.theme-light .eval-search-icon {
+        color: #94a3b8;
+      }
+      .modal.theme-light .forum-toggle-all-btn,
+      .modal.theme-light .eval-toggle-all-btn,
+      .modal.theme-light .btn-config {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #334155;
+      }
+      .modal.theme-light .forum-toggle-all-btn:hover,
+      .modal.theme-light .eval-toggle-all-btn:hover,
+      .modal.theme-light .btn-config:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .modal.theme-light .forum-sync-time {
+        color: #64748b;
+      }
+      .modal.theme-light .forum-course-card,
+      .modal.theme-light .eval-course-card {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      }
+      .modal.theme-light .forum-accordion-header,
+      .modal.theme-light .eval-accordion-header {
+        background: #f8fafc;
+      }
+      .modal.theme-light .forum-accordion-header:hover,
+      .modal.theme-light .eval-accordion-header:hover {
+        background: #f1f5f9;
+      }
+      .modal.theme-light .forum-accordion-title,
+      .modal.theme-light .eval-accordion-title {
+        color: #0f172a;
+      }
+      .modal.theme-light .forum-accordion-meta,
+      .modal.theme-light .eval-accordion-meta {
+        color: #64748b;
+      }
+      .modal.theme-light .forum-accordion-content,
+      .modal.theme-light .eval-accordion-content {
+        border-top-color: #f1f5f9;
+      }
+      .modal.theme-light .forum-item,
+      .modal.theme-light .eval-item {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .forum-item:hover,
+      .modal.theme-light .eval-item:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+      }
+      .modal.theme-light .forum-item-title,
+      .modal.theme-light .eval-item-title {
+        color: #0f172a;
+      }
+      .modal.theme-light .forum-item-meta,
+      .modal.theme-light .eval-item-meta {
+        color: #64748b;
+      }
+      .modal.theme-light .forum-unavailable-box {
+        background: rgba(0, 0, 0, 0.02);
+        border-color: #cbd5e1;
+      }
+      .modal.theme-light .forum-unavailable-title {
+        color: #475569;
+      }
+      .modal.theme-light .forum-unavailable-reason {
+        color: #64748b;
+      }
+      .modal.theme-light .eval-summary {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .eval-stat-value {
+        color: #0f172a;
+      }
+      .modal.theme-light .eval-stat-label {
+        color: #64748b;
+      }
+      .modal.theme-light .settings-group {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .settings-item {
+        background: #f8fafc;
+        border-bottom-color: #f1f5f9;
+      }
+      .modal.theme-light .settings-info h4 {
+        color: #0f172a;
+      }
+      .modal.theme-light .settings-info p {
+        color: #64748b;
+      }
+      .modal.theme-light .empty-state,
+      .modal.theme-light .loading-text {
+        color: #64748b;
+      }
     `;
       const overlay = document.createElement("div");
       overlay.className = "overlay";
       overlay.innerHTML = `
       <div class="modal">
-        <div class="header">
+        <div class="header" id="dashboard-modal-header">
           <div class="brand">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff7b00">
               <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
@@ -1574,11 +1850,15 @@
             Mentari Mod
             <span class="brand-badge">Modern Edition</span>
           </div>
-          <button class="close-btn" id="btn-close">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <div class="header-actions">
+            <button class="theme-toggle-btn" id="btn-theme-toggle" title="Ganti Tema (Gelap / Terang)">
+            </button>
+            <button class="close-btn" id="btn-close" title="Tutup">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div class="tabs-bar">
@@ -1649,6 +1929,17 @@
                 <p>Pindai ulang token login dari sesi aktif Mentari UNPAM.</p>
               </div>
               <button class="btn-config" id="btn-refresh-token">Refresh Token</button>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-info">
+                <h4>Tema Tampilan Dashboard</h4>
+                <p>Pilih mode tampilan antarmuka Gelap (Obsidian) atau Terang (Clean Light).</p>
+              </div>
+              <select id="select-dashboard-theme" class="select-field">
+                <option value="dark">Mode Gelap (Emas & Obsidian)</option>
+                <option value="light">Mode Terang (Clean Light)</option>
+              </select>
             </div>
 
             <div class="settings-item">
@@ -1739,6 +2030,113 @@
         Storage.set({ mentari_auto_finish_quiz: toggleAutoFinish.checked });
         Toast.info(`Auto finish kuis: ${toggleAutoFinish.checked ? "Aktif" : "Nonaktif"}`);
       });
+      const btnThemeToggle = this.shadow.getElementById("btn-theme-toggle");
+      if (btnThemeToggle) {
+        btnThemeToggle.addEventListener("click", () => {
+          this.toggleTheme();
+        });
+      }
+      const selectTheme = this.shadow.getElementById("select-dashboard-theme");
+      if (selectTheme) {
+        selectTheme.value = this.currentTheme;
+        selectTheme.addEventListener("change", () => {
+          this.setTheme(selectTheme.value);
+        });
+      }
+      this._applyTheme(this.currentTheme);
+      const modalEl = this.shadow.querySelector(".modal");
+      const headerEl = this.shadow.getElementById("dashboard-modal-header");
+      if (modalEl && headerEl) {
+        this._makeElementDraggable(modalEl, headerEl);
+      }
+    }
+    _applyTheme(theme) {
+      this.currentTheme = theme === "light" ? "light" : "dark";
+      if (!this.shadow) return;
+      const modalEl = this.shadow.querySelector(".modal");
+      if (modalEl) {
+        if (this.currentTheme === "light") {
+          modalEl.classList.add("theme-light");
+        } else {
+          modalEl.classList.remove("theme-light");
+        }
+      }
+      const selectTheme = this.shadow.getElementById("select-dashboard-theme");
+      if (selectTheme && selectTheme.value !== this.currentTheme) {
+        selectTheme.value = this.currentTheme;
+      }
+      const btnToggle = this.shadow.getElementById("btn-theme-toggle");
+      if (btnToggle) {
+        if (this.currentTheme === "dark") {
+          btnToggle.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Ganti ke Mode Terang"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+        } else {
+          btnToggle.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Ganti ke Mode Gelap"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+        }
+      }
+    }
+    async toggleTheme() {
+      const nextTheme = this.currentTheme === "dark" ? "light" : "dark";
+      await this.setTheme(nextTheme);
+    }
+    async setTheme(theme) {
+      this.currentTheme = theme === "light" ? "light" : "dark";
+      await Storage.set({ mentari_theme: this.currentTheme });
+      this._applyTheme(this.currentTheme);
+      Toast.info(`Tema diubah ke: ${this.currentTheme === "light" ? "Mode Terang" : "Mode Gelap"}`);
+    }
+    _makeElementDraggable(element, handle) {
+      if (!element || !handle) return;
+      handle.style.cursor = "grab";
+      let isDragging = false;
+      let startX = 0;
+      let startY = 0;
+      let initialLeft = 0;
+      let initialTop = 0;
+      const onPointerDown = (e) => {
+        if (e.target.closest("button, input, select, a, textarea")) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = element.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        element.style.position = "fixed";
+        element.style.left = `${rect.left}px`;
+        element.style.top = `${rect.top}px`;
+        element.style.margin = "0";
+        element.style.transform = "none";
+        handle.style.cursor = "grabbing";
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch {
+        }
+      };
+      const onPointerMove = (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+        const maxLeft = Math.max(10, window.innerWidth - element.offsetWidth - 10);
+        const maxTop = Math.max(10, window.innerHeight - element.offsetHeight - 10);
+        newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+        newTop = Math.max(10, Math.min(newTop, maxTop));
+        element.style.left = `${newLeft}px`;
+        element.style.top = `${newTop}px`;
+      };
+      const onPointerUp = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        handle.style.cursor = "grab";
+        try {
+          handle.releasePointerCapture(e.pointerId);
+        } catch {
+        }
+      };
+      handle.addEventListener("pointerdown", onPointerDown);
+      handle.addEventListener("pointermove", onPointerMove);
+      handle.addEventListener("pointerup", onPointerUp);
+      handle.addEventListener("pointercancel", onPointerUp);
     }
     // ─── Cache ────────────────────────────────────────────────────────────────────
     async _renderFromCache() {
@@ -2417,7 +2815,7 @@
       if (existing) existing.remove();
       const storeComp = await Storage.get("mentari_completed_quiz_ids");
       const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
-      const pendingEvals = this.evaluations.filter((e) => !e.completion && !e.locked && (e.type === "PRE_TEST" || e.type === "POST_TEST"));
+      const pendingEvals = this.evaluations.filter((e) => !e.completion && !e.locked && (e.type === "PRE_TEST" || e.type === "POST_TEST" || e.type === "KUESIONER"));
       const coursesWithPending = [];
       const courseMap = {};
       pendingEvals.forEach((e) => {
@@ -2431,7 +2829,7 @@
         }
         courseMap[e.courseCode].count++;
       });
-      let selectedMode = "both";
+      let selectedMode = "all";
       const overlay = document.createElement("div");
       overlay.id = "mentari-autopilot-modal-overlay";
       overlay.className = "ap-overlay";
@@ -2453,8 +2851,31 @@
           from { opacity: 0; transform: scale(0.96); }
           to { opacity: 1; transform: scale(1); }
         }
+        .ap-modal *::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .ap-modal *::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .ap-modal *::-webkit-scrollbar-thumb {
+          background: rgba(212, 175, 55, 0.28);
+          border-radius: 4px;
+        }
+        .ap-modal *::-webkit-scrollbar-thumb:hover {
+          background: rgba(212, 175, 55, 0.55);
+        }
+        .ap-modal *::-webkit-scrollbar-button {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        .ap-modal * {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(212, 175, 55, 0.3) transparent;
+        }
         .ap-modal {
-          width: 630px;
+          width: 650px;
           max-width: 94vw;
           max-height: 90vh;
           background: #131317;
@@ -2465,6 +2886,7 @@
           display: flex;
           flex-direction: column;
           color: #f1f1f1;
+          position: relative;
         }
         .ap-header {
           padding: 18px 24px;
@@ -2473,6 +2895,11 @@
           display: flex;
           align-items: center;
           justify-content: space-between;
+          cursor: grab;
+          user-select: none;
+        }
+        .ap-header:active {
+          cursor: grabbing;
         }
         .ap-header-title {
           display: flex;
@@ -2510,19 +2937,6 @@
           display: flex;
           flex-direction: column;
           gap: 16px;
-        }
-        .ap-content::-webkit-scrollbar {
-          width: 5px;
-        }
-        .ap-content::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .ap-content::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.16);
-          border-radius: 4px;
-        }
-        .ap-content::-webkit-scrollbar-thumb:hover {
-          background: rgba(212, 175, 55, 0.4);
         }
         .ap-banner {
           background: rgba(212, 175, 55, 0.07);
@@ -2585,14 +2999,14 @@
         }
         .ap-mode-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 10px;
+          grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+          gap: 8px;
         }
         .ap-mode-card {
           background: #18181d;
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 11px;
-          padding: 12px 10px;
+          padding: 10px 8px;
           cursor: pointer;
           display: flex;
           flex-direction: column;
@@ -2641,23 +3055,37 @@
           flex: 1;
           height: 6px;
           -webkit-appearance: none;
+          appearance: none;
           background: rgba(255, 255, 255, 0.12);
           border-radius: 3px;
           outline: none;
-          accent-color: #fbbf24;
           cursor: pointer;
         }
         .ap-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
+          appearance: none;
           width: 16px;
           height: 16px;
           border-radius: 50%;
           background: #fbbf24;
           cursor: pointer;
-          box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
-          transition: transform 0.15s;
+          box-shadow: 0 0 10px rgba(251, 191, 36, 0.6), 0 0 2px rgba(251, 191, 36, 0.9);
+          transition: transform 0.15s ease;
         }
         .ap-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.2);
+        }
+        .ap-slider::-moz-range-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #fbbf24;
+          cursor: pointer;
+          border: none;
+          box-shadow: 0 0 10px rgba(251, 191, 36, 0.6), 0 0 2px rgba(251, 191, 36, 0.9);
+          transition: transform 0.15s ease;
+        }
+        .ap-slider::-moz-range-thumb:hover {
           transform: scale(1.2);
         }
         .ap-cooldown-badge {
@@ -2726,13 +3154,6 @@
           flex-direction: column;
           gap: 4px;
         }
-        .ap-queue-list::-webkit-scrollbar {
-          width: 5px;
-        }
-        .ap-queue-list::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 3px;
-        }
         .ap-queue-row {
           display: flex;
           align-items: center;
@@ -2777,6 +3198,11 @@
           background: rgba(16, 185, 129, 0.15);
           color: #34d399;
           border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+        .ap-type-tag.kues {
+          background: rgba(168, 85, 247, 0.15);
+          color: #c084fc;
+          border: 1px solid rgba(168, 85, 247, 0.25);
         }
         .ap-row-title {
           font-size: 12px;
@@ -2873,6 +3299,139 @@
           transform: none;
           box-shadow: none;
         }
+
+        /* \u2500\u2500\u2500 Auto-Pilot Modal Light Theme Overrides \u2500\u2500\u2500 */
+        .ap-modal.theme-light {
+          background: #ffffff;
+          color: #1e293b;
+          border-color: #cbd5e1;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+        }
+        .ap-modal.theme-light *::-webkit-scrollbar-thumb {
+          background: rgba(217, 119, 6, 0.35);
+        }
+        .ap-modal.theme-light *::-webkit-scrollbar-thumb:hover {
+          background: rgba(217, 119, 6, 0.65);
+        }
+        .ap-modal.theme-light * {
+          scrollbar-color: rgba(217, 119, 6, 0.35) transparent;
+        }
+        .ap-modal.theme-light .ap-header {
+          background: #f8fafc;
+          border-bottom-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-header-title {
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-close-btn {
+          color: #64748b;
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+        }
+        .ap-modal.theme-light .ap-close-btn:hover {
+          color: #0f172a;
+          background: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-banner {
+          background: rgba(217, 119, 6, 0.08);
+          border-color: rgba(217, 119, 6, 0.3);
+        }
+        .ap-modal.theme-light .ap-banner-text {
+          color: #334155;
+        }
+        .ap-modal.theme-light .ap-banner-text b {
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-label {
+          color: #475569;
+        }
+        .ap-modal.theme-light .ap-select {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-select option {
+          background: #ffffff;
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-mode-card {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-mode-card:hover {
+          border-color: rgba(217, 119, 6, 0.4);
+          background: #ffffff;
+        }
+        .ap-modal.theme-light .ap-mode-card.active {
+          background: rgba(217, 119, 6, 0.08);
+          border-color: #d97706;
+          box-shadow: 0 0 14px rgba(217, 119, 6, 0.15);
+        }
+        .ap-modal.theme-light .ap-mode-title {
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-mode-card.active .ap-mode-title {
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-mode-sub {
+          color: #64748b;
+        }
+        .ap-modal.theme-light .ap-slider {
+          background: rgba(0, 0, 0, 0.12);
+        }
+        .ap-modal.theme-light .ap-slider::-webkit-slider-thumb {
+          background: #d97706;
+          box-shadow: 0 0 10px rgba(217, 119, 6, 0.5);
+        }
+        .ap-modal.theme-light .ap-slider::-moz-range-thumb {
+          background: #d97706;
+          box-shadow: 0 0 10px rgba(217, 119, 6, 0.5);
+        }
+        .ap-modal.theme-light .ap-cooldown-badge {
+          background: #d97706;
+          color: #ffffff;
+        }
+        .ap-modal.theme-light .ap-preset-btn {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #475569;
+        }
+        .ap-modal.theme-light .ap-preset-btn:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-preset-btn.active {
+          background: rgba(217, 119, 6, 0.15);
+          border-color: rgba(217, 119, 6, 0.45);
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-queue-card {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-queue-header {
+          background: #ffffff;
+          border-bottom-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-queue-row {
+          background: #ffffff;
+          border-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-row-title {
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-footer {
+          background: #f8fafc;
+          border-top-color: #e2e8f0;
+        }
+        .ap-modal.theme-light .ap-btn-cancel {
+          border-color: #cbd5e1;
+          color: #475569;
+        }
+        .ap-modal.theme-light .ap-btn-cancel:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
       </style>
 
       <div class="ap-modal">
@@ -2896,41 +3455,55 @@
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
             <div class="ap-banner-text">
-              Otomatisasi kuis berurutan di <b>1 tab browser aktif</b> (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test otomatis dilewati jika Forum Diskusi belum selesai atau belum ada</b>.
+              Otomatisasi kuis & evaluasi berurutan di <b>1 tab browser aktif</b> (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test otomatis dilewati jika Forum Diskusi & Pre-Test pertemuan terkait belum selesai</b>.
             </div>
           </div>
 
           <div class="ap-field-group">
             <label class="ap-label">Lingkup Mata Kuliah</label>
             <select id="ap-course-select" class="ap-select">
-              <option value="all">Semua Mata Kuliah (${pendingEvals.length} Kuis Belum Selesai)</option>
-              ${coursesWithPending.map((c) => `<option value="${c.code}">${c.title} (${c.count} Kuis)</option>`).join("")}
+              <option value="all">Semua Mata Kuliah (${pendingEvals.length} Belum Selesai)</option>
+              ${coursesWithPending.map((c) => `<option value="${c.code}">${c.title} (${c.count} Item)</option>`).join("")}
             </select>
           </div>
 
           <div class="ap-field-group">
             <label class="ap-label">Pilih Mode Pengerjaan</label>
             <div class="ap-mode-grid" id="ap-mode-container">
-              <div class="ap-mode-card active" data-mode="both">
+              <div class="ap-mode-card active" data-mode="all">
                 <div class="ap-mode-title">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                  Keduanya
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                  Semua Lengkap
+                </div>
+                <div class="ap-mode-sub">Pre, Post, Kuesioner</div>
+              </div>
+              <div class="ap-mode-card" data-mode="both">
+                <div class="ap-mode-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  Kuis Saja
                 </div>
                 <div class="ap-mode-sub">Pre-Test lalu Post-Test</div>
               </div>
               <div class="ap-mode-card" data-mode="pre">
                 <div class="ap-mode-title">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                  Hanya Pre-Test
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                  Pre-Test
                 </div>
-                <div class="ap-mode-sub">Tanpa syarat forum</div>
+                <div class="ap-mode-sub">Hanya Pre-Test</div>
               </div>
               <div class="ap-mode-card" data-mode="post">
                 <div class="ap-mode-title">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                  Hanya Post-Test
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                  Post-Test
                 </div>
-                <div class="ap-mode-sub">Wajib forum tuntas</div>
+                <div class="ap-mode-sub">Wajib Forum & Pre tuntas</div>
+              </div>
+              <div class="ap-mode-card" data-mode="kuesioner">
+                <div class="ap-mode-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                  Kuesioner
+                </div>
+                <div class="ap-mode-sub">Hanya Kuesioner Dosen</div>
               </div>
             </div>
           </div>
@@ -2990,6 +3563,14 @@
       </div>
     `;
       this.shadow.appendChild(overlay);
+      const apModal = overlay.querySelector(".ap-modal");
+      const apHeader = overlay.querySelector(".ap-header");
+      if (this.currentTheme === "light") {
+        apModal?.classList.add("theme-light");
+      }
+      if (apModal && apHeader) {
+        this._makeElementDraggable(apModal, apHeader);
+      }
       const close = () => overlay.remove();
       overlay.querySelector("#btn-close-ap-modal").addEventListener("click", close);
       overlay.querySelector("#btn-cancel-ap").addEventListener("click", close);
@@ -3024,83 +3605,145 @@
           updateCooldown(btn.dataset.val);
         });
       });
+      const parseMeetingNum = (secName) => {
+        if (!secName) return 999;
+        const m = secName.match(/pertemuan\s*(\d+)/i) || secName.match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : 999;
+      };
       const calculateQueue = () => {
         const selectedCourse = courseSelect.value;
-        let candidates = this.evaluations.filter((e) => !e.completion && !e.locked);
+        let allCourseEvals = this.evaluations.filter((e) => !e.locked);
         if (selectedCourse !== "all") {
-          candidates = candidates.filter((e) => e.courseCode === selectedCourse);
+          allCourseEvals = allCourseEvals.filter((e) => e.courseCode === selectedCourse);
         }
-        const preCandidates = candidates.filter((e) => e.type === "PRE_TEST");
-        const postCandidates = candidates.filter((e) => e.type === "POST_TEST");
+        const courseGroups = {};
+        allCourseEvals.forEach((e) => {
+          if (!courseGroups[e.courseCode]) {
+            courseGroups[e.courseCode] = {
+              courseCode: e.courseCode,
+              courseTitle: e.courseTitle,
+              items: []
+            };
+          }
+          courseGroups[e.courseCode].items.push(e);
+        });
         const validQueue = [];
         const skippedList = [];
-        if (selectedMode === "both" || selectedMode === "pre") {
-          preCandidates.forEach((item) => {
-            validQueue.push({
-              id: item.subId,
-              courseCode: item.courseCode,
-              courseTitle: item.courseTitle,
-              sectionName: item.sectionName,
-              type: "PRE_TEST",
-              name: item.name,
-              url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}/exam/${item.subId}`,
-              status: "pending"
-            });
+        for (const cCode in courseGroups) {
+          const cGroup = courseGroups[cCode];
+          const meetingMap = {};
+          cGroup.items.forEach((item) => {
+            const sec = item.sectionName || "Umum";
+            if (!meetingMap[sec]) meetingMap[sec] = [];
+            meetingMap[sec].push(item);
           });
-        }
-        if (selectedMode === "both" || selectedMode === "post") {
-          postCandidates.forEach((item) => {
-            const matchingForum = (this.activeForums || []).find(
-              (f) => f.courseCode === item.courseCode && (f.sectionName === item.sectionName || f.sectionName && item.sectionName && f.sectionName.toLowerCase().trim() === item.sectionName.toLowerCase().trim())
-            );
-            const isForumDone = matchingForum && (matchingForum.completion === true || matchingForum.answered === true);
-            if (isForumDone) {
-              validQueue.push({
-                id: item.subId,
-                courseCode: item.courseCode,
-                courseTitle: item.courseTitle,
-                sectionName: item.sectionName,
-                type: "POST_TEST",
-                name: item.name,
-                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}/exam/${item.subId}`,
-                status: "pending"
-              });
-            } else {
-              const reason = matchingForum ? "Forum Diskusi belum dijawab/diselesaikan" : "Forum Diskusi belum ada/dibuat dosen";
-              skippedList.push({
-                item,
-                reason
-              });
+          const sortedMeetings = Object.keys(meetingMap).sort((a, b) => {
+            return parseMeetingNum(a) - parseMeetingNum(b);
+          });
+          for (const meetingName of sortedMeetings) {
+            const mItems = meetingMap[meetingName];
+            const preItem = mItems.find((i) => i.type === "PRE_TEST");
+            const postItem = mItems.find((i) => i.type === "POST_TEST");
+            const kuesItem = mItems.find((i) => i.type === "KUESIONER");
+            let preScheduledInQueue = false;
+            if (preItem && !preItem.completion) {
+              if (selectedMode === "all" || selectedMode === "both" || selectedMode === "pre") {
+                validQueue.push({
+                  id: preItem.subId,
+                  courseCode: preItem.courseCode,
+                  courseTitle: preItem.courseTitle,
+                  sectionName: preItem.sectionName,
+                  type: "PRE_TEST",
+                  name: preItem.name,
+                  url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(preItem.courseCode)}/exam/${preItem.subId}`,
+                  status: "pending"
+                });
+                preScheduledInQueue = true;
+              }
             }
-          });
+            if (postItem && !postItem.completion) {
+              if (selectedMode === "all" || selectedMode === "both" || selectedMode === "post") {
+                const matchingForum = (this.activeForums || []).find(
+                  (f) => f.courseCode === postItem.courseCode && (f.sectionName === postItem.sectionName || f.sectionName && postItem.sectionName && f.sectionName.toLowerCase().trim() === postItem.sectionName.toLowerCase().trim())
+                );
+                const isForumDone = matchingForum && (matchingForum.completion === true || matchingForum.answered === true);
+                const isPreDone = preItem && preItem.completion || preScheduledInQueue || !preItem;
+                if (!isForumDone) {
+                  const reason = matchingForum ? "Forum Diskusi belum dijawab/diselesaikan" : "Forum Diskusi belum ada/dibuat dosen";
+                  skippedList.push({ item: postItem, reason });
+                } else if (!isPreDone) {
+                  skippedList.push({ item: postItem, reason: "Pre-Test pertemuan ini belum diselesaikan" });
+                } else {
+                  validQueue.push({
+                    id: postItem.subId,
+                    courseCode: postItem.courseCode,
+                    courseTitle: postItem.courseTitle,
+                    sectionName: postItem.sectionName,
+                    type: "POST_TEST",
+                    name: postItem.name,
+                    url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(postItem.courseCode)}/exam/${postItem.subId}`,
+                    status: "pending"
+                  });
+                }
+              }
+            }
+            if (kuesItem && !kuesItem.completion) {
+              if (selectedMode === "all" || selectedMode === "kuesioner") {
+                validQueue.push({
+                  id: kuesItem.subId,
+                  courseCode: kuesItem.courseCode,
+                  courseTitle: kuesItem.courseTitle,
+                  sectionName: kuesItem.sectionName,
+                  type: "KUESIONER",
+                  name: kuesItem.name,
+                  url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(kuesItem.courseCode)}/kuesioner/${kuesItem.subId}`,
+                  status: "pending"
+                });
+              }
+            }
+          }
         }
-        queueCount.textContent = `${validQueue.length} Kuis Terjadwal`;
+        queueCount.textContent = `${validQueue.length} Item Terjadwal`;
         if (validQueue.length === 0) {
-          queueList.innerHTML = `<div style="color:#777; text-align:center; padding:16px; font-size:12px;">Tidak ada kuis yang memenuhi syarat untuk dijalankan pada mode ini.</div>`;
+          queueList.innerHTML = `<div style="color:#777; text-align:center; padding:16px; font-size:12px;">Tidak ada kuis/evaluasi yang memenuhi syarat untuk dijalankan pada mode ini.</div>`;
           btnStart.disabled = true;
         } else {
           btnStart.disabled = false;
-          queueList.innerHTML = validQueue.map((q, idx) => `
+          queueList.innerHTML = validQueue.map((q, idx) => {
+            let typeClass = "pre";
+            let typeLabel = "Pre-Test";
+            let statusLabel = "Siap";
+            if (q.type === "POST_TEST") {
+              typeClass = "post";
+              typeLabel = "Post-Test";
+              statusLabel = "Syarat Terpenuhi";
+            } else if (q.type === "KUESIONER") {
+              typeClass = "kues";
+              typeLabel = "Kuesioner";
+              statusLabel = "Siap Diisi";
+            }
+            return `
           <div class="ap-queue-row">
             <div class="ap-row-left">
               <span class="ap-row-num">${idx + 1}.</span>
-              <span class="ap-type-tag ${q.type === "PRE_TEST" ? "pre" : "post"}">
-                ${q.type === "PRE_TEST" ? "Pre-Test" : "Post-Test"}
+              <span class="ap-type-tag ${typeClass}">
+                ${typeLabel}
               </span>
               <span class="ap-row-title" title="${q.courseTitle} - ${q.sectionName}">
                 <b>${q.sectionName}:</b> ${q.courseTitle}
               </span>
             </div>
-            <span class="ap-row-status">${q.type === "POST_TEST" ? "Forum Selesai" : "Siap"}</span>
+            <span class="ap-row-status">${statusLabel}</span>
           </div>
-        `).join("");
+          `;
+          }).join("");
         }
         if (skippedList.length > 0) {
           skippedBox.style.display = "flex";
           skippedBox.innerHTML = `
           <div class="ap-skipped-header">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            ${skippedList.length} Post-Test dilewati (Prasyarat Forum Diskusi belum terpenuhi):
+            ${skippedList.length} Post-Test dilewati (Prasyarat Forum Diskusi / Pre-Test belum terpenuhi):
           </div>
           <div class="ap-skipped-list">
             ${skippedList.map((s) => `

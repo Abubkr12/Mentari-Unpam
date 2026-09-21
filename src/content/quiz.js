@@ -106,10 +106,32 @@ class QuizAssistant {
         gap: 10px;
         min-width: 250px;
       }
+      /* Custom Modern Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(212, 175, 55, 0.35);
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(212, 175, 55, 0.6);
+      }
+      ::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
       .quiz-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        cursor: grab;
+        user-select: none;
       }
       .quiz-title {
         font-size: 13px;
@@ -212,6 +234,8 @@ class QuizAssistant {
     this.shadow.appendChild(style);
     this.shadow.appendChild(card);
     document.body.appendChild(host);
+
+    this._makeElementDraggable(host, card.querySelector('.quiz-header'));
 
     const selectModel = this.shadow.getElementById('quiz-select-model');
     const btnSingle = this.shadow.getElementById('btn-single');
@@ -945,10 +969,32 @@ class QuizAssistant {
         width: 330px;
         max-width: 90vw;
       }
+      /* Custom Modern Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(212, 175, 55, 0.35);
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(212, 175, 55, 0.6);
+      }
+      ::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
       .hud-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        cursor: grab;
+        user-select: none;
       }
       .hud-brand {
         display: flex;
@@ -1013,6 +1059,10 @@ class QuizAssistant {
       .hud-tag.post {
         background: rgba(16, 185, 129, 0.2);
         color: #34d399;
+      }
+      .hud-tag.kues {
+        background: rgba(234, 179, 8, 0.2);
+        color: #facc15;
       }
       .hud-progress-wrap {
         display: flex;
@@ -1128,8 +1178,8 @@ class QuizAssistant {
       <div class="hud-body">
         <div class="hud-title" title="${currentItem.courseTitle}">${currentItem.courseTitle}</div>
         <div class="hud-subtitle">
-          <span class="hud-tag ${currentItem.type === 'PRE_TEST' ? 'pre' : 'post'}">
-            ${currentItem.type === 'PRE_TEST' ? 'Pre-Test' : 'Post-Test'}
+          <span class="hud-tag ${currentItem.type === 'PRE_TEST' ? 'pre' : (currentItem.type === 'POST_TEST' ? 'post' : 'kues')}">
+            ${currentItem.type === 'PRE_TEST' ? 'Pre-Test' : (currentItem.type === 'POST_TEST' ? 'Post-Test' : 'Kuesioner')}
           </span>
           <span>${currentItem.sectionName}</span>
           <select class="hud-model-select" id="hud-select-model" title="Ganti Model AI Saat Ini">
@@ -1165,6 +1215,8 @@ class QuizAssistant {
     this.hudShadow.appendChild(style);
     this.hudShadow.appendChild(hudCard);
     document.body.appendChild(this.hudHost);
+
+    this._makeElementDraggable(this.hudHost, hudCard.querySelector('.hud-header'));
 
     const statusEl = this.hudShadow.getElementById('hud-status-text');
     const badgeEl = this.hudShadow.getElementById('hud-badge');
@@ -1586,6 +1638,75 @@ class QuizAssistant {
     }
 
     return 0; // Default ke opsi pertama jika ambigu
+  }
+
+  _makeElementDraggable(element, handle) {
+    if (!element || !handle) return;
+    handle.style.cursor = 'grab';
+
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
+
+    const onPointerDown = (e) => {
+      // Abaikan jika klik pada elemen interaktif
+      if (e.target.closest('button, input, select, a, textarea')) return;
+
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = element.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+
+      element.style.position = 'fixed';
+      element.style.left = `${rect.left}px`;
+      element.style.top = `${rect.top}px`;
+      element.style.right = 'auto';
+      element.style.bottom = 'auto';
+      element.style.margin = '0';
+      element.style.transform = 'none';
+
+      handle.style.cursor = 'grabbing';
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {}
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      let newLeft = initialLeft + dx;
+      let newTop = initialTop + dy;
+
+      const maxLeft = Math.max(10, window.innerWidth - element.offsetWidth - 10);
+      const maxTop = Math.max(10, window.innerHeight - element.offsetHeight - 10);
+
+      newLeft = Math.max(10, Math.min(newLeft, maxLeft));
+      newTop = Math.max(10, Math.min(newTop, maxTop));
+
+      element.style.left = `${newLeft}px`;
+      element.style.top = `${newTop}px`;
+    };
+
+    const onPointerUp = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      handle.style.cursor = 'grab';
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch {}
+    };
+
+    handle.addEventListener('pointerdown', onPointerDown);
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', onPointerUp);
+    handle.addEventListener('pointercancel', onPointerUp);
   }
 }
 

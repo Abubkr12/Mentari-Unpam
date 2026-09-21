@@ -750,7 +750,7 @@
      * Pengawal navigasi otomatis single-tab Auto-Pilot
      */
     async _checkAutoPilotNavigation() {
-      if (window.location.pathname.includes("/exam/")) return;
+      if (window.location.pathname.includes("/exam/") || window.location.pathname.includes("/kuesioner/")) return;
       try {
         const store = await Storage.get("mentari_auto_pilot_state");
         const state = store?.mentari_auto_pilot_state;

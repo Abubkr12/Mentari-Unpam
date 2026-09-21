@@ -249,6 +249,240 @@
   };
   var Toast = new ToastManager();
 
+  // src/utils/storage.js
+  var Storage = {
+    /**
+     * Memeriksa apakah context extension masih valid dan aktif
+     */
+    isContextValid() {
+      try {
+        return typeof chrome !== "undefined" && !!chrome.runtime && !!chrome.runtime.id;
+      } catch {
+        return false;
+      }
+    },
+    /**
+     * Mengambil satu atau beberapa nilai dari chrome.storage.local
+     */
+    async get(keys, defaults = {}) {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(keys, (result) => {
+              if (chrome.runtime?.lastError) {
+                console.log("[Storage] Info reading storage:", chrome.runtime.lastError.message);
+                resolve(this._getLocalStorageFallback(keys, defaults));
+              } else {
+                resolve(Object.assign({}, defaults, result));
+              }
+            });
+          } else {
+            resolve(this._getLocalStorageFallback(keys, defaults));
+          }
+        } catch (e) {
+          if (e.message && e.message.includes("Extension context invalidated")) {
+            console.warn("[Storage] Extension context invalidated (ekstensi baru di-reload). Menggunakan fallback lokal.");
+          } else {
+            console.error("[Storage] Get failed:", e);
+          }
+          resolve(this._getLocalStorageFallback(keys, defaults));
+        }
+      });
+    },
+    /**
+     * Menyimpan pasangan key-value ke chrome.storage.local
+     */
+    async set(items) {
+      return new Promise((resolve, reject) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set(items, () => {
+              this._setLocalStorageFallback(items);
+              resolve(true);
+            });
+          } else {
+            this._setLocalStorageFallback(items);
+            resolve(true);
+          }
+        } catch (e) {
+          this._setLocalStorageFallback(items);
+          resolve(true);
+        }
+      });
+    },
+    /**
+     * Menghapus satu atau beberapa keys dari chrome.storage.local
+     */
+    async remove(keys) {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove(keys, () => resolve(true));
+          } else {
+            const keyList = Array.isArray(keys) ? keys : [keys];
+            keyList.forEach((k) => {
+              try {
+                localStorage.removeItem(k);
+              } catch {
+              }
+            });
+            resolve(true);
+          }
+        } catch {
+          resolve(true);
+        }
+      });
+    },
+    /**
+     * Mengambil semua data dari chrome.storage.local (atau fallback localStorage)
+     */
+    async getAll() {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(null, (result) => {
+              if (chrome.runtime?.lastError) {
+                console.log("[Storage] Info reading all storage:", chrome.runtime.lastError.message);
+                resolve(this._getAllLocalStorageFallback());
+              } else {
+                resolve(result || {});
+              }
+            });
+          } else {
+            resolve(this._getAllLocalStorageFallback());
+          }
+        } catch (e) {
+          resolve(this._getAllLocalStorageFallback());
+        }
+      });
+    },
+    _getAllLocalStorageFallback() {
+      const res = {};
+      if (typeof localStorage === "undefined") return res;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        try {
+          const val = localStorage.getItem(k);
+          if (val !== null) {
+            try {
+              res[k] = JSON.parse(val);
+            } catch {
+              res[k] = val;
+            }
+          }
+        } catch {
+        }
+      }
+      return res;
+    },
+    _getLocalStorageFallback(keys, defaults = {}) {
+      const res = Object.assign({}, defaults);
+      if (typeof localStorage === "undefined") return res;
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      keyList.forEach((k) => {
+        try {
+          const val = localStorage.getItem(k);
+          if (val !== null) {
+            try {
+              res[k] = JSON.parse(val);
+            } catch {
+              res[k] = val;
+            }
+          }
+        } catch {
+        }
+      });
+      return res;
+    },
+    _setLocalStorageFallback(items) {
+      if (typeof localStorage === "undefined") return;
+      for (const [k, v] of Object.entries(items)) {
+        try {
+          localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
+        } catch {
+        }
+      }
+    },
+    /**
+     * Auto-migrasi transparan dari localStorage lama ke chrome.storage.local.
+     * Dipanggil saat ekstensi pertama kali aktif.
+     */
+    async autoMigrateLegacyStorage() {
+      try {
+        if (typeof window === "undefined" || !window.localStorage) return;
+        const { mentari_legacy_migrated } = await this.get("mentari_legacy_migrated", { mentari_legacy_migrated: false });
+        if (mentari_legacy_migrated) return;
+        const legacyKeys = [
+          "mentari_auth_token",
+          "mentari_user_info",
+          "mentari_course_data",
+          "geminiApiKey",
+          "gemini_model",
+          "gemini_quota",
+          "mentari_auto_finish_quiz",
+          "access"
+        ];
+        const validModels = [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-3-flash",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3.6-flash",
+          "gemini-3.7-flash",
+          "gemini-3.8-flash"
+        ];
+        const toMigrate = {};
+        let hasData = false;
+        const existing = await this.get(["gemini_model", "geminiApiKey"]);
+        for (const k of legacyKeys) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            try {
+              if (k === "geminiApiKey") {
+                if (!existing.geminiApiKey) {
+                  try {
+                    toMigrate[k] = atob(raw);
+                  } catch {
+                    toMigrate[k] = raw;
+                  }
+                  hasData = true;
+                }
+              } else if (k === "gemini_model") {
+                let parsedModel = raw;
+                try {
+                  parsedModel = JSON.parse(raw);
+                } catch {
+                }
+                if (!existing.gemini_model && validModels.includes(parsedModel)) {
+                  toMigrate[k] = parsedModel;
+                  hasData = true;
+                }
+              } else {
+                if (!existing[k]) {
+                  toMigrate[k] = JSON.parse(raw);
+                  hasData = true;
+                }
+              }
+            } catch {
+              if (!existing[k]) {
+                toMigrate[k] = raw;
+                hasData = true;
+              }
+            }
+          }
+        }
+        toMigrate.mentari_legacy_migrated = true;
+        await this.set(toMigrate);
+        console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
+      } catch (e) {
+        console.log("[Storage] Auto-migrasi info:", e.message);
+      }
+    }
+  };
+
   // src/content/kuisioner.js
   var KuisionerAssistant = class {
     constructor() {
@@ -259,6 +493,7 @@
     _init() {
       console.log("[Mentari Mod] Kuisioner Assistant siap.");
       this._injectFloatingCard();
+      this._checkAndInitAutoPilot();
     }
     _injectFloatingCard() {
       if (document.getElementById("mentari-kuisioner-card-host")) return;
@@ -272,6 +507,32 @@
       const style = document.createElement("style");
       style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+      /* Custom Modern Scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(16, 185, 129, 0.35);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(16, 185, 129, 0.65);
+      }
+      ::-webkit-scrollbar-button {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(16, 185, 129, 0.35) transparent;
+      }
+
       .kues-card {
         background: rgba(18, 18, 22, 0.96);
         backdrop-filter: blur(14px);
@@ -576,6 +837,132 @@
           ta.dispatchEvent(new Event("change", { bubbles: true }));
         }
       }
+    }
+    // ─── Auto-Pilot Kuesioner Runner ──────────────────────────────────────────────
+    async _checkAndInitAutoPilot() {
+      try {
+        const store = await Storage.get("mentari_auto_pilot_state");
+        const state = store?.mentari_auto_pilot_state;
+        if (!state || !state.active || !Array.isArray(state.queue)) {
+          return;
+        }
+        if (state.currentIndex >= state.queue.length) {
+          await Storage.set({
+            mentari_auto_pilot_state: { ...state, active: false, finished: true }
+          });
+          Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!");
+          return;
+        }
+        const currentItem = state.queue[state.currentIndex];
+        if (!currentItem) return;
+        const urlMatch = window.location.pathname.match(/\/kuesioner\/([^\/\?]+)/);
+        const currentUrlKuesId = urlMatch ? urlMatch[1] : null;
+        if (currentUrlKuesId && currentItem.id && currentUrlKuesId !== currentItem.id) {
+          console.warn(`[Auto-Pilot Guard] ID kuesioner aktif (${currentUrlKuesId}) tidak cocok dengan antrean (${currentItem.id}). Redirect ke item yang benar...`);
+          window.location.replace(currentItem.url);
+          return;
+        }
+        if (currentItem.type !== "KUESIONER" && currentItem.url) {
+          window.location.replace(currentItem.url);
+          return;
+        }
+        console.log(`[Auto-Pilot] Memulai Kuesioner ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
+        this._executeAutoPilotKuesioner(state, currentItem);
+      } catch (e) {
+        console.error("[Auto-Pilot Kuesioner Error]", e);
+      }
+    }
+    async _executeAutoPilotKuesioner(state, currentItem) {
+      const statusText = this.shadow?.getElementById("kues-status");
+      const titleEl = this.shadow?.querySelector(".kues-title");
+      if (titleEl) {
+        titleEl.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+        Auto-Pilot (${state.currentIndex + 1}/${state.queue.length})
+      `;
+      }
+      if (statusText) {
+        statusText.textContent = `Mengisi kuesioner otomatis: ${currentItem.sectionName || ""} (${currentItem.courseTitle || ""})...`;
+      }
+      await Humanizer.randomDelay(1200, 1800);
+      try {
+        await this.fillKuisioner("iya");
+        if (statusText) statusText.textContent = "Kuesioner terisi. Mengirim jawaban...";
+        await Humanizer.randomDelay(800, 1400);
+        const submitBtn = this._findSubmitButton();
+        if (submitBtn) {
+          await Humanizer.naturalClick(submitBtn);
+          await this._confirmDialogIfPresent();
+        }
+        await Humanizer.randomDelay(1200, 2e3);
+        state.currentIndex++;
+        await Storage.set({ mentari_auto_pilot_state: state });
+        const cooldown = state.cooldownSec || 15;
+        for (let s = cooldown; s > 0; s--) {
+          const curStore = await Storage.get("mentari_auto_pilot_state");
+          if (!curStore?.mentari_auto_pilot_state?.active) {
+            if (statusText) statusText.textContent = "Auto-Pilot dibatalkan.";
+            return;
+          }
+          if (statusText) {
+            statusText.textContent = `Kuesioner selesai! Istirahat ${s} detik sebelum lanjut...`;
+          }
+          await new Promise((r) => setTimeout(r, 1e3));
+        }
+        if (state.currentIndex < state.queue.length) {
+          const nextItem = state.queue[state.currentIndex];
+          if (statusText) statusText.textContent = `Menuju ke: ${nextItem.name || nextItem.sectionName}...`;
+          setTimeout(() => {
+            window.location.replace(nextItem.url);
+          }, 500);
+        } else {
+          state.active = false;
+          state.finished = true;
+          await Storage.set({ mentari_auto_pilot_state: state });
+          if (statusText) statusText.textContent = "Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!";
+          Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!");
+        }
+      } catch (err) {
+        console.error("[Auto-Pilot Kuesioner Execution Failed]", err);
+        if (statusText) statusText.textContent = `Peringatan: ${err.message}. Mencoba lanjut...`;
+        Toast.warning(`Kuesioner: ${err.message}`);
+        state.currentIndex++;
+        await Storage.set({ mentari_auto_pilot_state: state });
+        setTimeout(() => {
+          if (state.currentIndex < state.queue.length) {
+            window.location.replace(state.queue[state.currentIndex].url);
+          }
+        }, 3e3);
+      }
+    }
+    _findSubmitButton() {
+      const candidates = Array.from(document.querySelectorAll('button, input[type="submit"], .MuiButton-root'));
+      const submitKeywords = ["simpan", "kirim", "submit", "selesai", "kirim kuesioner", "kirim kuisioner"];
+      for (const btn of candidates) {
+        const text = (btn.textContent || btn.value || "").trim().toLowerCase();
+        if (submitKeywords.some((kw) => text.includes(kw))) {
+          return btn;
+        }
+      }
+      return null;
+    }
+    async _confirmDialogIfPresent() {
+      await Humanizer.randomDelay(600, 1e3);
+      const dialogs = document.querySelectorAll('[role="dialog"], .MuiDialog-root, .swal2-popup, .MuiModal-root');
+      for (const d of dialogs) {
+        const buttons = d.querySelectorAll("button, .MuiButton-root");
+        const confirmKeywords = ["ya", "setuju", "kirim", "simpan", "lanjutkan", "ok", "yes", "benar"];
+        for (const b of buttons) {
+          const text = (b.textContent || "").trim().toLowerCase();
+          if (confirmKeywords.some((kw) => text === kw || text.startsWith(kw))) {
+            await Humanizer.naturalClick(b);
+            return true;
+          }
+        }
+      }
+      return false;
     }
   };
   if (typeof window !== "undefined") {

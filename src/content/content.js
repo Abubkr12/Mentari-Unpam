@@ -278,8 +278,8 @@ class MentariContentEntry {
    * Pengawal navigasi otomatis single-tab Auto-Pilot
    */
   async _checkAutoPilotNavigation() {
-    // Jangan tangani jika saat ini sudah berada di halaman exam (dikelola oleh quiz.js)
-    if (window.location.pathname.includes('/exam/')) return;
+    // Jangan tangani jika saat ini sudah berada di halaman exam atau kuesioner (dikelola oleh quiz.js / kuisioner.js)
+    if (window.location.pathname.includes('/exam/') || window.location.pathname.includes('/kuesioner/')) return;
 
     try {
       const store = await Storage.get('mentari_auto_pilot_state');
