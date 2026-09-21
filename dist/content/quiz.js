@@ -865,7 +865,11 @@
      */
     _getExamNavigationStatus() {
       const navHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
-      const navHeader = navHeaders.find((el) => (el.textContent || "").trim().toLowerCase() === "navigasi soal");
+      const navKeywords = ["navigasi soal", "navigasi kuis", "quiz navigation", "nomor soal", "daftar soal"];
+      const navHeader = navHeaders.find((el) => {
+        const t = (el.textContent || "").trim().toLowerCase();
+        return navKeywords.some((kw) => t === kw || t.startsWith(kw));
+      });
       if (!navHeader) return null;
       const navContainer = navHeader.closest(".MuiPaper-root, .MuiBox-root, aside, div");
       if (!navContainer) return null;
@@ -880,7 +884,7 @@
         const isCurrent = btn.classList.contains("active") || btn.classList.contains("Mui-selected") || Boolean(btn.style.border && btn.style.border.length > 0);
         const style = window.getComputedStyle(btn);
         const bg = style.backgroundColor || "";
-        const isAnswered = bg.includes("46, 125, 50") || bg.includes("76, 175, 80") || bg.includes("green") || btn.classList.contains("answered") || btn.classList.contains("completed");
+        const isAnswered = bg.includes("46, 125, 50") || bg.includes("76, 175, 80") || bg.includes("green") || btn.classList.contains("answered") || btn.classList.contains("completed") || btn.className.toLowerCase().includes("success");
         return { num, btn, isAnswered, isCurrent };
       });
       const unanswered = questions.filter((q) => !q.isAnswered);
@@ -897,19 +901,6 @@
      */
     _checkIfExamAlreadyCompleted() {
       const domInfo = this._extractExamTitleAndTypeFromDOM();
-      const pageText = (document.body?.innerText || "").toLowerCase();
-      const hasActiveTimer = pageText.includes("waktu tersisa") || pageText.includes("sisa waktu") || pageText.includes("time remaining");
-      const hasUnansweredBadge = pageText.includes("belum dijawab");
-      const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
-      const hasActiveRadios = activeRadios.length > 0;
-      if (hasActiveTimer || hasUnansweredBadge || hasActiveRadios) {
-        return {
-          isCompleted: false,
-          reason: "",
-          detectedType: domInfo.detectedType,
-          title: domInfo.cleanTitle
-        };
-      }
       const completedKeywords = [
         "quiz sudah selesai",
         "kuis sudah selesai",
@@ -928,6 +919,7 @@
         "percobaan 1 dari 1"
       ];
       const allHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
+      let explicitCompletion = null;
       for (const el of allHeaders) {
         if (el.closest("#mentari-autopilot-hud-host") || el.closest("#mentari-quiz-control-host") || el.closest("#mentari-token-mod-host") || el.closest(".mentari-toast-container")) {
           continue;
@@ -935,17 +927,35 @@
         const t = (el.textContent || "").trim().toLowerCase();
         for (const kw of completedKeywords) {
           if (t.includes(kw)) {
-            return {
+            explicitCompletion = {
               isCompleted: true,
               reason: `Teks '${kw}' terdeteksi pada layar`,
               detectedType: domInfo.detectedType,
               title: domInfo.cleanTitle
             };
+            break;
           }
         }
+        if (explicitCompletion) break;
+      }
+      const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
+      const hasActiveRadios = activeRadios.length > 0;
+      const pageText = (document.body?.innerText || "").toLowerCase();
+      const hasActiveTimer = pageText.includes("waktu tersisa") || pageText.includes("sisa waktu") || pageText.includes("time remaining");
+      const hasUnansweredBadge = pageText.includes("belum dijawab");
+      if (!explicitCompletion && (hasActiveTimer || hasUnansweredBadge || hasActiveRadios)) {
+        return {
+          isCompleted: false,
+          reason: "",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+      if (explicitCompletion && !hasActiveRadios) {
+        return explicitCompletion;
       }
       const scoreTable = document.querySelector("table.MuiTable-root, .hasil-ujian, .skor-container");
-      if (scoreTable) {
+      if (scoreTable && !hasActiveRadios) {
         const tableText = (scoreTable.textContent || "").toLowerCase();
         if (tableText.includes("nilai") || tableText.includes("skor") || tableText.includes("grade") || tableText.includes("selesai")) {
           return {
@@ -1080,10 +1090,28 @@
     /**
      * Cari tombol konfirmasi modal / dialog MUI ("Ya", "Mulai", "Lanjutkan")
      */
-    _findDialogConfirmButton(excludeBtn = null) {
+    _findDialogConfirmButton(excludeBtn = null, extraKeywords = null) {
       const dialog = document.querySelector('.MuiDialog-root, [role="dialog"], .MuiModal-root, .modal');
       if (!dialog) return null;
-      const confirmKeywords = ["ya", "mulai", "start", "ok", "setuju", "kerjakan", "lanjutkan", "ya, mulai", "mulai quiz", "mulai kuis"];
+      const defaultKeywords = [
+        "ya",
+        "mulai",
+        "start",
+        "ok",
+        "setuju",
+        "kerjakan",
+        "lanjutkan",
+        "ya, mulai",
+        "mulai quiz",
+        "mulai kuis",
+        "kumpulkan",
+        "selesaikan",
+        "ya, selesaikan",
+        "akhiri",
+        "submit",
+        "kirim"
+      ];
+      const confirmKeywords = Array.isArray(extraKeywords) ? [...defaultKeywords, ...extraKeywords] : defaultKeywords;
       const confirmBtn = DOM.findButtonByText(confirmKeywords, dialog);
       if (confirmBtn && confirmBtn !== excludeBtn) {
         return confirmBtn;
@@ -1613,6 +1641,8 @@
         Toast.warning("Auto-Pilot dijeda: Kuis belum sepenuhnya selesai diserahkan. Periksa halaman kuis.");
         this.isRunning = false;
         this.isPaused = true;
+        state.paused = true;
+        await Storage.set({ mentari_auto_pilot_state: state });
         if (badgeEl) {
           badgeEl.className = "hud-badge paused";
           badgeEl.textContent = "Perlu Cek";

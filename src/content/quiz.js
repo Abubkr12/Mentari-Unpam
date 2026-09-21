@@ -369,7 +369,11 @@ class QuizAssistant {
    */
   _getExamNavigationStatus() {
     const navHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div'));
-    const navHeader = navHeaders.find(el => (el.textContent || '').trim().toLowerCase() === 'navigasi soal');
+    const navKeywords = ['navigasi soal', 'navigasi kuis', 'quiz navigation', 'nomor soal', 'daftar soal'];
+    const navHeader = navHeaders.find(el => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      return navKeywords.some(kw => t === kw || t.startsWith(kw));
+    });
     if (!navHeader) return null;
 
     const navContainer = navHeader.closest('.MuiPaper-root, .MuiBox-root, aside, div');
@@ -393,7 +397,8 @@ class QuizAssistant {
                          bg.includes('76, 175, 80') ||
                          bg.includes('green') ||
                          btn.classList.contains('answered') ||
-                         btn.classList.contains('completed');
+                         btn.classList.contains('completed') ||
+                         btn.className.toLowerCase().includes('success');
       return { num, btn, isAnswered, isCurrent };
     });
 
@@ -413,27 +418,7 @@ class QuizAssistant {
   _checkIfExamAlreadyCompleted() {
     const domInfo = this._extractExamTitleAndTypeFromDOM();
 
-    // 0. ABSOLUTE ACTIVE EXAM OVERRIDE (VETO):
-    // Jika kuis sedang aktif dikerjakan (ada timer countdown, badge belum dijawab, atau radio aktif),
-    // kuis TIDAK MUNGKIN sudah selesai! Mencegah false positive fatal di tengah pengerjaan soal.
-    const pageText = (document.body?.innerText || '').toLowerCase();
-    const hasActiveTimer = pageText.includes('waktu tersisa') || pageText.includes('sisa waktu') || pageText.includes('time remaining');
-    const hasUnansweredBadge = pageText.includes('belum dijawab');
-    const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
-    const hasActiveRadios = activeRadios.length > 0;
-
-    // Jika timer countdown sedang berdetak ATAU terdapat badge 'belum dijawab' ATAU ada radio button aktif,
-    // ini 100% kuis yang sedang AKTIF berjalan!
-    if (hasActiveTimer || hasUnansweredBadge || hasActiveRadios) {
-      return {
-        isCompleted: false,
-        reason: '',
-        detectedType: domInfo.detectedType,
-        title: domInfo.cleanTitle
-      };
-    }
-
-    // 1. Cek teks eksplisit penyelesaian kuis pada heading atau elemen teks (HANYA jika tidak ada timer aktif)
+    // 1. Cek teks eksplisit penyelesaian kuis pada heading atau elemen teks
     const completedKeywords = [
       'quiz sudah selesai',
       'kuis sudah selesai',
@@ -453,6 +438,7 @@ class QuizAssistant {
     ];
 
     const allHeaders = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div'));
+    let explicitCompletion = null;
     for (const el of allHeaders) {
       if (el.closest('#mentari-autopilot-hud-host') ||
           el.closest('#mentari-quiz-control-host') ||
@@ -463,19 +449,46 @@ class QuizAssistant {
       const t = (el.textContent || '').trim().toLowerCase();
       for (const kw of completedKeywords) {
         if (t.includes(kw)) {
-          return {
+          explicitCompletion = {
             isCompleted: true,
             reason: `Teks '${kw}' terdeteksi pada layar`,
             detectedType: domInfo.detectedType,
             title: domInfo.cleanTitle
           };
+          break;
         }
       }
+      if (explicitCompletion) break;
     }
 
-    // 2. Cek elemen tabel skor / riwayat nilai
+    // 2. ACTIVE EXAM VETO (OVERRIDE MUTLAK):
+    // Jika ada radio button aktif yang BELUM disabled, ATAU timer countdown aktif, ATAU badge 'belum dijawab'
+    // DAN tidak ada heading eksplisit bahwa kuis sudah selesai:
+    // Kuis 100% PASTI AKTIF! Mencegah false positive fatal di tengah pengerjaan soal (?page=1, ?page=2, dst).
+    const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
+    const hasActiveRadios = activeRadios.length > 0;
+
+    const pageText = (document.body?.innerText || '').toLowerCase();
+    const hasActiveTimer = pageText.includes('waktu tersisa') || pageText.includes('sisa waktu') || pageText.includes('time remaining');
+    const hasUnansweredBadge = pageText.includes('belum dijawab');
+
+    if (!explicitCompletion && (hasActiveTimer || hasUnansweredBadge || hasActiveRadios)) {
+      return {
+        isCompleted: false,
+        reason: '',
+        detectedType: domInfo.detectedType,
+        title: domInfo.cleanTitle
+      };
+    }
+
+    // Jika ada heading selesai dan TIDAK ADA radio aktif yang bisa diklik, kuis dipastikan telah selesai
+    if (explicitCompletion && !hasActiveRadios) {
+      return explicitCompletion;
+    }
+
+    // 3. Cek elemen tabel skor / riwayat nilai (jika tidak ada radio aktif)
     const scoreTable = document.querySelector('table.MuiTable-root, .hasil-ujian, .skor-container');
-    if (scoreTable) {
+    if (scoreTable && !hasActiveRadios) {
       const tableText = (scoreTable.textContent || '').toLowerCase();
       if (tableText.includes('nilai') || tableText.includes('skor') || tableText.includes('grade') || tableText.includes('selesai')) {
         return {
@@ -487,7 +500,7 @@ class QuizAssistant {
       }
     }
 
-    // 3. Deteksi seluruh radio button disabled (Read-only review mode)
+    // 4. Deteksi seluruh radio button disabled (Read-only review mode)
     const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
     if (radioInputs.length > 0 && radioInputs.every(r => r.disabled || r.getAttribute('aria-disabled') === 'true')) {
       return {
@@ -614,11 +627,16 @@ class QuizAssistant {
   /**
    * Cari tombol konfirmasi modal / dialog MUI ("Ya", "Mulai", "Lanjutkan")
    */
-  _findDialogConfirmButton(excludeBtn = null) {
+  _findDialogConfirmButton(excludeBtn = null, extraKeywords = null) {
     const dialog = document.querySelector('.MuiDialog-root, [role="dialog"], .MuiModal-root, .modal');
     if (!dialog) return null;
 
-    const confirmKeywords = ['ya', 'mulai', 'start', 'ok', 'setuju', 'kerjakan', 'lanjutkan', 'ya, mulai', 'mulai quiz', 'mulai kuis'];
+    const defaultKeywords = [
+      'ya', 'mulai', 'start', 'ok', 'setuju', 'kerjakan', 'lanjutkan',
+      'ya, mulai', 'mulai quiz', 'mulai kuis',
+      'kumpulkan', 'selesaikan', 'ya, selesaikan', 'akhiri', 'submit', 'kirim'
+    ];
+    const confirmKeywords = Array.isArray(extraKeywords) ? [...defaultKeywords, ...extraKeywords] : defaultKeywords;
     const confirmBtn = DOM.findButtonByText(confirmKeywords, dialog);
     if (confirmBtn && confirmBtn !== excludeBtn) {
       return confirmBtn;
@@ -1221,6 +1239,8 @@ class QuizAssistant {
       Toast.warning('Auto-Pilot dijeda: Kuis belum sepenuhnya selesai diserahkan. Periksa halaman kuis.');
       this.isRunning = false;
       this.isPaused = true;
+      state.paused = true;
+      await Storage.set({ mentari_auto_pilot_state: state });
       if (badgeEl) {
         badgeEl.className = 'hud-badge paused';
         badgeEl.textContent = 'Perlu Cek';
