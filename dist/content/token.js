@@ -1786,83 +1786,547 @@
         }
         courseMap[e.courseCode].count++;
       });
+      let selectedMode = "both";
       const overlay = document.createElement("div");
       overlay.id = "mentari-autopilot-modal-overlay";
-      overlay.className = "overlay open";
-      overlay.style.zIndex = "2147483645";
+      overlay.className = "ap-overlay";
       overlay.innerHTML = `
-      <div class="modal" style="width: 590px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
-        <div class="header">
-          <div class="header-title" style="color: #fbbf24;">
+      <style>
+        .ap-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.82);
+          backdrop-filter: blur(14px);
+          z-index: 2147483645;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          animation: apFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes apFadeIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .ap-modal {
+          width: 630px;
+          max-width: 94vw;
+          max-height: 90vh;
+          background: #131317;
+          border: 1px solid rgba(212, 175, 55, 0.4);
+          border-radius: 18px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(212, 175, 55, 0.12);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          color: #f1f1f1;
+        }
+        .ap-header {
+          padding: 18px 24px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .ap-header-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 15px;
+          font-weight: 700;
+          color: #fbbf24;
+          letter-spacing: 0.3px;
+        }
+        .ap-header-title svg {
+          color: #d4af37;
+          filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.5));
+        }
+        .ap-close-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          color: #999;
+          cursor: pointer;
+          padding: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .ap-close-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .ap-content {
+          padding: 20px 24px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .ap-content::-webkit-scrollbar {
+          width: 5px;
+        }
+        .ap-content::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .ap-content::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.16);
+          border-radius: 4px;
+        }
+        .ap-content::-webkit-scrollbar-thumb:hover {
+          background: rgba(212, 175, 55, 0.4);
+        }
+        .ap-banner {
+          background: rgba(212, 175, 55, 0.07);
+          border: 1px solid rgba(212, 175, 55, 0.28);
+          border-radius: 12px;
+          padding: 12px 16px;
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+        .ap-banner-icon {
+          color: #fbbf24;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .ap-banner-text {
+          font-size: 12px;
+          line-height: 1.55;
+          color: #d1d5db;
+        }
+        .ap-banner-text b {
+          color: #fbbf24;
+        }
+        .ap-field-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .ap-label {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          color: #9ca3af;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .ap-select {
+          width: 100%;
+          background: #1b1b20;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 10px;
+          color: #f3f4f6;
+          padding: 10px 14px;
+          font-size: 13px;
+          outline: none;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        .ap-select:focus {
+          border-color: #d4af37;
+          box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2);
+        }
+        .ap-select option {
+          background: #18181c;
+          color: #fff;
+          padding: 8px;
+        }
+        .ap-mode-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+        }
+        .ap-mode-card {
+          background: #18181d;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 11px;
+          padding: 12px 10px;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          gap: 4px;
+          transition: all 0.2s;
+          user-select: none;
+        }
+        .ap-mode-card:hover {
+          border-color: rgba(212, 175, 55, 0.3);
+          background: rgba(255, 255, 255, 0.03);
+        }
+        .ap-mode-card.active {
+          background: rgba(212, 175, 55, 0.1);
+          border-color: #fbbf24;
+          box-shadow: 0 0 14px rgba(212, 175, 55, 0.15);
+        }
+        .ap-mode-title {
+          font-size: 12px;
+          font-weight: 700;
+          color: #f3f4f6;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .ap-mode-card.active .ap-mode-title {
+          color: #fbbf24;
+        }
+        .ap-mode-sub {
+          font-size: 10px;
+          color: #888;
+          line-height: 1.3;
+        }
+        .ap-cooldown-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .ap-slider-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .ap-slider {
+          flex: 1;
+          height: 6px;
+          -webkit-appearance: none;
+          background: rgba(255, 255, 255, 0.12);
+          border-radius: 3px;
+          outline: none;
+          accent-color: #fbbf24;
+          cursor: pointer;
+        }
+        .ap-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #fbbf24;
+          cursor: pointer;
+          box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+          transition: transform 0.15s;
+        }
+        .ap-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.2);
+        }
+        .ap-cooldown-badge {
+          font-size: 12px;
+          font-weight: 700;
+          color: #111;
+          background: #fbbf24;
+          padding: 3px 9px;
+          border-radius: 6px;
+          white-space: nowrap;
+          font-family: monospace;
+        }
+        .ap-presets {
+          display: flex;
+          gap: 6px;
+        }
+        .ap-preset-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 6px;
+          color: #aaa;
+          font-size: 11px;
+          padding: 4px 9px;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .ap-preset-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #fff;
+        }
+        .ap-preset-btn.active {
+          background: rgba(212, 175, 55, 0.18);
+          border-color: rgba(212, 175, 55, 0.45);
+          color: #fbbf24;
+        }
+        .ap-queue-card {
+          background: #17171c;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .ap-queue-header {
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.02);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .ap-queue-count-badge {
+          font-size: 11px;
+          font-weight: 700;
+          color: #38bdf8;
+          background: rgba(56, 189, 248, 0.12);
+          border: 1px solid rgba(56, 189, 248, 0.25);
+          padding: 2px 8px;
+          border-radius: 6px;
+        }
+        .ap-queue-list {
+          max-height: 190px;
+          overflow-y: auto;
+          padding: 6px 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .ap-queue-list::-webkit-scrollbar {
+          width: 5px;
+        }
+        .ap-queue-list::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 3px;
+        }
+        .ap-queue-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 10px;
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.04);
+          transition: background 0.15s;
+        }
+        .ap-queue-row:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+        .ap-row-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .ap-row-num {
+          font-family: monospace;
+          font-size: 11px;
+          color: #777;
+          width: 18px;
+          flex-shrink: 0;
+        }
+        .ap-type-tag {
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 5px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          flex-shrink: 0;
+        }
+        .ap-type-tag.pre {
+          background: rgba(59, 130, 246, 0.15);
+          color: #60a5fa;
+          border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+        .ap-type-tag.post {
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+          border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+        .ap-row-title {
+          font-size: 12px;
+          color: #e5e7eb;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 330px;
+        }
+        .ap-row-status {
+          font-size: 10px;
+          color: #10b981;
+          font-weight: 600;
+          background: rgba(16, 185, 129, 0.08);
+          padding: 2px 6px;
+          border-radius: 4px;
+          flex-shrink: 0;
+        }
+        .ap-skipped-box {
+          margin-top: 6px;
+          padding: 10px 12px;
+          background: rgba(239, 68, 68, 0.07);
+          border: 1px solid rgba(239, 68, 68, 0.25);
+          border-radius: 8px;
+          font-size: 11px;
+          color: #fca5a5;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .ap-skipped-header {
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: #f87171;
+        }
+        .ap-skipped-list {
+          max-height: 80px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding-left: 16px;
+        }
+        .ap-footer {
+          padding: 16px 24px;
+          background: rgba(0, 0, 0, 0.35);
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 12px;
+        }
+        .ap-btn-cancel {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          color: #bbb;
+          padding: 10px 18px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .ap-btn-cancel:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #fff;
+          border-color: rgba(255, 255, 255, 0.25);
+        }
+        .ap-btn-start {
+          background: linear-gradient(135deg, #d4af37 0%, #f59e0b 100%);
+          color: #111;
+          border: none;
+          padding: 10px 22px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 800;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.2s;
+          box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
+        }
+        .ap-btn-start:hover {
+          background: linear-gradient(135deg, #e6be40 0%, #fbbf24 100%);
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+        }
+        .ap-btn-start:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+      </style>
+
+      <div class="ap-modal">
+        <div class="ap-header">
+          <div class="ap-header-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
             Auto-Pilot Kuis Batch (Single-Tab)
           </div>
-          <button class="close-btn" id="btn-close-ap-modal" aria-label="Tutup">
+          <button class="ap-close-btn" id="btn-close-ap-modal" aria-label="Tutup">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
         </div>
 
-        <div class="content" style="overflow-y: auto; padding: 20px; gap: 14px;">
-          <div class="info-box" style="border-color: rgba(212, 175, 55, 0.3); background: rgba(212, 175, 55, 0.05);">
-            <div style="font-weight: 700; color: #fbbf24; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>
-              </svg>
-              Pengerjaan Kuis Otomatis 1 Tab Murni
-            </div>
-            Kuis dikerjakan berurutan secara otomatis dalam <b>1 tab yang sama</b> tanpa pernah membuka tab baru (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test hanya dapat dikerjakan jika Forum Diskusi pada pertemuan tersebut sudah diselesaikan</b>.
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div class="form-group">
-              <label class="label">Lingkup Mata Kuliah</label>
-              <select id="ap-course-select" class="eval-type-select" style="width: 100%; height: 38px; padding: 6px 10px; font-size: 12px;">
-                <option value="all">Semua Mata Kuliah (${pendingEvals.length} Kuis)</option>
-                ${coursesWithPending.map((c) => `<option value="${c.code}">${c.title} (${c.count} Kuis)</option>`).join("")}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="label">Mode Pengerjaan</label>
-              <select id="ap-mode-select" class="eval-type-select" style="width: 100%; height: 38px; padding: 6px 10px; font-size: 12px;">
-                <option value="both">Keduanya (Pre-Test lalu Post-Test)</option>
-                <option value="pre">Hanya Pre-Test</option>
-                <option value="post">Hanya Post-Test (Wajib Cek Forum)</option>
-              </select>
+        <div class="ap-content">
+          <div class="ap-banner">
+            <svg class="ap-banner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <div class="ap-banner-text">
+              Otomatisasi kuis berurutan di <b>1 tab browser aktif</b> (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test otomatis dilewati jika Forum Diskusi belum selesai atau belum ada</b>.
             </div>
           </div>
 
-          <div class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <label class="label">Inter-Quiz Cooldown (Jeda Istirahat)</label>
-              <span id="ap-cooldown-display" style="font-size: 12px; font-weight: 700; color: #fbbf24;">15 detik</span>
-            </div>
-            <input type="range" id="ap-cooldown-slider" min="10" max="60" value="15" step="5" style="width: 100%; accent-color: #d4af37; cursor: pointer;">
-            <div style="font-size: 11px; color: #888; margin-top: 4px;">
-              Jeda istirahat di akhir setiap kuis untuk mensimulasikan jeda alami manusia dan menghindari pendeteksi bot velocity kampus.
+          <div class="ap-field-group">
+            <label class="ap-label">Lingkup Mata Kuliah</label>
+            <select id="ap-course-select" class="ap-select">
+              <option value="all">Semua Mata Kuliah (${pendingEvals.length} Kuis Belum Selesai)</option>
+              ${coursesWithPending.map((c) => `<option value="${c.code}">${c.title} (${c.count} Kuis)</option>`).join("")}
+            </select>
+          </div>
+
+          <div class="ap-field-group">
+            <label class="ap-label">Pilih Mode Pengerjaan</label>
+            <div class="ap-mode-grid" id="ap-mode-container">
+              <div class="ap-mode-card active" data-mode="both">
+                <div class="ap-mode-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  Keduanya
+                </div>
+                <div class="ap-mode-sub">Pre-Test lalu Post-Test</div>
+              </div>
+              <div class="ap-mode-card" data-mode="pre">
+                <div class="ap-mode-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                  Hanya Pre-Test
+                </div>
+                <div class="ap-mode-sub">Tanpa syarat forum</div>
+              </div>
+              <div class="ap-mode-card" data-mode="post">
+                <div class="ap-mode-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                  Hanya Post-Test
+                </div>
+                <div class="ap-mode-sub">Wajib forum tuntas</div>
+              </div>
             </div>
           </div>
 
-          <div class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <label class="label">Pratinjau Antrean Eksekusi</label>
-              <span id="ap-queue-count" style="font-size: 11px; font-weight: 700; color: #38bdf8;">0 Kuis Terjadwal</span>
+          <div class="ap-field-group ap-cooldown-wrap">
+            <div class="ap-label">
+              <span>Inter-Quiz Cooldown (Jeda Istirahat)</span>
+              <span id="ap-cooldown-display" class="ap-cooldown-badge">15 detik</span>
             </div>
-            <div id="ap-queue-preview-list" style="max-height: 180px; overflow-y: auto; background: #16161a; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+            <div class="ap-slider-row">
+              <input type="range" id="ap-cooldown-slider" class="ap-slider" min="10" max="60" value="15" step="5">
+              <div class="ap-presets">
+                <button class="ap-preset-btn" data-val="10">10s</button>
+                <button class="ap-preset-btn active" data-val="15">15s</button>
+                <button class="ap-preset-btn" data-val="25">25s</button>
+                <button class="ap-preset-btn" data-val="40">40s</button>
+              </div>
             </div>
-            <div id="ap-skipped-box" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; font-size: 11px; color: #fca5a5;">
+            <div style="font-size: 11px; color: #888;">
+              Jeda istirahat acak di akhir kuis untuk mensimulasikan tempo manusia dan menghindari deteksi bot.
+            </div>
+          </div>
+
+          <div class="ap-field-group">
+            <div class="ap-queue-card">
+              <div class="ap-queue-header">
+                <span class="ap-label" style="color:#ddd; margin:0;">Pratinjau Antrean Eksekusi</span>
+                <span id="ap-queue-count" class="ap-queue-count-badge">0 Kuis Terjadwal</span>
+              </div>
+              <div id="ap-queue-preview-list" class="ap-queue-list">
+              </div>
+            </div>
+            <div id="ap-skipped-box" class="ap-skipped-box" style="display: none;">
             </div>
           </div>
         </div>
 
-        <div class="footer" style="padding: 14px 20px;">
-          <button class="btn btn-cancel" id="btn-cancel-ap">Batal</button>
-          <button class="btn btn-save" id="btn-start-ap" style="background: #fbbf24; color: #121212; font-weight: 700;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="ap-footer">
+          <button class="ap-btn-cancel" id="btn-cancel-ap">Batal</button>
+          <button class="ap-btn-start" id="btn-start-ap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
             Mulai Auto-Pilot (1 Tab)
@@ -1878,19 +2342,35 @@
         if (e.target === overlay) close();
       });
       const courseSelect = overlay.querySelector("#ap-course-select");
-      const modeSelect = overlay.querySelector("#ap-mode-select");
+      const modeCards = overlay.querySelectorAll(".ap-mode-card");
       const cooldownSlider = overlay.querySelector("#ap-cooldown-slider");
       const cooldownDisplay = overlay.querySelector("#ap-cooldown-display");
+      const presetBtns = overlay.querySelectorAll(".ap-preset-btn");
       const queueList = overlay.querySelector("#ap-queue-preview-list");
       const queueCount = overlay.querySelector("#ap-queue-count");
       const skippedBox = overlay.querySelector("#ap-skipped-box");
       const btnStart = overlay.querySelector("#btn-start-ap");
+      const updateCooldown = (val) => {
+        cooldownSlider.value = val;
+        cooldownDisplay.textContent = `${val} detik`;
+        presetBtns.forEach((b) => {
+          if (parseInt(b.dataset.val, 10) === parseInt(val, 10)) {
+            b.classList.add("active");
+          } else {
+            b.classList.remove("active");
+          }
+        });
+      };
       cooldownSlider.addEventListener("input", (e) => {
-        cooldownDisplay.textContent = `${e.target.value} detik`;
+        updateCooldown(e.target.value);
+      });
+      presetBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          updateCooldown(btn.dataset.val);
+        });
       });
       const calculateQueue = () => {
         const selectedCourse = courseSelect.value;
-        const selectedMode = modeSelect.value;
         let candidates = this.evaluations.filter((e) => !e.completion && !e.locked);
         if (selectedCourse !== "all") {
           candidates = candidates.filter((e) => e.courseCode === selectedCourse);
@@ -1941,33 +2421,33 @@
         }
         queueCount.textContent = `${validQueue.length} Kuis Terjadwal`;
         if (validQueue.length === 0) {
-          queueList.innerHTML = `<div style="color:#777; text-align:center; padding:12px;">Tidak ada kuis yang memenuhi syarat untuk dijalankan.</div>`;
+          queueList.innerHTML = `<div style="color:#777; text-align:center; padding:16px; font-size:12px;">Tidak ada kuis yang memenuhi syarat untuk dijalankan pada mode ini.</div>`;
           btnStart.disabled = true;
         } else {
           btnStart.disabled = false;
           queueList.innerHTML = validQueue.map((q, idx) => `
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.04);">
-            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-              <span style="color:#888; font-family:monospace; font-size:11px; width:18px;">${idx + 1}.</span>
-              <span class="badge ${q.type === "PRE_TEST" ? "badge-primary" : "badge-done"}" style="font-size:10px; padding:2px 6px; ${q.type === "PRE_TEST" ? "background:rgba(59,130,246,0.15); color:#60a5fa;" : "background:rgba(16,185,129,0.15); color:#34d399;"}">
+          <div class="ap-queue-row">
+            <div class="ap-row-left">
+              <span class="ap-row-num">${idx + 1}.</span>
+              <span class="ap-type-tag ${q.type === "PRE_TEST" ? "pre" : "post"}">
                 ${q.type === "PRE_TEST" ? "Pre-Test" : "Post-Test"}
               </span>
-              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px; color:#ddd;" title="${q.courseTitle} - ${q.sectionName}">
-                ${q.sectionName}: ${q.courseTitle}
+              <span class="ap-row-title" title="${q.courseTitle} - ${q.sectionName}">
+                <b>${q.sectionName}:</b> ${q.courseTitle}
               </span>
             </div>
-            <span style="font-size:10px; color:#888;">${q.type === "POST_TEST" ? "Forum Selesai" : "Siap"}</span>
+            <span class="ap-row-status">${q.type === "POST_TEST" ? "Forum Selesai" : "Siap"}</span>
           </div>
         `).join("");
         }
         if (skippedList.length > 0) {
-          skippedBox.style.display = "block";
+          skippedBox.style.display = "flex";
           skippedBox.innerHTML = `
-          <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <div class="ap-skipped-header">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             ${skippedList.length} Post-Test dilewati (Prasyarat Forum Diskusi belum terpenuhi):
           </div>
-          <div style="display:flex; flex-direction:column; gap:2px; max-height:80px; overflow-y:auto;">
+          <div class="ap-skipped-list">
             ${skippedList.map((s) => `
               <div>\u2022 <b>${s.item.sectionName}</b> (${s.item.courseTitle}): <span style="opacity:0.85;">${s.reason}</span></div>
             `).join("")}
@@ -1982,8 +2462,13 @@
       courseSelect.addEventListener("change", () => {
         activeValidQueue = calculateQueue();
       });
-      modeSelect.addEventListener("change", () => {
-        activeValidQueue = calculateQueue();
+      modeCards.forEach((card) => {
+        card.addEventListener("click", () => {
+          modeCards.forEach((c) => c.classList.remove("active"));
+          card.classList.add("active");
+          selectedMode = card.dataset.mode;
+          activeValidQueue = calculateQueue();
+        });
       });
       btnStart.addEventListener("click", async () => {
         if (!activeValidQueue || activeValidQueue.length === 0) {
