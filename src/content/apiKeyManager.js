@@ -44,17 +44,19 @@ class ApiKeyManager {
 
     this.host = document.createElement('div');
     this.host.id = 'mentari-api-key-host';
+    this.host.style.cssText = 'position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: auto !important; display: none;';
     this.shadow = this.host.attachShadow({ mode: 'closed' });
 
     const style = document.createElement('style');
     style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; }
+      :host { position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; }
       .overlay {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.75);
         backdrop-filter: blur(8px);
-        z-index: 2147483640;
+        z-index: 2147483647 !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -419,6 +421,17 @@ class ApiKeyManager {
     const btnClose = this.shadow.getElementById('btn-close');
     const btnToggleVis = this.shadow.getElementById('btn-toggle-vis');
 
+    // Isolasi Event Keyboard & Auto-Submit on Enter
+    inputKey.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        btnAddKey.click();
+      }
+    });
+    inputKey.addEventListener('keypress', (e) => e.stopPropagation());
+    inputKey.addEventListener('keyup', (e) => e.stopPropagation());
+    inputKey.addEventListener('paste', (e) => e.stopPropagation());
+
     btnToggleVis.addEventListener('click', () => {
       inputKey.type = inputKey.type === 'password' ? 'text' : 'password';
     });
@@ -579,17 +592,26 @@ class ApiKeyManager {
 
   async openModal() {
     this._buildModalDOM();
+    if (this.host) {
+      this.host.style.display = 'block';
+    }
     await this._loadAndRenderKeys();
 
-    const overlay = this.shadow.querySelector('.overlay');
+    const overlay = this.shadow?.querySelector('.overlay');
     if (overlay) overlay.classList.add('open');
     this.isOpen = true;
+
+    const inputKey = this.shadow?.getElementById('input-api-key');
+    setTimeout(() => inputKey?.focus(), 150);
   }
 
   closeModal() {
     if (!this.shadow) return;
     const overlay = this.shadow.querySelector('.overlay');
     if (overlay) overlay.classList.remove('open');
+    if (this.host) {
+      this.host.style.display = 'none';
+    }
     this.isOpen = false;
   }
 }

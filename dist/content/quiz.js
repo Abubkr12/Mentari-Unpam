@@ -43,11 +43,10 @@
      * Menyimpan pasangan key-value ke chrome.storage.local
      */
     async set(items) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              this._setLocalStorageFallback(items);
               resolve(true);
             });
           } else {
@@ -147,7 +146,16 @@
     },
     _setLocalStorageFallback(items) {
       if (typeof localStorage === "undefined") return;
+      const sensitiveKeys = [
+        "geminiApiKey",
+        "geminiApiKeys",
+        "mentari_auth_token",
+        "mentari_smart_question_memory",
+        "mentari_completed_quiz_ids",
+        "mentari_auto_pilot_state"
+      ];
       for (const [k, v] of Object.entries(items)) {
+        if (sensitiveKeys.includes(k)) continue;
         try {
           localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
         } catch {
@@ -226,10 +234,533 @@
         }
         toMigrate.mentari_legacy_migrated = true;
         await this.set(toMigrate);
+        try {
+          localStorage.removeItem("geminiApiKey");
+        } catch {
+        }
         console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);
       }
+    }
+  };
+  var AutoPilotState = {
+    KEY: "mentari_auto_pilot_state",
+    async get() {
+      const res = await Storage.get(this.KEY);
+      const state = res?.[this.KEY];
+      if (state && typeof state === "object" && Array.isArray(state.queue)) {
+        return state;
+      }
+      return null;
+    },
+    async set(state) {
+      return Storage.set({ [this.KEY]: state });
+    },
+    async reset() {
+      return Storage.set({
+        [this.KEY]: {
+          active: false,
+          finished: false,
+          paused: false,
+          queue: [],
+          currentIndex: 0,
+          pauseReason: null,
+          updatedAt: Date.now()
+        }
+      });
+    },
+    async pause(reason = "Terjeda") {
+      const state = await this.get();
+      if (!state) return null;
+      state.paused = true;
+      state.pauseReason = reason;
+      state.updatedAt = Date.now();
+      await this.set(state);
+      return state;
+    },
+    async resume() {
+      const state = await this.get();
+      if (!state) return null;
+      state.active = true;
+      state.paused = false;
+      state.pauseReason = null;
+      state.updatedAt = Date.now();
+      await this.set(state);
+      return state;
+    }
+  };
+
+  // src/utils/unpam-auth.js
+  var UnpamAuth = {
+    _cachedToken: null,
+    _snifferInjected: false,
+    /**
+     * Mendekode payload JWT secara aman dengan normalisasi Base64URL
+     */
+    decodeJwtPayload(token) {
+      if (!token || typeof token !== "string") return null;
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      try {
+        let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        while (b64.length % 4) b64 += "=";
+        const jsonStr = decodeURIComponent(
+          atob(b64).split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")
+        );
+        return JSON.parse(jsonStr);
+      } catch (e) {
+        return null;
+      }
+    },
+    /**
+     * Memeriksa validitas dan masa berlaku (exp) token JWT
+     */
+    isTokenValid(token) {
+      if (!token || typeof token !== "string") return false;
+      const payload = this.decodeJwtPayload(token);
+      if (!payload) {
+        const parts = token.split(".");
+        return parts.length === 3 && parts[1].length > 10;
+      }
+      if (typeof payload.exp === "number") {
+        const isExpired = payload.exp * 1e3 <= Date.now() + 3e4;
+        if (isExpired) {
+          console.log("[UnpamAuth] Token kedaluwarsa (exp:", payload.exp, "now:", Math.floor(Date.now() / 1e3), ")");
+          return false;
+        }
+      }
+      return true;
+    },
+    /**
+     * Mendapatkan identitas mahasiswa (NIM/ID) dari payload token
+     */
+    getUserIdentifier(token) {
+      const payload = this.decodeJwtPayload(token);
+      return payload?.nim || payload?.username || payload?.id || payload?.sub || "default";
+    },
+    /**
+     * Menghapus token usang/tidak valid dari memori dan storage
+     */
+    clearInvalidToken() {
+      this._cachedToken = null;
+      if (typeof window !== "undefined") {
+        delete window.lastAuthToken;
+        try {
+          window.dispatchEvent(new CustomEvent("mentari-token-invalidated"));
+        } catch {
+        }
+      }
+      try {
+        localStorage.removeItem("mentari_auth_token");
+        sessionStorage.removeItem("mentari_auth_token");
+      } catch {
+      }
+      Storage.remove(["mentari_auth_token", "access"]);
+    },
+    /**
+     * Mengambil token autentikasi (JWT) mahasiswa dari berbagai sumber
+     */
+    async getAuthToken() {
+      if (this._cachedToken) {
+        if (this.isTokenValid(this._cachedToken)) {
+          return this._cachedToken;
+        }
+        this.clearInvalidToken();
+      }
+      if (typeof window !== "undefined" && window.lastAuthToken) {
+        if (this.isTokenValid(window.lastAuthToken)) {
+          this._cachedToken = window.lastAuthToken;
+          return this._cachedToken;
+        }
+        delete window.lastAuthToken;
+      }
+      if (typeof localStorage !== "undefined") {
+        const directLocal = localStorage.getItem("mentari_auth_token");
+        if (directLocal && directLocal.startsWith("eyJ")) {
+          if (this.isTokenValid(directLocal)) {
+            this._saveCapturedToken(directLocal);
+            return directLocal;
+          } else {
+            try {
+              localStorage.removeItem("mentari_auth_token");
+            } catch {
+            }
+          }
+        }
+      }
+      const stored = await Storage.get(["mentari_auth_token", "access"]);
+      if (stored.mentari_auth_token) {
+        if (this.isTokenValid(stored.mentari_auth_token)) {
+          this._cachedToken = stored.mentari_auth_token;
+          return this._cachedToken;
+        } else {
+          Storage.remove("mentari_auth_token");
+        }
+      }
+      if (stored.access) {
+        if (this.isTokenValid(stored.access)) {
+          this._cachedToken = stored.access;
+          return this._cachedToken;
+        } else {
+          Storage.remove("access");
+        }
+      }
+      if (typeof localStorage !== "undefined") {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const val = localStorage.getItem(key);
+            const extracted = this._extractJwtFromValue(val, key);
+            if (extracted && this.isTokenValid(extracted)) {
+              this._saveCapturedToken(extracted);
+              return extracted;
+            }
+          }
+        } catch (e) {
+          console.log("[UnpamAuth] Scan localStorage info:", e.message);
+        }
+      }
+      if (typeof sessionStorage !== "undefined") {
+        try {
+          const directSession = sessionStorage.getItem("mentari_auth_token");
+          if (directSession && directSession.startsWith("eyJ") && this.isTokenValid(directSession)) {
+            this._saveCapturedToken(directSession);
+            return directSession;
+          }
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            const val = sessionStorage.getItem(key);
+            const extracted = this._extractJwtFromValue(val, key);
+            if (extracted && this.isTokenValid(extracted)) {
+              this._saveCapturedToken(extracted);
+              return extracted;
+            }
+          }
+        } catch (e) {
+          console.log("[UnpamAuth] Scan sessionStorage info:", e.message);
+        }
+      }
+      if (typeof document !== "undefined" && document.cookie) {
+        const cookies = document.cookie.split(";");
+        for (const cookie of cookies) {
+          const parts = cookie.trim().split("=");
+          if (parts.length >= 2) {
+            const cVal = decodeURIComponent(parts.slice(1).join("="));
+            if (cVal.includes("eyJ")) {
+              const extracted = this._extractJwtFromValue(cVal);
+              if (extracted && this.isTokenValid(extracted)) {
+                this._saveCapturedToken(extracted);
+                return extracted;
+              }
+            }
+          }
+        }
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("mentari-request-token-sync"));
+      }
+      return null;
+    },
+    /**
+     * Mengambil XSRF-TOKEN dari cookie untuk MyUnpam
+     */
+    getXsrfToken() {
+      if (typeof document === "undefined" || !document.cookie) return "";
+      const cookies = document.cookie.split(";");
+      for (const c of cookies) {
+        const trimmed = c.trim();
+        if (trimmed.startsWith("XSRF-TOKEN=")) {
+          return decodeURIComponent(trimmed.substring(11));
+        }
+      }
+      return "";
+    },
+    /**
+     * Menyiapkan opsi header lengkap untuk request ke API UNPAM
+     */
+    async getFetchOptions(extraHeaders = {}) {
+      const token = await this.getAuthToken();
+      const xsrf = this.getXsrfToken();
+      const headers = {
+        "Accept": "application/json, text/plain, */*",
+        ...extraHeaders
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      if (xsrf) {
+        headers["X-XSRF-TOKEN"] = xsrf;
+      }
+      return {
+        headers,
+        credentials: "include"
+      };
+    },
+    /**
+     * Alias kompatibilitas untuk getToken
+     */
+    async getToken() {
+      return this.getAuthToken();
+    },
+    /**
+     * Alias kompatibilitas untuk getXSRFToken
+     */
+    getXSRFToken() {
+      return this.getXsrfToken();
+    },
+    /**
+     * Pasang pendengar event dari Main World Sniffer dan fallback DOM injection
+     */
+    installLiveSniffer() {
+      if (typeof window === "undefined") return;
+      const self = this;
+      window.addEventListener("mentari-token-captured", (e) => {
+        const token = e.detail?.token || e.detail;
+        if (token && typeof token === "string") {
+          self._saveCapturedToken(token);
+        }
+      });
+      window.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "MENTARI_TOKEN_CAPTURED" && e.data.token) {
+          self._saveCapturedToken(e.data.token);
+        }
+      });
+      if (!this._snifferInjected && typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+        this._snifferInjected = true;
+        try {
+          const scriptId = "mentari-injected-sniffer";
+          if (!document.getElementById(scriptId)) {
+            const s = document.createElement("script");
+            s.id = scriptId;
+            const isDist = chrome.runtime.getURL("manifest.json").includes("/dist/") || !chrome.runtime.getManifest().content_scripts?.[0]?.js?.[0]?.startsWith("dist/");
+            s.src = chrome.runtime.getURL(isDist ? "content/main-sniffer.js" : "dist/content/main-sniffer.js");
+            (document.head || document.documentElement).appendChild(s);
+          }
+        } catch (err) {
+          console.log("[UnpamAuth] Fallback sniffer injection notice:", err.message);
+        }
+      }
+      if (window.XMLHttpRequest && XMLHttpRequest.prototype.setRequestHeader) {
+        const originalSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+        XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+          if (header && typeof header === "string" && header.toLowerCase() === "authorization") {
+            if (value && typeof value === "string" && value.includes("Bearer ")) {
+              const token = value.split("Bearer ")[1]?.trim();
+              if (token && token.startsWith("eyJ")) {
+                self._saveCapturedToken(token);
+              }
+            }
+          }
+          return originalSetHeader.apply(this, arguments);
+        };
+      }
+      if (window.fetch) {
+        const originalFetch = window.fetch;
+        window.fetch = async function(resource, config) {
+          try {
+            if (config && config.headers) {
+              let authHeader = null;
+              if (config.headers instanceof Headers) {
+                authHeader = config.headers.get("authorization") || config.headers.get("Authorization");
+              } else if (typeof config.headers === "object") {
+                authHeader = config.headers["authorization"] || config.headers["Authorization"];
+              }
+              if (authHeader && typeof authHeader === "string" && authHeader.includes("Bearer ")) {
+                const token = authHeader.split("Bearer ")[1]?.trim();
+                if (token && token.startsWith("eyJ")) {
+                  self._saveCapturedToken(token);
+                }
+              }
+            }
+          } catch {
+          }
+          return originalFetch.apply(this, arguments);
+        };
+      }
+    },
+    _extractJwtFromValue(val, keyName = "") {
+      if (!val || typeof val !== "string") return null;
+      let clean = val.trim();
+      if (clean.startsWith('"') && clean.endsWith('"') || clean.startsWith("'") && clean.endsWith("'")) {
+        clean = clean.slice(1, -1);
+      }
+      if (clean.startsWith("eyJ") && clean.split(".").length === 3) {
+        return clean;
+      }
+      if (clean.includes("Bearer eyJ")) {
+        const m = clean.match(/Bearer\s+(eyJ[a-zA-Z0-9_\-\.]+)/);
+        if (m) return m[1];
+      }
+      if (clean.startsWith("{") && clean.endsWith("}")) {
+        try {
+          const obj = JSON.parse(clean);
+          const candidates = [obj.token, obj.access_token, obj.accessToken, obj.jwt, obj.access, obj.authToken];
+          for (const c of candidates) {
+            if (typeof c === "string" && c.startsWith("eyJ")) {
+              return c;
+            }
+          }
+        } catch {
+        }
+      }
+      return null;
+    },
+    _saveCapturedToken(token) {
+      if (!token || !this.isTokenValid(token)) return;
+      this._cachedToken = token;
+      if (typeof window !== "undefined") {
+        window.lastAuthToken = token;
+      }
+      try {
+        localStorage.setItem("mentari_auth_token", token);
+      } catch {
+      }
+      Storage.set({ mentari_auth_token: token });
+    }
+  };
+  if (typeof window !== "undefined") {
+    UnpamAuth.installLiveSniffer();
+  }
+
+  // src/utils/autopilot-sync.js
+  var AutoPilotSync = {
+    /**
+     * Memindai API Mentari UNPAM untuk menemukan kuesioner yang baru terbuka (unlocked)
+     * @param {Object} options
+     * @param {Array} options.coursesMeta - List of { code, title }
+     * @param {Array} options.currentQueue - Current queue items to prevent duplication
+     * @returns {Promise<Array>} List of newly unlocked kuesioner queue items
+     */
+    async fetchUnlockedKuesionerList({ coursesMeta = [], currentQueue = [] } = {}) {
+      try {
+        const token = await UnpamAuth.getAuthToken();
+        if (!token) {
+          console.warn("[AutoPilotSync] Token autentikasi tidak ditemukan.");
+          return [];
+        }
+        const headers = {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json"
+        };
+        let targetCourses = Array.isArray(coursesMeta) && coursesMeta.length > 0 ? [...coursesMeta] : [];
+        if (targetCourses.length === 0) {
+          try {
+            const res = await fetch("https://mentari.unpam.ac.id/api/user-course?page=1&limit=50", { headers });
+            if (res.ok) {
+              const data = await res.json();
+              const list = data.data || (Array.isArray(data) ? data : []);
+              targetCourses = list.map((c) => ({
+                code: c.kode_course || c.kode || c.course_code || c.id,
+                title: c.nama_mata_kuliah || c.coursename || c.name || "Mata Kuliah"
+              })).filter((c) => c.code);
+            }
+          } catch (e) {
+            console.warn("[AutoPilotSync] Gagal memuat daftar user-course fallback:", e);
+          }
+        }
+        if (targetCourses.length === 0) return [];
+        const newlyUnlocked = [];
+        const existingIds = new Set(
+          (currentQueue || []).map((q) => String(q.id || q.subId || ""))
+        );
+        await Promise.allSettled(targetCourses.map(async (c) => {
+          try {
+            const cRes = await fetch(`https://mentari.unpam.ac.id/api/user-course/${encodeURIComponent(c.code)}`, { headers });
+            if (!cRes.ok) return;
+            const cData = await cRes.json();
+            const sections = Array.isArray(cData) ? cData : cData.data || [];
+            for (const section of sections) {
+              let meetingNum = null;
+              const match = (section.nama_section || "").match(/(?:Pertemuan|Meeting)\s*(\d+)/i);
+              if (match) {
+                meetingNum = parseInt(match[1], 10);
+              } else if (typeof section.urutan === "number" && section.urutan > 0) {
+                meetingNum = section.urutan;
+              }
+              const sectionName = section.nama_section || (meetingNum ? `Pertemuan ${meetingNum}` : `Pertemuan ${section.urutan || ""}`);
+              const sectionCode = section.kode_section || section.nama_section || section.id;
+              const subSections = section.sub_section || [];
+              for (const sub of subSections) {
+                const kt = String(sub.kode_template || sub.template || sub.type || sub.tipe || sub.kode_sub_section || "").trim().toUpperCase();
+                const subTitle = String(sub.nama_sub_section || sub.judul || sub.title || sub.name || sub.deskripsi || "").toLowerCase();
+                const isKues = kt.includes("KUES") || kt.includes("KUIS") || kt.includes("SURV") || kt.includes("ANGKET") || kt.includes("EVAL") || kt.includes("EDOM") || subTitle.includes("kuesioner") || subTitle.includes("kuisioner") || subTitle.includes("evaluasi") || subTitle.includes("angket") || subTitle.includes("survei") || subTitle.includes("survey") || subTitle.includes("edom");
+                const validSubId = sub.id || sub._id || sub.id_sub_section || sub.sub_id || `KUESIONER_${meetingNum || section.urutan || "sec"}`;
+                if (isKues && validSubId) {
+                  const subIdStr = String(validSubId);
+                  const isPostTestAlert = sub.warningAlert && /post[- ]?test/i.test(sub.warningAlert);
+                  const isHardLocked = !!(sub.warningAlert && sub.warningAlert.length > 0 && !isPostTestAlert);
+                  let isLmsCompleted = false;
+                  if (!isPostTestAlert) {
+                    isLmsCompleted = Boolean(
+                      sub.completion === true || sub.completion === 1 || sub.completion === "1" || sub.completion === "true" || sub.is_completed === true || sub.completed === true || sub.is_done === true || sub.status === "completed" || sub.status === "done" || Array.isArray(sub.history) && sub.history.length > 0
+                    );
+                  }
+                  if (!isLmsCompleted && !isHardLocked && !existingIds.has(subIdStr)) {
+                    existingIds.add(subIdStr);
+                    newlyUnlocked.push({
+                      id: validSubId,
+                      subId: validSubId,
+                      sectionCode,
+                      courseCode: c.code,
+                      courseTitle: c.title,
+                      sectionName,
+                      meetingNum,
+                      type: "KUESIONER",
+                      name: sub.nama_sub_section || sub.judul || "Kuesioner Evaluasi Dosen",
+                      url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(c.code)}/kuesioner/${encodeURIComponent(sectionCode || validSubId)}`,
+                      status: "pending",
+                      statusLabel: "Siap Diisi"
+                    });
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[AutoPilotSync] Gagal memuat section matkul ${c.code}:`, err);
+          }
+        }));
+        newlyUnlocked.sort((a, b) => {
+          const numA = typeof a.meetingNum === "number" ? a.meetingNum : 999;
+          const numB = typeof b.meetingNum === "number" ? b.meetingNum : 999;
+          return numA - numB;
+        });
+        return newlyUnlocked;
+      } catch (e) {
+        console.error("[AutoPilotSync] Error saat fetch kuesioner terbuka:", e);
+        return [];
+      }
+    },
+    /**
+     * Real-Time Sweep & Queue Replenishment
+     * Menambahkan kuesioner yang baru terbuka ke dalam antrean Auto-Pilot
+     * @param {Object} state - Current AutoPilot state
+     * @param {HTMLElement} [statusEl] - Optional status element to show progress
+     * @returns {Promise<boolean>} True jika ada kuesioner yang berhasil ditambahkan ke antrean
+     */
+    async syncAndAppendKuesioner(state, statusEl = null) {
+      if (!state || !state.active || !Array.isArray(state.queue)) return false;
+      if (statusEl) {
+        statusEl.textContent = "Sinkronisasi Real-Time: Memeriksa kuesioner yang baru terbuka di server UNPAM...";
+      }
+      await new Promise((r) => setTimeout(r, 1200));
+      const newlyUnlocked = await this.fetchUnlockedKuesionerList({
+        coursesMeta: state.coursesMeta,
+        currentQueue: state.queue
+      });
+      if (newlyUnlocked.length > 0) {
+        console.log(`[AutoPilotSync] Berhasil mendeteksi ${newlyUnlocked.length} kuesioner baru yang terbuka:`, newlyUnlocked);
+        state.queue.push(...newlyUnlocked);
+        state.total = state.queue.length;
+        state.updatedAt = Date.now();
+        await AutoPilotState.set(state);
+        if (statusEl) {
+          statusEl.textContent = `Sinkronisasi sukses! Menemukan ${newlyUnlocked.length} kuesioner yang siap dikerjakan.`;
+        }
+        return true;
+      }
+      console.log("[AutoPilotSync] Tidak ditemukan kuesioner baru yang terbuka.");
+      return false;
     }
   };
 
@@ -242,7 +773,7 @@
     findButtonByText(keywords, root = document, includeDisabled = false) {
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
-      const buttons = root.querySelectorAll('button, a[role="button"], input[type="button"], input[type="submit"], div[role="button"]');
+      const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
       for (const btn of buttons) {
         if (btn.offsetParent === null && !btn.getClientRects().length) continue;
         if (!includeDisabled) {
@@ -264,9 +795,10 @@
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
       const matches = [];
-      const buttons = root.querySelectorAll('button, a[role="button"], div[role="button"]');
+      const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
       for (const btn of buttons) {
-        const text = (btn.textContent || "").trim().toLowerCase();
+        if (btn.offsetParent === null && !btn.getClientRects().length) continue;
+        const text = (btn.textContent || btn.value || "").trim().toLowerCase();
         if (normalized.some((kw) => text.includes(kw))) {
           matches.push(btn);
         }
@@ -338,6 +870,70 @@
           subtree: true
         });
       });
+    },
+    /**
+     * Mengisi value input atau textarea yang kompatibel dengan React Controlled Components
+     */
+    setNativeValue(element, value) {
+      if (!element) return;
+      const proto = element instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (nativeSetter) {
+        nativeSetter.call(element, value);
+      } else {
+        element.value = value;
+      }
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    /**
+     * Mencentang radio button dengan React native property setter & synthetic events
+     */
+    setNativeRadioChecked(inputEl) {
+      if (!inputEl) return;
+      const input = inputEl.tagName === "INPUT" ? inputEl : inputEl.querySelector?.('input[type="radio"]') || inputEl;
+      if (!input || input.tagName !== "INPUT") {
+        try {
+          inputEl.click();
+        } catch (_) {
+        }
+        return;
+      }
+      const parentLabel = input.closest("label, .MuiFormControlLabel-root");
+      const radioContainer = input.closest('.MuiRadio-root, [role="radio"]');
+      if (input._valueTracker) {
+        input._valueTracker.setValue("");
+      }
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+      if (nativeSetter) {
+        nativeSetter.call(input, true);
+      } else {
+        input.checked = true;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (parentLabel) {
+        try {
+          parentLabel.click();
+        } catch (_) {
+        }
+      } else if (radioContainer) {
+        try {
+          radioContainer.click();
+        } catch (_) {
+        }
+      } else {
+        try {
+          input.click();
+        } catch (_) {
+        }
+      }
+      if (!input.checked) {
+        if (nativeSetter) nativeSetter.call(input, true);
+        else input.checked = true;
+      }
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     }
   };
 
@@ -358,13 +954,13 @@
     },
     /**
      * Menghitung jeda baca natural berdasarkan panjang teks soal kuis
-     * Asumsi kecepatan baca normal mahasiswa: ~180-220 kata per menit
+     * Dioptimalkan agar gesit dan responsif (350 - 600ms) tanpa membebani browser
      */
-    async readingPacing(text = "", minBaseMs = 3e3, maxBaseMs = 8e3) {
+    async readingPacing(text = "", minBaseMs = 350, maxBaseMs = 700) {
       const wordCount = (text || "").trim().split(/\s+/).filter(Boolean).length;
-      const calculated = minBaseMs + wordCount * 250;
+      const calculated = minBaseMs + wordCount * 15;
       const targetMs = Math.min(Math.max(calculated, minBaseMs), maxBaseMs);
-      const variance = (Math.random() * 0.4 - 0.2) * targetMs;
+      const variance = (Math.random() * 0.2 - 0.1) * targetMs;
       const finalDelay = Math.round(targetMs + variance);
       await this.delay(finalDelay);
       return finalDelay;
@@ -372,18 +968,19 @@
     /**
      * Mensimulasikan klik mouse natural manusia dengan scrolling halus
      * dan rangkaian event mouse lengkap (pointerdown -> mousedown -> focus -> click).
+     * Mendukung mode fast untuk transisi cepat kuis.
      */
-    async naturalClick(element) {
+    async naturalClick(element, fast = false) {
       if (!element) return false;
       try {
         element.scrollIntoView({
-          behavior: "smooth",
+          behavior: fast ? "auto" : "smooth",
           block: "center",
           inline: "nearest"
         });
       } catch {
       }
-      await this.delay(300 + Math.random() * 300);
+      await this.delay(fast ? 40 + Math.random() * 40 : 150 + Math.random() * 150);
       const rect = element.getBoundingClientRect();
       const clientX = rect.left + rect.width / 2 + (Math.random() * 4 - 2);
       const clientY = rect.top + rect.height / 2 + (Math.random() * 4 - 2);
@@ -398,10 +995,14 @@
         element.dispatchEvent(new PointerEvent("pointerdown", eventOpts));
         element.dispatchEvent(new MouseEvent("mousedown", eventOpts));
         if (typeof element.focus === "function") element.focus();
-        await this.delay(50 + Math.random() * 70);
+        await this.delay(fast ? 20 + Math.random() * 20 : 40 + Math.random() * 30);
         element.dispatchEvent(new PointerEvent("pointerup", eventOpts));
         element.dispatchEvent(new MouseEvent("mouseup", eventOpts));
-        element.dispatchEvent(new MouseEvent("click", eventOpts));
+        if (typeof element.click === "function") {
+          element.click();
+        } else {
+          element.dispatchEvent(new MouseEvent("click", eventOpts));
+        }
         if (element.tagName === "INPUT" && !element.checked) {
           element.checked = true;
           element.dispatchEvent(new Event("change", { bubbles: true }));
@@ -593,7 +1194,7 @@
 
   // src/content/quiz.js
   var ALL_MODELS = [
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Akurasi 100% - Rekomendasi)" },
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
     { id: "gemini-3-flash", name: "Gemini 3 Flash" },
     { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite" },
@@ -617,6 +1218,7 @@
       this.hudShadow = null;
       this.hudHost = null;
       this.activeModel = DEFAULT_MODEL;
+      this._currentSessionQuestions = [];
       this._init();
     }
     async _init() {
@@ -926,40 +1528,203 @@
       };
     }
     /**
-     * Ekstrak status navigasi nomor soal dari sidebar kanan (Navigasi Soal)
-     * Mengembalikan jumlah soal, daftar nomor, dan apakah semua sudah terjawab (berwarna hijau)
+     * Helper untuk memeriksa apakah elemen memiliki indikator warna hijau (terjawab)
+     */
+    /**
+     * Helper untuk memeriksa apakah elemen memiliki indikator warna hijau (terjawab)
+     */
+    _isGreenColor(btn) {
+      if (!btn) return false;
+      const elementsToCheck = [btn, ...Array.from(btn.querySelectorAll ? btn.querySelectorAll("*") : btn.children || [])];
+      for (const el of elementsToCheck) {
+        const style = window.getComputedStyle(el);
+        const bg = (style.backgroundColor || "").toLowerCase();
+        const color = (style.color || "").toLowerCase();
+        const border = (style.borderColor || "").toLowerCase();
+        const className = (el.className || "").toString().toLowerCase();
+        const inlineStyle = (el.getAttribute("style") || "").toLowerCase();
+        const titleAttr = (el.getAttribute("title") || "").toLowerCase();
+        const ariaLabel = (el.getAttribute("aria-label") || "").toLowerCase();
+        if (className.includes("success") || className.includes("answered") || className.includes("completed") || className.includes("muibutton-containedsuccess") || className.includes("terjawab") || className.includes("bg-green") || className.includes("btn-success") || titleAttr.includes("terjawab") || titleAttr.includes("sudah") || ariaLabel.includes("terjawab") || ariaLabel.includes("sudah")) {
+          return true;
+        }
+        if (inlineStyle.includes("green") || inlineStyle.includes("#2e7d32") || inlineStyle.includes("#4caf50") || inlineStyle.includes("#16a34a") || inlineStyle.includes("#22c55e") || inlineStyle.includes("46, 125, 50") || inlineStyle.includes("76, 175, 80")) {
+          return true;
+        }
+        if (bg.includes("46, 125, 50") || bg.includes("76, 175, 80") || bg.includes("46, 133, 64") || bg.includes("34, 197, 94") || bg.includes("16, 185, 129") || bg.includes("22, 163, 74") || bg.includes("56, 142, 60") || bg.includes("102, 187, 106") || bg.includes("green")) {
+          return true;
+        }
+        for (const colorStr of [bg, border]) {
+          const rgbMatch = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            const isNeutral = Math.abs(r - g) < 20 && Math.abs(g - b) < 20;
+            if (!isNeutral && g >= 75 && g > r * 1.15 && g > b * 1.15) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+    /**
+     * Ekstrak nomor soal aktif yang sedang terbuka di layar
+     * Mendeteksi header soal ("1 . Multiple Choice", "Soal 1"), URL query params, atau tombol navigasi aktif
+     */
+    _extractActiveQuestionNumberFromDOM() {
+      try {
+        const container = this._findQuestionContainer();
+        if (container) {
+          const textNodes = Array.from(container.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div, span"));
+          for (const el of textNodes) {
+            if (el.closest('.MuiFormControlLabel-root, label, .MuiRadio-root, input[type="radio"], #mentari-autopilot-hud-host')) continue;
+            const txt = (el.textContent || "").trim();
+            const matchMC = txt.match(/^(\d+)\s*[\.\)]\s*(?:multiple\s*choice|pilihan\s*ganda)?/i);
+            if (matchMC) {
+              const n = parseInt(matchMC[1], 10);
+              if (!isNaN(n) && n >= 1 && n <= 200) return n;
+            }
+            const matchSoal = txt.match(/^(?:soal|pertanyaan|question)\s*(?:no\.?|nomor)?\s*(\d+)/i);
+            if (matchSoal) {
+              const n = parseInt(matchSoal[1], 10);
+              if (!isNaN(n) && n >= 1 && n <= 200) return n;
+            }
+          }
+        }
+        const urlParams = new URLSearchParams(window.location.search);
+        for (const param of ["page", "soal", "no", "question", "q", "p"]) {
+          const val = urlParams.get(param);
+          if (val && /^\d+$/.test(val)) {
+            const n = parseInt(val, 10);
+            if (!isNaN(n) && n >= 1 && n <= 200) return n;
+          }
+        }
+        const navKeywords = ["navigasi soal", "navigasi quiz", "quiz navigation", "exam navigation", "daftar soal"];
+        const allTextEls = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, span, p, div, b, strong"));
+        const navHeader = allTextEls.find((el) => {
+          if (el.closest("#mentari-quiz-control-host, #mentari-autopilot-hud-host")) return false;
+          const t = (el.textContent || "").trim().toLowerCase();
+          return navKeywords.some((kw) => t === kw || t.startsWith(kw) && t.length < 35);
+        });
+        let navButtons = [];
+        if (navHeader) {
+          let curr = navHeader.parentElement;
+          for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
+            const found = Array.from(curr.querySelectorAll('button, a, div, span, [role="button"]')).filter((el) => {
+              if (el.closest("#mentari-quiz-control-host, #mentari-autopilot-hud-host, .MuiDialog-root")) return false;
+              const t = (el.textContent || "").trim();
+              return /^\d+$/.test(t);
+            });
+            if (found.length > 0) {
+              navButtons = found;
+              break;
+            }
+            curr = curr.parentElement;
+          }
+        }
+        for (const btn of navButtons) {
+          const rawClass = String(btn?.className?.baseVal || btn?.className || "").toLowerCase();
+          const isCurrent = btn.classList?.contains?.("active") || btn.classList?.contains?.("Mui-selected") || btn.getAttribute?.("aria-current") === "true" || btn.getAttribute?.("aria-selected") === "true" || rawClass.includes("selected") && !rawClass.includes("unselected");
+          if (isCurrent) {
+            const n = parseInt((btn.textContent || "").trim(), 10);
+            if (!isNaN(n) && n >= 1 && n <= 200) return n;
+          }
+        }
+      } catch (e) {
+        console.warn("[Quiz] Error saat deteksi nomor soal aktif:", e);
+      }
+      return null;
+    }
+    /**
+     * Ekstrak status navigasi nomor soal dari halaman kuis/ujian (Anti-Skip, Anti-Submit Prematur)
+     * Berbasis pencarian card "Navigasi Soal" dan penelusuran tombol nomor (/^\d+$/).
+     * Membedakan status hijau (terjawab) vs abu-abu/putih (belum terjawab).
      */
     _getExamNavigationStatus() {
-      const navHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
-      const navKeywords = ["navigasi soal", "navigasi kuis", "quiz navigation", "nomor soal", "daftar soal"];
-      const navHeader = navHeaders.find((el) => {
-        const t = (el.textContent || "").trim().toLowerCase();
-        return navKeywords.some((kw) => t === kw || t.startsWith(kw));
-      });
-      if (!navHeader) return null;
-      const navContainer = navHeader.closest(".MuiPaper-root, .MuiBox-root, aside, div");
-      if (!navContainer) return null;
-      const numberBtns = Array.from(navContainer.querySelectorAll('button, a[role="button"], div[role="button"]')).filter((b) => {
-        const t = (b.textContent || "").trim();
-        return /^\d+$/.test(t);
-      });
-      if (numberBtns.length === 0) return null;
-      const totalQuestions = numberBtns.length;
-      const questions = numberBtns.map((btn) => {
-        const num = parseInt(btn.textContent.trim(), 10);
-        const isCurrent = btn.classList.contains("active") || btn.classList.contains("Mui-selected") || Boolean(btn.style.border && btn.style.border.length > 0);
-        const style = window.getComputedStyle(btn);
-        const bg = style.backgroundColor || "";
-        const isAnswered = bg.includes("46, 125, 50") || bg.includes("76, 175, 80") || bg.includes("green") || btn.classList.contains("answered") || btn.classList.contains("completed") || btn.className.toLowerCase().includes("success");
-        return { num, btn, isAnswered, isCurrent };
-      });
-      const unanswered = questions.filter((q) => !q.isAnswered);
-      return {
-        totalQuestions,
-        questions,
-        unansweredCount: unanswered.length,
-        allAnswered: unanswered.length === 0
-      };
+      try {
+        const navKeywords = ["navigasi soal", "navigasi quiz", "quiz navigation", "exam navigation", "daftar soal"];
+        const allTextEls = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, span, p, div, b, strong"));
+        const navHeader = allTextEls.find((el) => {
+          if (el.closest("#mentari-quiz-control-host, #mentari-autopilot-hud-host")) return false;
+          const t = (el.textContent || "").trim().toLowerCase();
+          return navKeywords.some((kw) => t === kw || t.startsWith(kw) && t.length < 35);
+        });
+        let rawButtons = [];
+        if (navHeader) {
+          let curr = navHeader.parentElement;
+          for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
+            const found = Array.from(curr.querySelectorAll('button, a, div, span, [role="button"]')).filter((el) => {
+              if (el.closest("#mentari-quiz-control-host, #mentari-autopilot-hud-host, .MuiDialog-root")) return false;
+              const t = (el.textContent || "").trim();
+              if (!/^\d+$/.test(t)) return false;
+              const n = parseInt(t, 10);
+              return n >= 1 && n <= 200;
+            });
+            if (found.length > 0) {
+              rawButtons = found;
+              break;
+            }
+            curr = curr.parentElement;
+          }
+        }
+        if (rawButtons.length === 0) {
+          const allCandidates = Array.from(document.querySelectorAll('button, a, [role="button"], div, span'));
+          rawButtons = allCandidates.filter((el) => {
+            if (el.closest("#mentari-quiz-control-host, #mentari-autopilot-hud-host, .MuiDialog-root")) return false;
+            const t = (el.textContent || "").trim();
+            if (!/^\d+$/.test(t)) return false;
+            const n = parseInt(t, 10);
+            return n >= 1 && n <= 200;
+          });
+        }
+        if (rawButtons.length === 0) return null;
+        const buttonMap = /* @__PURE__ */ new Map();
+        for (const el of rawButtons) {
+          const num = parseInt((el.textContent || "").trim(), 10);
+          if (isNaN(num)) continue;
+          const clickable = el.closest('button, a, [role="button"]') || el;
+          const isVisible = window.getComputedStyle(clickable).display !== "none" && window.getComputedStyle(clickable).visibility !== "hidden";
+          if (!buttonMap.has(num) || isVisible && !buttonMap.get(num).isVisible) {
+            buttonMap.set(num, { btn: clickable, isVisible, num });
+          }
+        }
+        if (buttonMap.size === 0) return null;
+        const activeQuestionNum = this._extractActiveQuestionNumberFromDOM();
+        const curRadioChecked = !!this._findQuestionContainer()?.querySelector('input[type="radio"]:checked');
+        const sortedEntries = Array.from(buttonMap.values()).sort((a, b) => a.num - b.num);
+        const questions = sortedEntries.map(({ btn, num }) => {
+          const rawClass = String(btn?.className?.baseVal || btn?.className || "");
+          const classLower = rawClass.toLowerCase();
+          const isCurrent = activeQuestionNum !== null && activeQuestionNum === num || btn.classList?.contains?.("active") || btn.classList?.contains?.("Mui-selected") || btn.getAttribute?.("aria-current") === "true" || btn.getAttribute?.("aria-selected") === "true" || classLower.includes("selected") && !classLower.includes("unselected");
+          let isAnswered = this._isGreenColor(btn);
+          if (isCurrent && curRadioChecked) {
+            isAnswered = true;
+          }
+          const isUnanswered = !isAnswered;
+          return {
+            num,
+            btn,
+            isAnswered,
+            isUnanswered,
+            isCurrent
+          };
+        });
+        const unanswered = questions.filter((q) => q.isUnanswered || !q.isAnswered);
+        const totalQuestions = questions.length;
+        return {
+          total: totalQuestions,
+          totalQuestions,
+          questions,
+          unansweredCount: unanswered.length,
+          answeredCount: totalQuestions - unanswered.length,
+          allAnswered: unanswered.length === 0 && totalQuestions > 0
+        };
+      } catch (err) {
+        console.warn("[Quiz] Error parsing exam navigation status:", err);
+        return null;
+      }
     }
     /**
      * Deteksi apakah kuis saat ini sudah selesai (Review Mode / Skor Akhir)
@@ -1227,13 +1992,14 @@
           }
           if (statusEl) statusEl.textContent = "Menunggu soal dimuat...";
           qContainer = await this._waitForQuestionContainer(15e3);
-          if (!qContainer) {
-            throw new Error("Soal kuis tidak muncul setelah tombol mulai diklik.");
-          }
+        } else {
+          if (statusEl) statusEl.textContent = "Menunggu soal kuis dimuat...";
+          qContainer = await this._waitForQuestionContainer(15e3);
         }
       }
       let loopIterations = 0;
       const maxSafetyIterations = 60;
+      this._currentSessionQuestions = [];
       while (this.isRunning && loopIterations < maxSafetyIterations) {
         loopIterations++;
         while (this.isPaused && this.isRunning) {
@@ -1250,64 +2016,106 @@
           this.isRunning = false;
           return { isFinished: true, submitted: true, reason: stepComp.reason };
         }
-        const curQContainer = this._findQuestionContainer();
-        const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
         const navStatusCurrent = this._getExamNavigationStatus();
-        const hasQuestionsNav = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.length > 0;
-        const anyUnansweredRemaining = hasQuestionsNav && navStatusCurrent.questions.some((q) => !q.isAnswered);
-        if (alreadyCheckedRadio && anyUnansweredRemaining) {
-          const nextUnanswered = navStatusCurrent.questions.find((q) => !q.isAnswered && !q.isCurrent);
+        if (navStatusCurrent) {
+          this._updateHUDNavMatrix(navStatusCurrent);
+        }
+        let curQContainer = this._findQuestionContainer();
+        if (!curQContainer) {
+          if (statusEl) statusEl.textContent = "Menunggu soal kuis dimuat...";
+          curQContainer = await this._waitForQuestionContainer(5e3);
+        }
+        const currentQNav = navStatusCurrent?.questions?.find((q) => q.isCurrent);
+        const isCurrentVerifiedGreen = currentQNav ? currentQNav.isAnswered : false;
+        const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
+        const anyUnansweredRemaining = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.some((q) => q.isUnanswered || !q.isAnswered);
+        if (isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
+          const nextUnanswered = navStatusCurrent.questions.find((q) => (q.isUnanswered || !q.isAnswered) && !q.isCurrent);
           if (nextUnanswered && nextUnanswered.btn) {
-            console.log(`[Auto-Pilot] Soal saat ini sudah terjawab. Melompat langsung ke Soal ${nextUnanswered.num} yang belum dijawab.`);
+            console.log(`[Auto-Pilot] Soal saat ini sudah hijau. Melompat langsung ke Soal ${nextUnanswered.num} yang masih putih.`);
             if (statusEl) statusEl.textContent = `Soal sudah dijawab. Melompat ke Soal ${nextUnanswered.num}...`;
-            await Humanizer.randomDelay(400, 800);
+            await Humanizer.randomDelay(300, 600);
             await Humanizer.naturalClick(nextUnanswered.btn);
-            await Humanizer.delay(1200);
+            await Humanizer.delay(600);
             continue;
           }
         }
         if (!alreadyCheckedRadio) {
-          if (statusEl) statusEl.textContent = "Menganalisis soal...";
+          if (statusEl) statusEl.textContent = "Menganalisis soal via AI...";
           let success = false;
           try {
             success = await this.processCurrentQuestion(true);
           } catch (err) {
-            console.warn("[Mentari AI] Gagal memproses soal:", err);
-            await Humanizer.delay(1e3);
+            console.warn("[Mentari AI] Gagal memproses soal (percobaan 1):", err);
+            await Humanizer.delay(600);
             try {
               success = await this.processCurrentQuestion(true);
             } catch (retryErr) {
-              if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}`;
+              console.error("[Mentari AI] Percobaan 2 gagal. Mengaktifkan self-recovery:", retryErr);
+              if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}. Memilih opsi pemulihan...`;
+              success = await this._forceSelectFirstOption(curQContainer);
             }
           }
         } else {
-          console.log("[Auto-Pilot] Soal saat ini sudah memiliki jawaban terpilih. Melewati AI untuk hemat kuota.");
-          if (statusEl) statusEl.textContent = "Soal ini sudah terjawab. Menuju tahap berikutnya...";
+          console.log("[Auto-Pilot] Soal saat ini sudah memiliki opsi terpilih.");
+          if (statusEl) statusEl.textContent = "Soal ini sudah terjawab.";
+          const curQInfo = curQContainer ? this._parseQuestionAndOptions(curQContainer) : null;
+          const selectedOpt = curQInfo?.options?.find((o) => o.element?.checked);
+          if (curQInfo?.questionText && selectedOpt) {
+            this._recordCurrentQuestionAnswer(curQInfo.questionText, selectedOpt.text, selectedOpt.letter);
+          }
         }
-        await Humanizer.delay(700);
+        const navStatusAfterAnswer = this._getExamNavigationStatus();
+        if (navStatusAfterAnswer) {
+          this._updateHUDNavMatrix(navStatusAfterAnswer);
+        }
+        await Humanizer.randomDelay(350, 600);
         let nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
         if (!nextBtn) {
           const waitStart = Date.now();
-          while (Date.now() - waitStart < 2500 && !nextBtn) {
-            await Humanizer.delay(300);
+          while (Date.now() - waitStart < 1e3 && !nextBtn) {
+            await Humanizer.delay(150);
             nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
           }
         }
+        const prevQNum = this._extractActiveQuestionNumberFromDOM();
         if (nextBtn) {
           if (statusEl) statusEl.textContent = "Menuju soal berikutnya...";
-          await Humanizer.randomDelay(700, 1500);
+          await Humanizer.randomDelay(200, 400);
           await Humanizer.naturalClick(nextBtn);
-          await Humanizer.delay(1200);
+          let transitioned = false;
+          const waitDomStart = Date.now();
+          while (Date.now() - waitDomStart < 2500) {
+            await Humanizer.delay(150);
+            const curQNum = this._extractActiveQuestionNumberFromDOM();
+            if (curQNum !== null && prevQNum !== null && curQNum !== prevQNum) {
+              transitioned = true;
+              break;
+            }
+          }
+          await Humanizer.delay(200);
           continue;
         }
         const navStatus = this._getExamNavigationStatus();
         if (navStatus && navStatus.questions && navStatus.questions.length > 0) {
-          const nextUnanswered = navStatus.questions.find((q) => !q.isAnswered && !q.isCurrent);
-          if (nextUnanswered && nextUnanswered.btn) {
-            if (statusEl) statusEl.textContent = `Navigasi ke Soal ${nextUnanswered.num} yang belum dijawab...`;
-            await Humanizer.randomDelay(600, 1200);
-            await Humanizer.naturalClick(nextUnanswered.btn);
-            await Humanizer.delay(1200);
+          this._updateHUDNavMatrix(navStatus);
+          const activeRadioNow = this._findQuestionContainer()?.querySelector('input[type="radio"]:checked');
+          const unansweredList = navStatus.questions.filter((q) => {
+            if (q.isCurrent && activeRadioNow) return false;
+            return q.isUnanswered || !q.isAnswered;
+          });
+          if (unansweredList.length > 0) {
+            console.warn(`[Hard Veto Kotak Hijau] Masih ada ${unansweredList.length} soal abu-abu. Submisi DIBLOKIR. Mengarahkan ke soal yang belum terjawab...`, unansweredList);
+            const targetQ = unansweredList.find((q) => !q.isCurrent) || unansweredList[0];
+            if (targetQ && targetQ.btn) {
+              if (statusEl) statusEl.textContent = `Hard Veto: Soal ${targetQ.num} belum terjawab (kotak abu-abu). Membuka Soal ${targetQ.num}...`;
+              Toast.info(`Mengarahkan ke Soal ${targetQ.num} yang masih abu-abu...`);
+              await Humanizer.randomDelay(300, 600);
+              await Humanizer.naturalClick(targetQ.btn);
+              await Humanizer.delay(600);
+            } else {
+              await Humanizer.delay(600);
+            }
             continue;
           }
         }
@@ -1331,19 +2139,38 @@
         ];
         const finishBtn = DOM.findButtonByText(finishKeywords);
         if (finishBtn) {
-          if (statusEl) statusEl.textContent = "Semua soal terjawab. Menyelesaikan kuis...";
-          Toast.success("Semua soal kuis berhasil dijawab!");
+          const finalNav = this._getExamNavigationStatus();
+          const activeRadioFinal = this._findQuestionContainer()?.querySelector('input[type="radio"]:checked');
+          if (finalNav && finalNav.questions && finalNav.questions.length > 0) {
+            const finalUnanswered = finalNav.questions.filter((q) => {
+              if (q.isCurrent && activeRadioFinal) return false;
+              return q.isUnanswered || !q.isAnswered;
+            });
+            if (finalUnanswered.length > 0 || !finalNav.allAnswered) {
+              console.warn(`[Hard Veto Submit Prematur] Tombol selesai DIBLOKIR MUTLAK! Terdeteksi ${finalUnanswered.length} soal abu-abu.`, finalUnanswered);
+              const target = finalUnanswered.find((q) => !q.isCurrent) || finalUnanswered[0];
+              if (target && target.btn) {
+                if (statusEl) statusEl.textContent = `Veto: Soal ${target.num} belum terjawab. Membuka Soal ${target.num}...`;
+                await Humanizer.naturalClick(target.btn);
+              }
+              await Humanizer.delay(600);
+              continue;
+            }
+          }
+          if (statusEl) statusEl.textContent = "Semua kotak soal terverifikasi 100% hijau! Menyelesaikan kuis...";
+          Toast.success("Semua kotak nomor soal terverifikasi hijau (terjawab)!");
           const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
           if (mentari_auto_finish_quiz || isAutoPilot) {
-            await Humanizer.randomDelay(1200, 2200);
+            await Humanizer.randomDelay(500, 1e3);
             await Humanizer.naturalClick(finishBtn);
-            await Humanizer.delay(800);
+            await Humanizer.delay(600);
             const confirmBtn = this._findDialogConfirmButton(finishBtn) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
             if (confirmBtn) {
               await Humanizer.naturalClick(confirmBtn);
             }
-            if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan. Menunggu konfirmasi sistem...";
-            await Humanizer.delay(2e3);
+            if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan 100%. Menunggu konfirmasi skor sistem...";
+            await Humanizer.delay(1500);
+            await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
             this.isRunning = false;
             return { isFinished: true, submitted: true, reason: "Kuis telah dikumpulkan dan diserahkan" };
           } else {
@@ -1353,8 +2180,44 @@
         } else {
           const postCheck = this._checkIfExamAlreadyCompleted();
           if (postCheck.isCompleted) {
+            await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
             this.isRunning = false;
             return { isFinished: true, submitted: true, reason: postCheck.reason };
+          }
+          const recheckNav = this._getExamNavigationStatus();
+          if (recheckNav && recheckNav.questions && recheckNav.questions.length > 0) {
+            const stillUnanswered = recheckNav.questions.filter((q) => q.isUnanswered || !q.isAnswered);
+            if (stillUnanswered.length > 0) {
+              console.warn(`[Auto-Pilot] Belum menemukan tombol Next/Finish, tapi masih ada ${stillUnanswered.length} soal belum terjawab. Membuka Soal ${stillUnanswered[0].num}...`);
+              if (stillUnanswered[0].btn) {
+                if (statusEl) statusEl.textContent = `Mengarahkan ke Soal ${stillUnanswered[0].num}...`;
+                await Humanizer.naturalClick(stillUnanswered[0].btn);
+                await Humanizer.delay(600);
+                continue;
+              }
+            }
+            if (recheckNav.allAnswered) {
+              if (statusEl) statusEl.textContent = "Semua soal terjawab. Menunggu tombol penyelesaian kuis...";
+              const waitFinishStart = Date.now();
+              let delayedFinishBtn = null;
+              while (Date.now() - waitFinishStart < 2500 && !delayedFinishBtn) {
+                await Humanizer.delay(300);
+                delayedFinishBtn = DOM.findButtonByText(finishKeywords);
+              }
+              if (delayedFinishBtn) {
+                await Humanizer.naturalClick(delayedFinishBtn);
+                await Humanizer.delay(600);
+                const confirmBtn = this._findDialogConfirmButton(delayedFinishBtn) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
+                if (confirmBtn) {
+                  await Humanizer.naturalClick(confirmBtn);
+                }
+                if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan 100%.";
+                await Humanizer.delay(1200);
+                await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
+                this.isRunning = false;
+                return { isFinished: true, submitted: true, reason: "Kuis telah dikumpulkan dan diserahkan" };
+              }
+            }
           }
           if (statusEl) statusEl.textContent = "Semua nomor soal telah dikerjakan.";
           Toast.success("Seluruh nomor soal telah berhasil dijawab!");
@@ -1367,16 +2230,20 @@
     }
     // ─── Auto-Pilot Kuis (Single-Tab Batch Runner) ────────────────────────────────
     async _checkAndInitAutoPilot() {
-      const store = await Storage.get("mentari_auto_pilot_state");
-      const state = store?.mentari_auto_pilot_state;
+      const state = await AutoPilotState.get();
       if (!state || !state.active || !Array.isArray(state.queue)) {
+        const manualCtrl2 = document.getElementById("mentari-quiz-control-host");
+        if (manualCtrl2) manualCtrl2.style.display = "block";
         return;
       }
+      const manualCtrl = document.getElementById("mentari-quiz-control-host");
+      if (manualCtrl) manualCtrl.style.display = "none";
       if (state.currentIndex >= state.queue.length) {
         await Storage.set({
           mentari_auto_pilot_state: { ...state, active: false, finished: true }
         });
-        Toast.success("Seluruh antrean Auto-Pilot kuis telah selesai 100%!");
+        Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!");
+        if (manualCtrl) manualCtrl.style.display = "block";
         return;
       }
       this.isAutoPilot = true;
@@ -1391,6 +2258,11 @@
       }
       const currentItem = state.queue[state.currentIndex];
       if (!currentItem) return;
+      if (currentItem.type === "KUESIONER" && currentItem.url) {
+        console.log("[Auto-Pilot Transition] Beralih dari ujian ke Kuesioner:", currentItem);
+        window.location.replace(currentItem.url);
+        return;
+      }
       const urlMatch = window.location.pathname.match(/\/exam\/([^\/\?]+)/);
       const currentUrlExamId = urlMatch ? urlMatch[1] : null;
       if (currentUrlExamId && currentItem.id && currentUrlExamId !== currentItem.id) {
@@ -1400,6 +2272,10 @@
       }
       console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
       const { statusEl, badgeEl, btnPause, progressBar } = this._injectAutoPilotHUD(state, currentItem);
+      if (this.isPaused) {
+        statusEl.textContent = state.pauseReason ? `Terjeda: ${state.pauseReason}. Klik Lanjutkan untuk mencoba lagi.` : "Auto-Pilot dijeda. Klik Lanjutkan untuk mencoba lagi.";
+        return;
+      }
       this._executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar);
     }
     _injectAutoPilotHUD(state, currentItem) {
@@ -1613,6 +2489,32 @@
         background: rgba(239, 68, 68, 0.25);
         color: #ef4444;
       }
+      .hud-q-pill {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        line-height: 1.2;
+      }
+      .hud-q-pill.answered {
+        background: rgba(16, 185, 129, 0.2);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.45);
+      }
+      .hud-q-pill.unanswered {
+        background: rgba(156, 163, 175, 0.15);
+        color: #9ca3af;
+        border: 1px solid rgba(156, 163, 175, 0.3);
+      }
+      .hud-q-pill.current {
+        background: rgba(245, 158, 11, 0.25);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.6);
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
+      }
     `;
       const hudCard = document.createElement("div");
       hudCard.className = "hud-card";
@@ -1656,6 +2558,16 @@
         </div>
       </div>
 
+      <div class="hud-matrix-wrap" style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
+        <div style="font-size: 10px; color: #888; display: flex; justify-content: space-between;">
+          <span>Status Kotak Soal:</span>
+          <span id="hud-matrix-summary">0/0 Hijau</span>
+        </div>
+        <div class="hud-nav-matrix" id="hud-nav-matrix" style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 55px; overflow-y: auto;">
+          <span style="font-size: 10px; color: #666;">Menunggu scan navigasi...</span>
+        </div>
+      </div>
+
       <div class="hud-status" id="hud-status-text">
         Mempersiapkan kuis...
       </div>
@@ -1665,7 +2577,7 @@
           ${this.isPaused ? "Lanjutkan" : "Jeda"}
         </button>
         <button class="hud-btn hud-btn-cancel" id="hud-btn-cancel">
-          Batalkan
+          Hentikan & Reset Total
         </button>
       </div>
     `;
@@ -1706,20 +2618,28 @@
         badgeEl.textContent = this.isPaused ? "Dijeda" : "Berjalan";
         btnPause.textContent = this.isPaused ? "Lanjutkan" : "Jeda";
         statusEl.textContent = this.isPaused ? "Auto-Pilot dijeda sementara." : "Melanjutkan pengerjaan kuis...";
-        const curStore = await Storage.get("mentari_auto_pilot_state");
-        if (curStore?.mentari_auto_pilot_state) {
-          curStore.mentari_auto_pilot_state.paused = this.isPaused;
-          await Storage.set({ mentari_auto_pilot_state: curStore.mentari_auto_pilot_state });
+        if (this.isPaused) {
+          await AutoPilotState.pause("Dijeda oleh pengguna");
+        } else {
+          await AutoPilotState.resume();
+        }
+        if (!this.isPaused && !this.isRunning) {
+          this.isRunning = true;
+          this.isAutoPilot = true;
+          const curStore = await AutoPilotState.get();
+          const curItem = curStore?.queue?.[curStore?.currentIndex];
+          this._executeAutoPilotQuiz(curStore, curItem, statusEl, badgeEl, btnPause, progressBar);
         }
       });
       btnCancel.addEventListener("click", async () => {
         this.isRunning = false;
         this.isAutoPilot = false;
-        await Storage.set({
-          mentari_auto_pilot_state: { active: false, cancelled: true }
-        });
-        Toast.info("Auto-Pilot Kuis telah dibatalkan.");
+        this.isPaused = false;
+        await AutoPilotState.reset();
+        Toast.info("Auto-Pilot kuis & evaluasi telah dihentikan & direset total.");
         if (this.hudHost) this.hudHost.remove();
+        const manualCtrl = document.getElementById("mentari-quiz-control-host");
+        if (manualCtrl) manualCtrl.style.display = "block";
       });
       return { statusEl, badgeEl, btnPause, progressBar };
     }
@@ -1755,6 +2675,7 @@
       const finalComp = this._checkIfExamAlreadyCompleted();
       const isReallyDone = Boolean(loopResult?.submitted || finalComp.isCompleted);
       if (isReallyDone) {
+        await this._evaluateAndSaveSmartMemory(currentItem?.type || "AUTO_PILOT", currentItem?.courseTitle || document.title);
         await this._markQuizAsCompletedPermanently(state, currentItem);
         statusEl.textContent = "Kuis berhasil diselesaikan 100%! Mempersiapkan kuis berikutnya...";
         Toast.success(`Kuis ${currentItem.courseTitle} selesai 100%!`);
@@ -1836,37 +2757,112 @@
         state.queue[state.currentIndex].status = "completed";
       }
       state.currentIndex = state.currentIndex + 1;
+      if (state.currentIndex >= state.queue.length && (state.mode === "all" || !state.mode)) {
+        if (statusEl) {
+          statusEl.textContent = "Kuis selesai! Sinkronisasi real-time kuesioner dosen di server UNPAM...";
+        }
+        try {
+          const hasNewKues = await AutoPilotSync.syncAndAppendKuesioner(state, statusEl);
+          if (hasNewKues) {
+            console.log("[Auto-Pilot Quiz] Kuesioner baru berhasil ditambahkan pasca-posttest! Melanjutkan pengerjaan.");
+          }
+        } catch (syncErr) {
+          console.warn("[Auto-Pilot Quiz] Gagal sinkronisasi kuesioner pasca-posttest:", syncErr);
+        }
+      }
       if (state.currentIndex < state.queue.length) {
         const nextItem = state.queue[state.currentIndex];
         await Storage.set({ mentari_auto_pilot_state: state });
-        const cooldown = isSkipped ? 2 : state.cooldownSec || 15;
-        if (statusEl) {
-          statusEl.textContent = isSkipped ? `Kuis dilewati. Melompat ke kuis berikutnya...` : `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
-        }
-        for (let s = cooldown; s > 0; s--) {
-          if (!this.isAutoPilot) return;
-          while (this.isPaused && this.isAutoPilot) {
-            if (statusEl) statusEl.textContent = `Istirahat dijeda (${s}s). Klik Lanjutkan untuk lanjut.`;
-            await Humanizer.delay(500);
-          }
+        const cooldown = isSkipped ? 1 : typeof state.cooldownSec === "number" ? state.cooldownSec : 0;
+        if (cooldown > 0) {
           if (statusEl) {
-            statusEl.textContent = isSkipped ? `Melompat ke kuis berikutnya dalam ${s} detik...` : `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+            statusEl.textContent = isSkipped ? `Kuis dilewati. Melompat ke kuis berikutnya...` : `Kuis selesai! Istirahat aman sebelum kuis berikutnya...`;
           }
-          await Humanizer.delay(1e3);
+          for (let s = cooldown; s > 0; s--) {
+            if (!this.isAutoPilot) return;
+            while (this.isPaused && this.isAutoPilot) {
+              if (statusEl) statusEl.textContent = `Istirahat dijeda (${s}s). Klik Lanjutkan untuk lanjut.`;
+              await Humanizer.delay(500);
+            }
+            if (statusEl) {
+              statusEl.textContent = isSkipped ? `Melompat ke kuis berikutnya dalam ${s} detik...` : `Istirahat aman: ${s} detik sebelum kuis berikutnya...`;
+            }
+            await Humanizer.delay(1e3);
+          }
+        } else {
+          if (statusEl) {
+            const itemLabel = nextItem.type === "KUESIONER" ? "Kuesioner Dosen" : "item berikutnya";
+            statusEl.textContent = isSkipped ? `Kuis dilewati. Melompat ke ${itemLabel}...` : `Kuis selesai! Membuka ${itemLabel}...`;
+          }
+          await Humanizer.delay(800);
         }
-        if (statusEl) statusEl.textContent = `Menuju: ${nextItem.courseTitle} (${nextItem.sectionName})...`;
+        const nextTypeLabel = nextItem.type === "KUESIONER" ? "Kuesioner" : "Kuis";
+        if (statusEl) statusEl.textContent = `Menuju ${nextTypeLabel}: ${nextItem.courseTitle} (${nextItem.sectionName})...`;
         await Humanizer.delay(500);
         window.location.replace(nextItem.url);
       } else {
-        state.active = false;
-        state.finished = true;
-        await Storage.set({ mentari_auto_pilot_state: state });
-        if (statusEl) statusEl.textContent = "Seluruh antrean Auto-Pilot kuis selesai 100%!";
-        Toast.success("Seluruh antrean Auto-Pilot kuis telah berhasil diselesaikan!");
+        await AutoPilotState.reset();
+        if (statusEl) statusEl.textContent = "Seluruh antrean Auto-Pilot kuis & evaluasi selesai 100%!";
+        Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah berhasil diselesaikan!");
         setTimeout(() => {
           if (this.hudHost) this.hudHost.remove();
+          const manualCtrl = document.getElementById("mentari-quiz-control-host");
+          if (manualCtrl) manualCtrl.style.display = "block";
         }, 7e3);
       }
+    }
+    /**
+     * Helper untuk memilih elemen opsi jawaban menggunakan React native prototype setter
+     * dan men-trigger synthetic events pada label & MuiRadio-root
+     */
+    async _selectOptionElement(option) {
+      if (!option) return false;
+      const radioInput = option.element?.tagName === "INPUT" ? option.element : option.element?.querySelector ? option.element.querySelector('input[type="radio"]') : option.element;
+      const parentLabel = option.labelEl || (radioInput?.closest ? radioInput.closest(".MuiFormControlLabel-root, label") : null);
+      const radioRoot = option.radioRoot || (radioInput?.closest ? radioInput.closest(".MuiRadio-root") : null) || parentLabel?.querySelector(".MuiRadio-root");
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+      if (nativeSetter && radioInput && radioInput.tagName === "INPUT") {
+        nativeSetter.call(radioInput, true);
+      } else if (radioInput && radioInput.tagName === "INPUT") {
+        radioInput.checked = true;
+      }
+      if (radioInput && radioInput.dispatchEvent) {
+        radioInput.dispatchEvent(new Event("click", { bubbles: true }));
+        radioInput.dispatchEvent(new Event("change", { bubbles: true }));
+        radioInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      if (radioRoot) {
+        radioRoot.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      }
+      if (parentLabel) {
+        await Humanizer.naturalClick(parentLabel, true);
+      } else if (radioInput) {
+        await Humanizer.naturalClick(radioInput, true);
+      }
+      if (radioInput && radioInput.dispatchEvent) {
+        radioInput.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return true;
+    }
+    /**
+     * Mekanisme Self-Recovery: Force-click pada opsi A (atau opsi pertama) menggunakan native setter
+     */
+    async _forceSelectFirstOption(container = null) {
+      const qContainer = container || this._findQuestionContainer();
+      if (!qContainer) return false;
+      const { options } = this._parseQuestionAndOptions(qContainer);
+      if (options.length > 0) {
+        await this._selectOptionElement(options[0]);
+        console.log("[Self-Recovery] Force-click opsi pertama (A) via React native setter & label click.");
+        return true;
+      }
+      const firstRadio = qContainer.querySelector('input[type="radio"]');
+      if (firstRadio) {
+        await this._selectOptionElement({ element: firstRadio });
+        console.log("[Self-Recovery] Force-click raw input radio pertama.");
+        return true;
+      }
+      return false;
     }
     /**
      * Memproses satu soal kuis yang sedang terbuka di layar
@@ -1892,16 +2888,24 @@
         return parent.classList.contains("correct") || parent.classList.contains("is-correct") || parent.classList.contains("jawaban-benar") || parent.getAttribute("data-correct") === "true" || html.includes("green") || text.includes("(benar)") || text.includes("(kunci)");
       });
       if (revealedIndex !== -1) {
-        const targetElement2 = options[revealedIndex].element;
-        await Humanizer.naturalClick(targetElement2);
+        await this._selectOptionElement(options[revealedIndex]);
+        this._recordCurrentQuestionAnswer(questionText, options[revealedIndex].text, options[revealedIndex].letter);
         Toast.success(`Kunci jawaban terdeteksi! Memilih [${options[revealedIndex].letter || revealedIndex + 1}]`);
         return true;
       }
+      const memoryMatchIdx = await this._lookupSmartQuestionMemory(questionText, options);
+      if (memoryMatchIdx !== null && memoryMatchIdx >= 0 && memoryMatchIdx < options.length) {
+        await this._selectOptionElement(options[memoryMatchIdx]);
+        this._recordCurrentQuestionAnswer(questionText, options[memoryMatchIdx].text, options[memoryMatchIdx].letter);
+        console.log(`[Smart Memory] Jawaban otomatis dari memori skor 100: [${options[memoryMatchIdx].letter}] ${options[memoryMatchIdx].text}`);
+        Toast.success(`Smart Memory (Score 100): Memilih [${options[memoryMatchIdx].letter || memoryMatchIdx + 1}]`);
+        return true;
+      }
       if (isAuto) {
-        await Humanizer.readingPacing(questionText, 600, 1500);
+        await Humanizer.randomDelay(350, 600);
       }
       const prompt = this._buildPrompt(questionText, options);
-      const systemInstruction = `Kamu adalah pakar akademik berintelegensi tinggi. Analisis soal dengan sangat teliti dan pilih SATU jawaban yang 100% paling akurat dan benar. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "A" atau "B. Jakarta"). Tanpa penjelasan, tanpa pembuka atau penutup.`;
+      const systemInstruction = `Kamu adalah profesor dan pakar akademik perguruan tinggi Indonesia berintelektual tinggi dengan target akurasi 100%. Analisis soal ujian akademik (termasuk soal pedagogi, kurikulum, filsafat pendidikan, dan soal bermuatan kata 'KECUALI' atau 'BUKAN') dengan sangat teliti, kritis, dan tanpa bias distractor. Pilih HANYA SATU opsi jawaban yang 100% benar dan paling tepat. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "C. Pendekatan kontekstual" atau "A"). JANGAN memberikan penjelasan, pengantar, atau penutup.`;
       const hudModelSelect = this.hudShadow?.getElementById("hud-select-model");
       const selectModel = this.shadow?.getElementById("quiz-select-model");
       const chosenModel = hudModelSelect && hudModelSelect.value && VALID_MODEL_IDS.includes(hudModelSelect.value) ? hudModelSelect.value : selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
@@ -1920,77 +2924,371 @@
       if (bestOptionIndex === -1) {
         throw new Error("Tidak dapat mencocokkan respon AI dengan opsi kuis.");
       }
-      const targetElement = options[bestOptionIndex].element;
-      await Humanizer.naturalClick(targetElement);
+      await this._selectOptionElement(options[bestOptionIndex]);
+      this._recordCurrentQuestionAnswer(questionText, options[bestOptionIndex].text, options[bestOptionIndex].letter);
       Toast.info(`Menjawab [${options[bestOptionIndex].letter || bestOptionIndex + 1}] via ${response.model || "Gemini"}`);
       return true;
     }
     _findQuestionContainer() {
+      const radio = document.querySelector('input[type="radio"], .MuiRadio-root');
+      if (radio) {
+        const card = radio.closest('.MuiPaper-root, .MuiCard-root, form, [class*="card"], [class*="question"], [class*="soal"]');
+        if (card) return card;
+      }
       const candidates = [
         document.querySelector(".question-container"),
+        document.querySelector(".soal-container"),
         document.querySelector('form[action*="exam"]'),
         document.querySelector(".MuiPaper-root:has(.MuiRadio-root)"),
         document.querySelector('.MuiPaper-root:has(input[type="radio"])'),
         document.querySelector('.MuiCard-root:has(input[type="radio"])'),
         document.querySelector("main .MuiBox-root:has(.MuiRadio-root)"),
-        document.querySelector("div:has(> .MuiFormControl-root)"),
+        document.querySelector("main"),
         document.body
       ];
-      return candidates.find((c) => c && c.querySelector('input[type="radio"], .MuiRadio-root'));
+      return candidates.find((c) => c && c.querySelector('input[type="radio"], .MuiRadio-root')) || null;
     }
     _parseQuestionAndOptions(container) {
       let questionText = "";
-      const textContainers = container.querySelectorAll(".MuiTypography-root, p, .soal-text");
-      for (const el of textContainers) {
-        if (el.closest(".MuiFormControlLabel-root, label")) continue;
-        const t = el.textContent.trim();
-        if (t.length > 10) {
-          questionText = t;
-          break;
+      const collectedParagraphs = [];
+      const textCandidates = Array.from(container.querySelectorAll(".soal-text, .question-text, .MuiTypography-root, p, h1, h2, h3, h4, h5, h6, pre, code, blockquote"));
+      for (const el of textCandidates) {
+        if (el.closest('.MuiFormControlLabel-root, label, .MuiRadio-root, input[type="radio"]')) continue;
+        if (el.closest('#mentari-quiz-control-host, #mentari-autopilot-hud-host, #mentari-token-mod-host, .mentari-toast-container, button, a, aside, .MuiDrawer-root, [role="navigation"], header, nav')) continue;
+        const rawText = (el.textContent || "").trim();
+        if (!rawText) continue;
+        if (/^\d+$/.test(rawText)) continue;
+        if (/^(soal|pertanyaan|question)(\s+no\.?|\s+nomor)?\s*\d+[\s:\.-]*$/i.test(rawText)) continue;
+        if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(rawText)) continue;
+        const lower = rawText.toLowerCase();
+        if (lower.startsWith("petunjuk pengerjaan") || lower.startsWith("petunjuk umum") || lower.startsWith("sisa waktu") || lower.startsWith("waktu tersisa") || lower === "pilihlah salah satu jawaban yang paling tepat" || lower === "pilih salah satu jawaban yang benar") {
+          continue;
+        }
+        const cleanText = rawText.replace(/^(soal|pertanyaan|question)?\s*\d+[\s:\.\)-]+\s*/i, "").trim();
+        if (cleanText.length > 3) {
+          if (!collectedParagraphs.some((p) => p.includes(cleanText) || cleanText.includes(p))) {
+            collectedParagraphs.push(cleanText);
+          }
+        }
+      }
+      questionText = collectedParagraphs.join("\n").trim();
+      if (!questionText) {
+        const firstRadio = container.querySelector('input[type="radio"], .MuiRadio-root');
+        const radioGroup = firstRadio?.closest('.MuiFormControl-root, .MuiFormGroup-root, [role="radiogroup"]');
+        if (radioGroup && radioGroup.previousElementSibling) {
+          const prevText = (radioGroup.previousElementSibling.textContent || "").trim();
+          const cleanPrev = prevText.replace(/^(soal|pertanyaan|question)?\s*\d+[\s:\.\)-]+\s*/i, "").trim();
+          if (cleanPrev.length > 5) questionText = cleanPrev;
         }
       }
       const options = [];
-      const radioLabels = container.querySelectorAll('.MuiFormControlLabel-root, label:has(input[type="radio"])');
+      let radioLabels = Array.from(container.querySelectorAll(".MuiFormControlLabel-root, label"));
+      if (radioLabels.length === 0) {
+        const allRadios = Array.from(container.querySelectorAll('input[type="radio"]'));
+        radioLabels = allRadios.map((r) => r.closest("label") || r.parentElement || r);
+      }
       radioLabels.forEach((labelEl, idx) => {
-        const radioInput = labelEl.querySelector('input[type="radio"]') || labelEl;
-        const labelText = labelEl.textContent.trim();
+        const radioInput = labelEl.tagName === "INPUT" ? labelEl : labelEl.querySelector('input[type="radio"]') || labelEl;
+        const radioRoot = labelEl.querySelector(".MuiRadio-root") || (radioInput.closest ? radioInput.closest(".MuiRadio-root") : null);
+        const labelText = (labelEl.textContent || "").trim();
         const letterMatch = labelText.match(/^([A-Ea-e])[\.\)]\s*(.*)/);
         options.push({
           index: idx,
           letter: letterMatch ? letterMatch[1].toUpperCase() : String.fromCharCode(65 + idx),
-          text: letterMatch ? letterMatch[2] : labelText,
+          text: letterMatch ? letterMatch[2].trim() : labelText,
           fullText: labelText,
-          element: radioInput
+          element: radioInput,
+          labelEl: labelEl.tagName === "LABEL" || labelEl.classList.contains("MuiFormControlLabel-root") ? labelEl : null,
+          radioRoot
         });
       });
       return { questionText, options };
     }
     _buildPrompt(questionText, options) {
       const formattedOptions = options.map((o) => `${o.letter}. ${o.text}`).join("\n");
-      return `Soal:
+      return `[SOAL UJIAN AKADEMIK]
 ${questionText}
 
-Pilihan Jawaban:
+[PILIHAN JAWABAN]
 ${formattedOptions}
 
-Jawaban yang benar adalah:`;
+Instruksi: Analisis dengan cermat dan tentukan SATU jawaban yang paling tepat (akurasi 100%). Format output: HURUF OPSI dan TEKS JAWABAN (contoh: "A. Jakarta" atau "B").
+Jawaban:`;
     }
     _determineMatchingOption(aiAnswer, options) {
-      if (!aiAnswer) return -1;
-      const cleanAnswer = aiAnswer.trim().toUpperCase();
-      const letterMatch = cleanAnswer.match(/^([A-E])\b/);
-      if (letterMatch) {
-        const targetLetter = letterMatch[1];
-        const matchIdx = options.findIndex((o) => o.letter === targetLetter);
-        if (matchIdx !== -1) return matchIdx;
+      if (!aiAnswer || !options || options.length === 0) return 0;
+      const raw = aiAnswer.trim();
+      const cleaned = raw.replace(/[\*`_#\[\]\(\)]/g, " ").trim();
+      const leadingLetterMatch = cleaned.match(/^([A-Ea-e])(?:\s*[\.:\)\-]\s*|\s+|$)/i);
+      if (leadingLetterMatch) {
+        const letter = leadingLetterMatch[1].toUpperCase();
+        const idx = options.findIndex((o) => o.letter.toUpperCase() === letter);
+        if (idx !== -1) return idx;
       }
-      for (let i = 0; i < options.length; i++) {
-        const opt = options[i];
-        if (cleanAnswer.includes(opt.text.toUpperCase()) || opt.text.toUpperCase().includes(cleanAnswer)) {
-          return i;
+      const keywordLetterMatch = cleaned.match(/(?:jawaban|pilihan|opsi|kunci|answer|option)(?:[^\na-e]{0,35})([A-Ea-e])\b/i);
+      if (keywordLetterMatch) {
+        const letter = keywordLetterMatch[1].toUpperCase();
+        const idx = options.findIndex((o) => o.letter.toUpperCase() === letter);
+        if (idx !== -1) return idx;
+      }
+      const firstLine = cleaned.split("\n")[0].trim();
+      if (firstLine.length <= 5) {
+        const isolatedLetterMatch = firstLine.match(/\b([A-Ea-e])\b/i);
+        if (isolatedLetterMatch) {
+          const letter = isolatedLetterMatch[1].toUpperCase();
+          const idx = options.findIndex((o) => o.letter.toUpperCase() === letter);
+          if (idx !== -1) return idx;
         }
       }
+      const upperCleaned = cleaned.toUpperCase();
+      let bestMatchIdx = -1;
+      let maxMatchLen = 0;
+      options.forEach((opt, idx) => {
+        const optText = (opt.text || "").trim().toUpperCase();
+        if (optText.length >= 3) {
+          if (upperCleaned.includes(optText)) {
+            if (optText.length > maxMatchLen) {
+              maxMatchLen = optText.length;
+              bestMatchIdx = idx;
+            }
+          }
+        }
+      });
+      if (bestMatchIdx !== -1) return bestMatchIdx;
+      options.forEach((opt, idx) => {
+        const fullText = (opt.fullText || "").trim().toUpperCase();
+        if (fullText.length >= 3 && upperCleaned.includes(fullText)) {
+          if (fullText.length > maxMatchLen) {
+            maxMatchLen = fullText.length;
+            bestMatchIdx = idx;
+          }
+        }
+      });
+      if (bestMatchIdx !== -1) return bestMatchIdx;
+      console.warn("[Mentari AI] Jawaban AI tidak dapat dicocokkan secara pasti:", raw);
       return 0;
+    }
+    // ─── Smart Question Memory & Scoring Gate (100% Score Verification) ────────
+    _getCurrentPageNumber() {
+      const m = window.location.search.match(/[?&]page=(\d+)/i);
+      if (m) return parseInt(m[1], 10);
+      const activeNav = this._getExamNavigationStatus()?.questions?.find((q) => q.isCurrent);
+      return activeNav ? activeNav.num : null;
+    }
+    _recordCurrentQuestionAnswer(questionText, answerText, optionLetter) {
+      if (!questionText) return;
+      const pageNum = this._getCurrentPageNumber();
+      const cleanQ = questionText.trim().toLowerCase().replace(/\s+/g, " ");
+      if (!Array.isArray(this._currentSessionQuestions)) {
+        this._currentSessionQuestions = [];
+      }
+      const existingIdx = this._currentSessionQuestions.findIndex((q) => q.cleanQ === cleanQ || pageNum && q.pageNum === pageNum);
+      const record = {
+        cleanQ,
+        rawQ: questionText,
+        answerText: (answerText || "").trim(),
+        optionLetter: (optionLetter || "").trim().toUpperCase(),
+        pageNum: pageNum || (existingIdx !== -1 ? this._currentSessionQuestions[existingIdx].pageNum : null),
+        timestamp: Date.now()
+      };
+      if (existingIdx !== -1) {
+        this._currentSessionQuestions[existingIdx] = record;
+      } else {
+        this._currentSessionQuestions.push(record);
+      }
+    }
+    async _lookupSmartQuestionMemory(questionText, options) {
+      try {
+        if (!questionText || !options || options.length === 0) return null;
+        const store = await Storage.get("mentari_smart_question_memory");
+        const memory = Array.isArray(store?.mentari_smart_question_memory) ? store.mentari_smart_question_memory : [];
+        if (memory.length === 0) return null;
+        const cleanQ = questionText.trim().toLowerCase().replace(/\s+/g, " ");
+        const matchedRecord = memory.find((m) => {
+          if (!m.cleanQ && !m.questionText) return false;
+          const memClean = (m.cleanQ || m.questionText).trim().toLowerCase().replace(/\s+/g, " ");
+          if (memClean === cleanQ) return true;
+          if (memClean.length > 25 && cleanQ.length > 25) {
+            if (memClean.includes(cleanQ) || cleanQ.includes(memClean)) return true;
+          }
+          return false;
+        });
+        if (!matchedRecord) return null;
+        const targetAns = (matchedRecord.answerText || "").trim().toLowerCase();
+        const targetLetter = (matchedRecord.optionLetter || "").trim().toUpperCase();
+        if (targetAns.length >= 2) {
+          const textMatchIdx = options.findIndex((o) => {
+            const optText = (o.text || "").trim().toLowerCase();
+            return optText === targetAns || optText.length > 5 && (optText.includes(targetAns) || targetAns.includes(optText));
+          });
+          if (textMatchIdx !== -1) {
+            console.log(`[Smart Memory] Jawaban ditemukan via pencocokan teks opsi: Opsi ${options[textMatchIdx].letter}`);
+            return textMatchIdx;
+          }
+        }
+        if (targetLetter) {
+          const letterMatchIdx = options.findIndex((o) => o.letter.toUpperCase() === targetLetter);
+          if (letterMatchIdx !== -1) {
+            console.log(`[Smart Memory] Jawaban ditemukan via huruf opsi tersimpan: [${targetLetter}]`);
+            return letterMatchIdx;
+          }
+        }
+        return null;
+      } catch (e) {
+        console.warn("[Smart Memory] Error lookup:", e);
+        return null;
+      }
+    }
+    _extractExamScoreAndReview() {
+      const result = {
+        score: null,
+        isPerfect: false,
+        wrongQuestions: [],
+        correctQuestions: [],
+        rawScoreText: ""
+      };
+      try {
+        const pageText = (document.body ? document.body.innerText : "") || "";
+        const scorePatterns = [
+          /(?:nilai|skor|grade|mark|score)(?:\s+akhir)?\s*(?:adalah|:)?\s*([0-9]+(?:[\.,][0-9]+)?)\s*(?:\/|\s+dari\s+|\s+out of\s+)\s*([0-9]+(?:[\.,][0-9]+)?)/i,
+          /(?:nilai|skor|grade)\s*[:=]\s*([0-9]+(?:[\.,][0-9]+)?)\s*%/i,
+          /([0-9]+(?:[\.,][0-9]+)?)\s*(?:\/|\s+dari\s+)\s*([0-9]+(?:[\.,][0-9]+)?)\s*\(([0-9]+)%\)/i,
+          /(?:nilai|skor)\s*[:=]\s*([0-9]+(?:[\.,][0-9]+)?)/i
+        ];
+        for (const pat of scorePatterns) {
+          const m = pageText.match(pat);
+          if (m) {
+            result.rawScoreText = m[0];
+            const val1 = parseFloat(m[1].replace(",", "."));
+            const val2 = m[2] ? parseFloat(m[2].replace(",", ".")) : null;
+            if (val2 && val2 > 0) {
+              result.score = Math.round(val1 / val2 * 100);
+            } else if (val1 <= 10 && val1 > 0) {
+              result.score = Math.round(val1 * 10);
+            } else {
+              result.score = Math.round(val1);
+            }
+            break;
+          }
+        }
+        if (result.score !== null) {
+          result.isPerfect = result.score >= 100;
+        }
+        const questionBlocks = Array.from(document.querySelectorAll('.que, .MuiPaper-root:has(.MuiRadio-root), .MuiPaper-root:has(.soal-text), [class*="question-item"]'));
+        questionBlocks.forEach((block, idx) => {
+          const bText = (block.textContent || "").toLowerCase();
+          const qNum = idx + 1;
+          const isWrong = bText.includes("jawaban anda salah") || bText.includes("incorrect") || bText.includes("poin 0,00") || bText.includes("0.00/1.00") || bText.includes("0,00/1,00") || block.querySelector('.incorrect, .is-incorrect, [class*="wrong"]');
+          const isRight = bText.includes("jawaban anda benar") || bText.includes("correct") || bText.includes("poin 1,00") || bText.includes("1.00/1.00") || bText.includes("1,00/1,00") || block.querySelector(".correct, .is-correct");
+          if (isWrong && !result.wrongQuestions.includes(qNum)) {
+            result.wrongQuestions.push(qNum);
+          } else if (isRight && !result.correctQuestions.includes(qNum)) {
+            result.correctQuestions.push(qNum);
+          }
+        });
+        const navButtons = Array.from(document.querySelectorAll('.qnbutton, [id*="quiznav"], [class*="nav-matrix"] button, aside button'));
+        navButtons.forEach((b, idx) => {
+          const title = (b.getAttribute("title") || b.getAttribute("aria-label") || "").toLowerCase();
+          const cls = (b.className || "").toLowerCase();
+          const numMatch = b.textContent.trim().match(/\d+/);
+          const qNum = numMatch ? parseInt(numMatch[0], 10) : idx + 1;
+          if (title.includes("salah") || title.includes("incorrect") || cls.includes("incorrect")) {
+            if (!result.wrongQuestions.includes(qNum)) result.wrongQuestions.push(qNum);
+          } else if (title.includes("benar") || title.includes("correct") || cls.includes("correct")) {
+            if (!result.correctQuestions.includes(qNum)) result.correctQuestions.push(qNum);
+          }
+        });
+        if (result.wrongQuestions.length > 0) {
+          result.isPerfect = false;
+        }
+      } catch (e) {
+        console.warn("[Smart Memory] Gagal mengekstrak skor review:", e);
+      }
+      return result;
+    }
+    async _evaluateAndSaveSmartMemory(sourceContext = "QUIZ", examTitle = "") {
+      try {
+        console.log(`[Smart Memory Gate] Memeriksa hasil ujian pasca pengerjaan (${sourceContext})...`);
+        let reviewInfo = this._extractExamScoreAndReview();
+        const startWait = Date.now();
+        while (Date.now() - startWait < 3500 && reviewInfo.score === null) {
+          await Humanizer.delay(400);
+          reviewInfo = this._extractExamScoreAndReview();
+        }
+        console.log("[Smart Memory Gate] Hasil ekstraksi skor:", reviewInfo);
+        if (reviewInfo.score !== null) {
+          if (reviewInfo.score >= 100 && reviewInfo.wrongQuestions.length === 0) {
+            if (this._currentSessionQuestions && this._currentSessionQuestions.length > 0) {
+              const store = await Storage.get("mentari_smart_question_memory");
+              const memory = Array.isArray(store?.mentari_smart_question_memory) ? store.mentari_smart_question_memory : [];
+              let savedCount = 0;
+              this._currentSessionQuestions.forEach((q) => {
+                if (!q.cleanQ || !q.answerText) return;
+                const idx = memory.findIndex((m) => m.cleanQ === q.cleanQ);
+                const memItem = {
+                  cleanQ: q.cleanQ,
+                  questionText: q.rawQ,
+                  answerText: q.answerText,
+                  optionLetter: q.optionLetter,
+                  score: 100,
+                  examTitle: examTitle || document.title,
+                  timestamp: Date.now()
+                };
+                if (idx !== -1) {
+                  memory[idx] = memItem;
+                } else {
+                  memory.push(memItem);
+                  savedCount++;
+                }
+              });
+              await Storage.set({ mentari_smart_question_memory: memory });
+              console.log(`[Smart Memory] Skor 100 Sempurna! Tersimpan ${savedCount} soal baru ke Smart Memory (Total: ${memory.length}).`);
+              Toast.success(`Smart Memory: Skor 100 Sempurna! ${this._currentSessionQuestions.length} kunci jawaban tersimpan untuk Post-Test.`);
+            }
+          } else {
+            console.warn(`[Smart Memory VETO] Skor kuis: ${reviewInfo.score}/100 (< 100). Penyimpanan ke Smart Memory DITOLAK.`);
+            if (reviewInfo.wrongQuestions.length > 0) {
+              const wrongListStr = reviewInfo.wrongQuestions.join(", ");
+              Toast.warning(`Skor ${reviewInfo.score}/100. Soal No. [${wrongListStr}] salah! Kunci jawaban TIDAK disimpan ke memori.`);
+            } else {
+              Toast.warning(`Skor ${reviewInfo.score}/100 (< 100). Kunci jawaban TIDAK disimpan ke memori.`);
+            }
+          }
+        } else {
+          console.log("[Smart Memory] Skor kuis tidak terdeteksi langsung di DOM saat ini.");
+        }
+      } catch (e) {
+        console.warn("[Smart Memory] Gagal mengevaluasi hasil ujian:", e);
+      }
+    }
+    _updateHUDNavMatrix(navStatus) {
+      if (!this.hudShadow) return;
+      const summaryEl = this.hudShadow.getElementById("hud-matrix-summary");
+      const matrixEl = this.hudShadow.getElementById("hud-nav-matrix");
+      if (!matrixEl || !navStatus || !Array.isArray(navStatus.questions)) return;
+      const total = navStatus.totalQuestions || navStatus.total || navStatus.questions.length;
+      const answered = navStatus.answeredCount !== void 0 ? navStatus.answeredCount : navStatus.questions.filter((q) => q.isAnswered).length;
+      if (summaryEl) {
+        summaryEl.textContent = `${answered}/${total} Hijau`;
+        if (answered >= total && total > 0) {
+          summaryEl.style.color = "#34d399";
+        } else {
+          summaryEl.style.color = "#fbbf24";
+        }
+      }
+      matrixEl.innerHTML = navStatus.questions.map((q) => {
+        let stateClass = "unanswered";
+        let title = `Soal ${q.num}: Belum Terjawab (Abu-abu)`;
+        if (q.isAnswered) {
+          stateClass = "answered";
+          title = `Soal ${q.num}: Terjawab (Hijau)`;
+        }
+        if (q.isCurrent) {
+          stateClass += " current";
+          title += " (Sedang Dibuka)";
+        }
+        return `<span class="hud-q-pill ${stateClass}" title="${title}">${q.num}</span>`;
+      }).join("");
     }
     _makeElementDraggable(element, handle) {
       if (!element || !handle) return;

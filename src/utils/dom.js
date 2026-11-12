@@ -13,7 +13,7 @@ export const DOM = {
     const list = Array.isArray(keywords) ? keywords : [keywords];
     const normalized = list.map(k => k.trim().toLowerCase());
 
-    const buttons = root.querySelectorAll('button, a[role="button"], input[type="button"], input[type="submit"], div[role="button"]');
+    const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
     for (const btn of buttons) {
       // Abaikan tombol tersembunyi
       if (btn.offsetParent === null && !btn.getClientRects().length) continue;
@@ -45,9 +45,10 @@ export const DOM = {
     const normalized = list.map(k => k.trim().toLowerCase());
     const matches = [];
 
-    const buttons = root.querySelectorAll('button, a[role="button"], div[role="button"]');
+    const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
     for (const btn of buttons) {
-      const text = (btn.textContent || '').trim().toLowerCase();
+      if (btn.offsetParent === null && !btn.getClientRects().length) continue;
+      const text = (btn.textContent || btn.value || '').trim().toLowerCase();
       if (normalized.some(kw => text.includes(kw))) {
         matches.push(btn);
       }
@@ -133,5 +134,72 @@ export const DOM = {
         subtree: true
       });
     });
+  },
+
+  /**
+   * Mengisi value input atau textarea yang kompatibel dengan React Controlled Components
+   */
+  setNativeValue(element, value) {
+    if (!element) return;
+    const proto = element instanceof HTMLTextAreaElement
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (nativeSetter) {
+      nativeSetter.call(element, value);
+    } else {
+      element.value = value;
+    }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  },
+
+  /**
+   * Mencentang radio button dengan React native property setter & synthetic events
+   */
+  setNativeRadioChecked(inputEl) {
+    if (!inputEl) return;
+    const input = inputEl.tagName === 'INPUT' ? inputEl : (inputEl.querySelector?.('input[type="radio"]') || inputEl);
+    if (!input || input.tagName !== 'INPUT') {
+      try { inputEl.click(); } catch (_) {}
+      return;
+    }
+
+    const parentLabel = input.closest('label, .MuiFormControlLabel-root');
+    const radioContainer = input.closest('.MuiRadio-root, [role="radio"]');
+
+    // 0. Reset React valueTracker jika ada agar React mendeteksi perubahan state
+    if (input._valueTracker) {
+      input._valueTracker.setValue('');
+    }
+
+    // 1. Set property checked via native descriptor
+    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked')?.set;
+    if (nativeSetter) {
+      nativeSetter.call(input, true);
+    } else {
+      input.checked = true;
+    }
+
+    // 2. Dispatch event awal
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // 3. Trigger single click pada label ATAU container ATAU input
+    if (parentLabel) {
+      try { parentLabel.click(); } catch (_) {}
+    } else if (radioContainer) {
+      try { radioContainer.click(); } catch (_) {}
+    } else {
+      try { input.click(); } catch (_) {}
+    }
+
+    // 4. Pastikan checked tetap true dan dispatch final event change & input
+    if (!input.checked) {
+      if (nativeSetter) nativeSetter.call(input, true);
+      else input.checked = true;
+    }
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   }
 };

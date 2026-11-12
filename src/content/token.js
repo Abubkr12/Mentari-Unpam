@@ -3,13 +3,14 @@
  * Dashboard pemantau forum aktif, kuis & evaluasi Mentari UNPAM dengan Closed Shadow DOM.
  */
 
-import { Storage } from '../utils/storage.js';
+import { Storage, AutoPilotState } from '../utils/storage.js';
 import { UnpamAuth } from '../utils/unpam-auth.js';
 import { Toast } from '../utils/toast.js';
 import { DocxGenerator } from '../utils/docx-generator.js';
+import { MarkdownGenerator } from '../utils/md-generator.js';
 
 const ALL_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Rekomendasi)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Akurasi 100% - Rekomendasi)' },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (Cepat)' },
   { id: 'gemini-3-flash', name: 'Gemini 3 Flash (Next-Gen)' },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite (RPD 500)' },
@@ -420,16 +421,7 @@ class MentariDashboard {
         background: rgba(255, 255, 255, 0.12);
         color: #fff;
       }
-      .forum-export-docx-btn {
-        background: rgba(37, 99, 235, 0.15);
-        border-color: rgba(59, 130, 246, 0.35);
-        color: #60a5fa;
-      }
-      .forum-export-docx-btn:hover {
-        background: rgba(37, 99, 235, 0.28);
-        border-color: rgba(59, 130, 246, 0.55);
-        color: #93c5fd;
-      }
+
       .forum-sync-time {
         font-size: 11px;
         color: #888;
@@ -579,6 +571,34 @@ class MentariDashboard {
         margin-left: 22px;
         line-height: 1.4;
       }
+      .forum-completed-box {
+        background: rgba(16, 185, 129, 0.08);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-top: 8px;
+        margin-bottom: 6px;
+      }
+      .forum-completed-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #10b981;
+      }
+      .forum-completed-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #10b981;
+      }
+      .forum-completed-reason {
+        font-size: 11px;
+        color: #94a3b8;
+        margin-top: 4px;
+        margin-left: 22px;
+        line-height: 1.4;
+      }
 
       /* Legacy Forum Card & Open Button Fallback */
       .forum-card {
@@ -640,6 +660,31 @@ class MentariDashboard {
       .badge-locked {
         color: #6b7280;
         background: rgba(107, 114, 128, 0.15);
+      }
+      .badge-ready {
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .badge-waiting-forum {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+      }
+      .badge-waiting-lecturer {
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.15);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+      }
+      .badge-waiting-pre {
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+      }
+      .badge-waiting-post {
+        color: #c084fc;
+        background: rgba(192, 132, 252, 0.15);
+        border: 1px solid rgba(192, 132, 252, 0.3);
       }
 
       /* Evaluasi Tab & Accordion */
@@ -867,6 +912,40 @@ class MentariDashboard {
         border-color: rgba(107, 114, 128, 0.2);
         cursor: not-allowed;
       }
+      .eval-btn-ready {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border-color: rgba(16, 185, 129, 0.4);
+      }
+      .eval-btn-ready:hover {
+        background: rgba(16, 185, 129, 0.3);
+        color: #34d399;
+      }
+      .eval-btn-goto-forum {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        border-color: rgba(245, 158, 11, 0.4);
+      }
+      .eval-btn-goto-forum:hover {
+        background: rgba(245, 158, 11, 0.3);
+        color: #fbbf24;
+      }
+      .eval-btn-blocked {
+        background: rgba(255, 255, 255, 0.04);
+        color: #777;
+        border-color: rgba(255, 255, 255, 0.08);
+        cursor: not-allowed;
+      }
+      .eval-status-hint {
+        font-size: 10px;
+        font-weight: 500;
+        opacity: 0.9;
+      }
+      .eval-status-hint.hint-forum { color: #f59e0b; }
+      .eval-status-hint.hint-lecturer { color: #94a3b8; }
+      .eval-status-hint.hint-pre { color: #38bdf8; }
+      .eval-status-hint.hint-post { color: #c084fc; }
+      .eval-status-hint.hint-ready { color: #10b981; }
       .eval-type-icon {
         width: 16px;
         height: 16px;
@@ -1057,16 +1136,7 @@ class MentariDashboard {
         background: #e2e8f0;
         color: #0f172a;
       }
-      .modal.theme-light .forum-export-docx-btn {
-        background: rgba(37, 99, 235, 0.1);
-        border-color: rgba(59, 130, 246, 0.35);
-        color: #1d4ed8;
-      }
-      .modal.theme-light .forum-export-docx-btn:hover {
-        background: rgba(37, 99, 235, 0.18);
-        border-color: rgba(59, 130, 246, 0.5);
-        color: #1e40af;
-      }
+
       .modal.theme-light .forum-sync-time {
         color: #64748b;
       }
@@ -1096,6 +1166,21 @@ class MentariDashboard {
       .modal.theme-light .eval-accordion-content {
         border-top-color: #f1f5f9;
       }
+      .modal.theme-light .forum-card {
+        background: #ffffff;
+        border-color: rgba(0, 0, 0, 0.08);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+      }
+      .modal.theme-light .forum-card:hover {
+        background: #f8fafc;
+        border-color: rgba(212, 175, 55, 0.45);
+      }
+      .modal.theme-light .forum-title {
+        color: #1e293b !important;
+      }
+      .modal.theme-light .forum-course {
+        color: #64748b !important;
+      }
       .modal.theme-light .forum-item,
       .modal.theme-light .eval-item {
         background: #ffffff;
@@ -1124,6 +1209,69 @@ class MentariDashboard {
       .modal.theme-light .forum-unavailable-reason {
         color: #64748b;
       }
+      .modal.theme-light .forum-completed-box {
+        background: rgba(16, 185, 129, 0.06);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+      .modal.theme-light .forum-completed-title {
+        color: #059669;
+      }
+      .modal.theme-light .forum-completed-reason {
+        color: #64748b;
+      }
+      .modal.theme-light .badge-ready {
+        color: #059669;
+        background: rgba(16, 185, 129, 0.1);
+        border-color: rgba(16, 185, 129, 0.25);
+      }
+      .modal.theme-light .badge-waiting-forum {
+        color: #d97706;
+        background: rgba(245, 158, 11, 0.1);
+        border-color: rgba(245, 158, 11, 0.25);
+      }
+      .modal.theme-light .badge-waiting-lecturer {
+        color: #475569;
+        background: rgba(100, 116, 139, 0.1);
+        border-color: rgba(100, 116, 139, 0.2);
+      }
+      .modal.theme-light .badge-waiting-pre {
+        color: #0284c7;
+        background: rgba(56, 189, 248, 0.1);
+        border-color: rgba(56, 189, 248, 0.25);
+      }
+      .modal.theme-light .badge-waiting-post {
+        color: #7c3aed;
+        background: rgba(192, 132, 252, 0.1);
+        border-color: rgba(192, 132, 252, 0.25);
+      }
+      .modal.theme-light .eval-btn-ready {
+        background: rgba(16, 185, 129, 0.1);
+        color: #059669;
+        border-color: rgba(16, 185, 129, 0.35);
+      }
+      .modal.theme-light .eval-btn-ready:hover {
+        background: rgba(16, 185, 129, 0.2);
+        color: #047857;
+      }
+      .modal.theme-light .eval-btn-goto-forum {
+        background: rgba(245, 158, 11, 0.1);
+        color: #d97706;
+        border-color: rgba(245, 158, 11, 0.35);
+      }
+      .modal.theme-light .eval-btn-goto-forum:hover {
+        background: rgba(245, 158, 11, 0.2);
+        color: #b45309;
+      }
+      .modal.theme-light .eval-btn-blocked {
+        background: #f1f5f9;
+        color: #94a3b8;
+        border-color: #cbd5e1;
+      }
+      .modal.theme-light .eval-status-hint.hint-forum { color: #d97706; }
+      .modal.theme-light .eval-status-hint.hint-lecturer { color: #64748b; }
+      .modal.theme-light .eval-status-hint.hint-pre { color: #0284c7; }
+      .modal.theme-light .eval-status-hint.hint-post { color: #7c3aed; }
+      .modal.theme-light .eval-status-hint.hint-ready { color: #059669; }
       .modal.theme-light .eval-summary {
         background: #ffffff;
         border-color: #e2e8f0;
@@ -1569,7 +1717,227 @@ class MentariDashboard {
     return Boolean(f.completion === true || f.answered === true);
   }
 
-  _computeUnavailableRanges(meetingNums) {
+  _getMeetingKey(meetingNum, sectionName) {
+    if (typeof meetingNum === 'number' && !isNaN(meetingNum) && meetingNum > 0) {
+      return `m_${meetingNum}`;
+    }
+    const m = (sectionName || '').match(/(?:Pertemuan|Meeting)\s*(\d+)/i);
+    if (m) {
+      return `m_${parseInt(m[1], 10)}`;
+    }
+    return `sec_${(sectionName || '').toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  }
+
+  _resolveEvalStatus(item, allEvalsInCourse = []) {
+    // 1. Selesai
+    if (item.completion) {
+      return {
+        status: 'DONE',
+        badgeLabel: 'Selesai',
+        badgeClass: 'badge-done',
+        canExecute: false,
+        buttonLabel: 'Selesai',
+        buttonClass: 'eval-btn-done',
+        reason: 'Telah diselesaikan'
+      };
+    }
+
+    const meetingKey = this._getMeetingKey(item.meetingNum, item.sectionName);
+    const meta = this.courseForumsMeta ? this.courseForumsMeta[item.courseCode] : null;
+    const sectionForums = (meta && meta.sectionForums) ? meta.sectionForums : {};
+    let forum = sectionForums[meetingKey];
+
+    // Fallback pencarian forum dari activeForums jika belum ada di sectionForums
+    if (!forum && Array.isArray(this.activeForums)) {
+      const activeF = this.activeForums.find(f => 
+        f.courseCode === item.courseCode && 
+        this._getMeetingKey(f.meetingNum, f.sectionName) === meetingKey
+      );
+      if (activeF) {
+        forum = {
+          forumId: activeF.forumId,
+          hasTopics: true,
+          completion: activeF.completion,
+          answered: activeF.answered
+        };
+      } else if (meta && Array.isArray(meta.unavailableMeetings) && typeof item.meetingNum === 'number' && meta.unavailableMeetings.includes(item.meetingNum)) {
+        forum = {
+          forumId: null,
+          hasTopics: false,
+          completion: false,
+          answered: false
+        };
+      }
+    }
+
+    // 2. Pre-Test (Mandiri, tidak bergantung pada forum)
+    if (item.type === 'PRE_TEST') {
+      if (item.locked) {
+        return {
+          status: 'LOCKED',
+          badgeLabel: 'Terkunci',
+          badgeClass: 'badge-locked',
+          canExecute: false,
+          buttonLabel: 'Terkunci',
+          buttonClass: 'eval-btn-locked',
+          reason: item.lockReason || 'Terkunci oleh sistem LMS'
+        };
+      }
+      return {
+        status: 'READY',
+        badgeLabel: 'Siap Dikerjakan',
+        badgeClass: 'badge-ready',
+        canExecute: true,
+        buttonLabel: 'Kerjakan',
+        buttonClass: 'eval-btn-ready',
+        reason: 'Pre-Test siap dikerjakan'
+      };
+    }
+
+    // 3. Post-Test
+    if (item.type === 'POST_TEST') {
+      // 3A. Hard-lock dari LMS
+      if (item.locked) {
+        return {
+          status: 'LMS_LOCKED',
+          badgeLabel: 'Terkunci',
+          badgeClass: 'badge-locked',
+          canExecute: false,
+          buttonLabel: 'Terkunci',
+          buttonClass: 'eval-btn-locked',
+          reason: item.lockReason || 'Terkunci oleh sistem LMS'
+        };
+      }
+
+      // 3B. Cek apakah ada Pre-Test di pertemuan ini yang belum selesai
+      const preTest = allEvalsInCourse.find(e => 
+        e.type === 'PRE_TEST' && 
+        this._getMeetingKey(e.meetingNum, e.sectionName) === meetingKey
+      );
+      if (preTest && !preTest.completion) {
+        return {
+          status: 'WAITING_PRETEST',
+          badgeLabel: 'Menunggu Pre-Test',
+          badgeClass: 'badge-waiting-pre',
+          canExecute: false,
+          buttonLabel: 'Butuh Pre-Test',
+          buttonClass: 'eval-btn-blocked',
+          hintClass: 'hint-pre',
+          reason: 'Pre-Test pertemuan ini belum diselesaikan'
+        };
+      }
+
+      // 3C. Cek Forum Diskusi pertemuan ini
+      if (forum) {
+        // Kondisi Gambar 2: Forum belum dibuka/belum ada topik dari dosen
+        if (forum.hasTopics === false) {
+          return {
+            status: 'FORUM_NOT_OPEN',
+            badgeLabel: 'Forum Belum Dibuka',
+            badgeClass: 'badge-waiting-lecturer',
+            canExecute: false,
+            buttonLabel: 'Belum Dibuka',
+            buttonClass: 'eval-btn-blocked',
+            hintClass: 'hint-lecturer',
+            reason: 'Soal forum diskusi belum tersedia dari dosen'
+          };
+        }
+
+        const isForumDone = Boolean(forum.completion || forum.answered);
+        if (!isForumDone) {
+          // Kondisi Gambar 1: Forum dibuka tapi mahasiswa belum menjawab
+          const forumUrl = forum.forumId 
+            ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}/forum/${forum.forumId}`
+            : `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(item.courseCode)}`;
+          return {
+            status: 'WAITING_FORUM',
+            badgeLabel: 'Menunggu Forum',
+            badgeClass: 'badge-waiting-forum',
+            canExecute: false,
+            isForumAction: true,
+            buttonLabel: 'Jawab Forum',
+            buttonClass: 'eval-btn-goto-forum',
+            forumUrl,
+            hintClass: 'hint-forum',
+            reason: 'Forum diskusi pertemuan ini belum dijawab'
+          };
+        }
+      }
+
+      // 3D. Jika forum sudah selesai atau pertemuan tidak memiliki forum:
+      return {
+        status: 'READY',
+        badgeLabel: 'Siap Dikerjakan',
+        badgeClass: 'badge-ready',
+        canExecute: true,
+        buttonLabel: 'Kerjakan',
+        buttonClass: 'eval-btn-ready',
+        hintClass: 'hint-ready',
+        reason: 'Prasyarat forum & materi lengkap'
+      };
+    }
+
+    // 4. Kuesioner
+    if (item.type === 'KUESIONER') {
+      // Cek Post-Test pertemuan ini
+      const postTest = allEvalsInCourse.find(e => 
+        e.type === 'POST_TEST' && 
+        this._getMeetingKey(e.meetingNum, e.sectionName) === meetingKey
+      );
+      if (postTest && !postTest.completion) {
+        return {
+          status: 'WAITING_POSTTEST',
+          badgeLabel: 'Menunggu Post-Test',
+          badgeClass: 'badge-waiting-post',
+          canExecute: false,
+          buttonLabel: 'Menunggu Post-Test',
+          buttonClass: 'eval-btn-blocked',
+          hintClass: 'hint-post',
+          reason: 'Selesaikan Post-Test terlebih dahulu'
+        };
+      }
+
+      // Jika post-test sudah selesai (atau tidak ada post-test di pertemuan ini),
+      // abaikan peringatan warningAlert yang sekadar mengeluhkan post-test dari cache server UNPAM!
+      const isPostTestAlert = item.lockReason && /post[- ]?test/i.test(item.lockReason);
+      const isHardLocked = item.locked && !isPostTestAlert;
+
+      if (isHardLocked) {
+        return {
+          status: 'LOCKED',
+          badgeLabel: 'Terkunci',
+          badgeClass: 'badge-locked',
+          canExecute: false,
+          buttonLabel: 'Terkunci',
+          buttonClass: 'eval-btn-locked',
+          reason: item.lockReason || 'Terkunci oleh sistem LMS'
+        };
+      }
+
+      return {
+        status: 'READY',
+        badgeLabel: 'Siap Diisi',
+        badgeClass: 'badge-ready',
+        canExecute: true,
+        buttonLabel: 'Isi Kuesioner',
+        buttonClass: 'eval-btn-ready',
+        hintClass: 'hint-ready',
+        reason: 'Siap diisi (Post-Test selesai)'
+      };
+    }
+
+    return {
+      status: item.locked ? 'LOCKED' : 'READY',
+      badgeLabel: item.locked ? 'Terkunci' : 'Belum',
+      badgeClass: item.locked ? 'badge-locked' : 'badge-pending',
+      canExecute: !item.locked,
+      buttonLabel: item.locked ? 'Terkunci' : 'Kerjakan',
+      buttonClass: item.locked ? 'eval-btn-locked' : 'eval-btn-action',
+      reason: ''
+    };
+  }
+
+  _computeRanges(meetingNums) {
     if (!meetingNums || meetingNums.length === 0) return [];
     
     // Unik & urutkan ascending
@@ -1587,8 +1955,7 @@ class MentariDashboard {
         ranges.push({
           start: rangeStart,
           end: rangeEnd,
-          text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`,
-          reason: 'Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka'
+          text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`
         });
         rangeStart = current;
         rangeEnd = current;
@@ -1598,11 +1965,17 @@ class MentariDashboard {
     ranges.push({
       start: rangeStart,
       end: rangeEnd,
-      text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`,
-      reason: 'Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka'
+      text: rangeStart === rangeEnd ? `Pertemuan ${rangeStart}` : `Pertemuan ${rangeStart} - ${rangeEnd}`
     });
     
     return ranges;
+  }
+
+  _computeUnavailableRanges(meetingNums) {
+    return this._computeRanges(meetingNums).map(r => ({
+      ...r,
+      reason: 'Topik diskusi belum dibuat oleh dosen pengampu / modul belum dibuka'
+    }));
   }
 
   _formatLastSyncTime() {
@@ -1693,7 +2066,7 @@ class MentariDashboard {
               </svg>
               <span id="forum-toggle-all-text">Buka Semua</span>
             </button>
-            <button class="forum-toggle-all-btn forum-export-docx-btn" id="forum-export-docx-btn" title="Unduh Rekap Soal Forum yang Belum Dikerjakan (.docx)">
+            <button class="forum-toggle-all-btn forum-export-docx-btn" id="forum-export-docx-btn" title="Rekap Soal Forum yang Belum Dikerjakan">
               <svg id="forum-export-docx-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -1701,7 +2074,7 @@ class MentariDashboard {
                 <line x1="16" y1="17" x2="8" y2="17"></line>
                 <polyline points="10 9 9 9 8 9"></polyline>
               </svg>
-              <span id="forum-export-docx-text">Rekap Tugas (.docx)</span>
+              <span id="forum-export-docx-text">Rekap Tugas</span>
             </button>
             <button class="forum-toggle-all-btn" id="forum-refresh-status-btn" title="Periksa dan Sinkronkan Status Forum Diskusi dari Server UNPAM">
               <svg id="forum-refresh-status-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1837,6 +2210,11 @@ class MentariDashboard {
 
     if (typeof data !== 'object') return '';
 
+    // Cek jika data.konten ada pada root object respon /api/forum/reply/${topicId}: jika ada string > 0, langsung return data.konten
+    if (typeof data.konten === 'string' && data.konten.trim().length > 0) {
+      return data.konten.trim();
+    }
+
     const isValidContent = (val) => {
       if (!val || typeof val !== 'string') return false;
       const trimmed = val.trim();
@@ -1844,7 +2222,7 @@ class MentariDashboard {
     };
 
     const contentFields = [
-      'deskripsi', 'pesan', 'message', 'content', 'body',
+      'konten', 'deskripsi', 'pesan', 'message', 'content', 'body',
       'uraian', 'soal', 'instruksi', 'pertanyaan', 'isi', 'keterangan'
     ];
 
@@ -1928,8 +2306,8 @@ class MentariDashboard {
     if (typeof window !== 'undefined' && window.location.href.includes(topicId)) {
       const domContent = document.querySelector('.ck-content') || document.querySelector('[role="article"]') || document.querySelector('.MuiPaper-root');
       if (domContent) {
-        const txt = domContent.textContent.trim();
-        if (txt.length > 20) return txt;
+        const html = domContent.innerHTML.trim();
+        if (html.length > 20) return html;
       }
     }
 
@@ -1960,30 +2338,827 @@ class MentariDashboard {
     return '';
   }
 
+  /**
+   * Poles dan perjelas struktur teks pertanyaan forum menggunakan Gemini AI
+   * Mematuhi aturan mutlak: ZERO HALLUCINATION (dilarang mengubah/menambah/mengurangi kata-kata dan isi tugas)
+   */
+  async _polishQuestionWithGemini(rawText, model = 'gemini-2.5-flash') {
+    if (!rawText || typeof rawText !== 'string' || rawText.trim().length < 15) {
+      return rawText;
+    }
+
+    try {
+      const systemInstruction = 'Kamu adalah asisten akademik ahli penataan dokumen perkuliahan. Tugasmu adalah menata ulang struktur penulisan tugas forum perkuliahan agar tersusun rapi dalam format HTML semantik. ATURAN MUTLAK: DILARANG MENGUBAH, MENAMBAH, ATAU MENGURANGI KATA-KATA DAN ISI SOAL MAHASISWA. Seluruh instruksi, batasan, teks pertanyaan, dan angka bobot penilaian harus 100% persis seperti teks aslinya.';
+
+      const prompt = `TATA ULANG STRUKTUR TEKS TUGAS FORUM DISKUSI BERIKUT MENJADI HTML BERSTRUKTUR RAPI.\n\nATURAN MUTLAK:\n1. DILARANG MENGUBAH, MENAMBAH, ATAU MENGURANGI KATA-KATA DAN ISI SOAL ASLI DARI DOSEN (ZERO HALLUCINATION).\n2. Pertahankan seluruh instruksi, pertanyaan, batasan, dan angka bobot penilaian persis seperti aslinya.\n3. Gunakan tag heading <h3> atau <h4> untuk judul bagian (seperti Pengantar Materi, Instruksi Tugas, Pertanyaan Diskusi, Kriteria Penilaian).\n4. Gunakan <ol> dan <li> untuk daftar pertanyaan/langkah berurutan, dan <ul><li> untuk poin-poin/bullet.\n5. Jika ada tabel atau kriteria penilaian berbobot/skor, susun menjadi tabel HTML <table><thead><tr><th>...</th></tr></thead><tbody><tr><td>...</td></tr></tbody></table> yang rapi.\n6. HANYA kembalikan raw HTML valid. JANGAN gunakan markdown code block (\`\`\`html ... \`\`\`), JANGAN ada teks pengantar atau penutup apapun.\n\nTEKS ASLI DARI DOSEN:\n${rawText}`;
+
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          action: 'generateGeminiContent',
+          prompt,
+          systemInstruction,
+          model: model || 'gemini-2.5-flash'
+        }, resolve);
+      });
+
+      if (response && response.success && response.text) {
+        let polished = response.text.trim();
+        polished = polished.replace(/^```(?:html)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        if (polished.length > 20) {
+          return polished;
+        }
+      }
+    } catch (e) {
+      console.warn('[Mentari Recap] Gagal memoles dengan Gemini AI, menggunakan teks asli:', e);
+    }
+    return rawText;
+  }
+
+  /**
+   * Tampilkan Modal Konfigurasi Ekspor Rekap Tugas (DOCX & Markdown)
+   */
+  _showDocxExportModal({ pendingCount, studentName, studentNim, initialFormat = 'docx', initialMode = 'standard', initialModel = 'gemini-2.5-flash', onConfirm }) {
+    if (!this.shadow) return;
+
+    // Hapus modal lama jika ada
+    const existing = this.shadow.getElementById('mentari-docx-export-overlay');
+    if (existing) existing.remove();
+
+    const isLight = this.shadow.querySelector('.modal')?.classList.contains('theme-light') || false;
+
+    let selectedFormat = initialFormat;
+    let selectedMode = initialMode;
+    let selectedModel = initialModel;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mentari-docx-export-overlay';
+    overlay.className = 'docx-modal-overlay';
+
+    overlay.innerHTML = `
+      <style>
+        .docx-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.82);
+          backdrop-filter: blur(14px);
+          z-index: 2147483646;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          animation: docxFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes docxFadeIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .docx-modal {
+          width: 590px;
+          max-width: 92vw;
+          max-height: 90vh;
+          background: #131317;
+          border: 1px solid rgba(212, 175, 55, 0.4);
+          border-radius: 16px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(212, 175, 55, 0.12);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          color: #f1f1f1;
+          position: relative;
+        }
+        .docx-modal.theme-light {
+          background: #ffffff;
+          border-color: rgba(212, 175, 55, 0.5);
+          color: #1e293b;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+        }
+        .docx-header {
+          padding: 16px 22px;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          cursor: grab;
+          user-select: none;
+        }
+        .docx-modal.theme-light .docx-header {
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .docx-header:active {
+          cursor: grabbing;
+        }
+        .docx-header-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 15px;
+          font-weight: 700;
+          color: #fbbf24;
+        }
+        .docx-modal.theme-light .docx-header-title {
+          color: #b45309;
+        }
+        .docx-close-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          color: #999;
+          cursor: pointer;
+          padding: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .docx-modal.theme-light .docx-close-btn {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+          color: #64748b;
+        }
+        .docx-close-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #fff;
+        }
+        .docx-modal.theme-light .docx-close-btn:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+        .docx-body {
+          padding: 18px 22px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .docx-info-strip {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.07);
+          border-radius: 10px;
+          padding: 10px 14px;
+        }
+        .docx-modal.theme-light .docx-info-strip {
+          background: #f8fafc;
+          border-color: #e2e8f0;
+        }
+        .docx-student-details {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .docx-student-icon {
+          color: #d4af37;
+          flex-shrink: 0;
+        }
+        .docx-student-name {
+          font-size: 13px;
+          font-weight: 600;
+          color: #e2e8f0;
+        }
+        .docx-modal.theme-light .docx-student-name {
+          color: #1e293b;
+        }
+        .docx-student-nim {
+          font-size: 11px;
+          color: #94a3b8;
+        }
+        .docx-count-badge {
+          background: rgba(212, 175, 55, 0.15);
+          color: #fbbf24;
+          border: 1px solid rgba(212, 175, 55, 0.35);
+          border-radius: 20px;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 4px 10px;
+          white-space: nowrap;
+        }
+        .docx-modal.theme-light .docx-count-badge {
+          background: #fef3c7;
+          color: #b45309;
+          border-color: #fde68a;
+        }
+        .docx-section-label {
+          font-size: 11.5px;
+          font-weight: 700;
+          color: #cbd5e1;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .docx-modal.theme-light .docx-section-label {
+          color: #475569;
+        }
+        .docx-format-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .docx-format-card {
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 12px;
+          padding: 12px 14px;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .docx-modal.theme-light .docx-format-card {
+          border: 1.5px solid #e2e8f0;
+          background: #ffffff;
+        }
+        .docx-format-card:hover {
+          border-color: rgba(212, 175, 55, 0.4);
+          background: rgba(255, 255, 255, 0.04);
+        }
+        .docx-modal.theme-light .docx-format-card:hover {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+        }
+        .docx-format-card.selected {
+          border-color: #d4af37;
+          background: rgba(212, 175, 55, 0.08);
+          box-shadow: 0 0 14px rgba(212, 175, 55, 0.15);
+        }
+        .docx-modal.theme-light .docx-format-card.selected {
+          border-color: #d97706;
+          background: #fffbeb;
+          box-shadow: 0 0 12px rgba(217, 119, 6, 0.12);
+        }
+        .docx-format-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .docx-format-title {
+          font-size: 12.5px;
+          font-weight: 700;
+          color: #f1f5f9;
+        }
+        .docx-modal.theme-light .docx-format-title {
+          color: #0f172a;
+        }
+        .docx-format-desc {
+          font-size: 11px;
+          line-height: 1.4;
+          color: #94a3b8;
+        }
+        .docx-modal.theme-light .docx-format-desc {
+          color: #64748b;
+        }
+        .docx-mode-cards {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .docx-mode-card {
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 12px;
+          padding: 12px 14px;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex;
+          gap: 12px;
+          position: relative;
+        }
+        .docx-modal.theme-light .docx-mode-card {
+          border: 1.5px solid #e2e8f0;
+          background: #ffffff;
+        }
+        .docx-mode-card:hover {
+          border-color: rgba(212, 175, 55, 0.4);
+          background: rgba(255, 255, 255, 0.04);
+        }
+        .docx-modal.theme-light .docx-mode-card:hover {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+        }
+        .docx-mode-card.selected {
+          border-color: #d4af37;
+          background: rgba(212, 175, 55, 0.08);
+          box-shadow: 0 0 15px rgba(212, 175, 55, 0.15);
+        }
+        .docx-modal.theme-light .docx-mode-card.selected {
+          border-color: #d97706;
+          background: #fffbeb;
+          box-shadow: 0 0 12px rgba(217, 119, 6, 0.12);
+        }
+        .docx-radio-indicator {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 2px;
+          transition: all 0.2s;
+        }
+        .docx-modal.theme-light .docx-radio-indicator {
+          border-color: #94a3b8;
+        }
+        .docx-mode-card.selected .docx-radio-indicator {
+          border-color: #d4af37;
+        }
+        .docx-modal.theme-light .docx-mode-card.selected .docx-radio-indicator {
+          border-color: #d97706;
+        }
+        .docx-radio-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #d4af37;
+          opacity: 0;
+          transform: scale(0.5);
+          transition: all 0.2s;
+        }
+        .docx-modal.theme-light .docx-radio-dot {
+          background: #d97706;
+        }
+        .docx-mode-card.selected .docx-radio-dot {
+          opacity: 1;
+          transform: scale(1);
+        }
+        .docx-mode-info {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .docx-mode-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .docx-mode-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #f1f5f9;
+        }
+        .docx-modal.theme-light .docx-mode-title {
+          color: #0f172a;
+        }
+        .docx-mode-tag {
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 7px;
+          border-radius: 6px;
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .docx-mode-desc {
+          font-size: 11.5px;
+          line-height: 1.45;
+          color: #94a3b8;
+        }
+        .docx-modal.theme-light .docx-mode-desc {
+          color: #64748b;
+        }
+        .docx-model-picker-wrap {
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1px dashed rgba(212, 175, 55, 0.25);
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .docx-model-picker-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #fbbf24;
+        }
+        .docx-modal.theme-light .docx-model-picker-label {
+          color: #b45309;
+        }
+        .docx-model-select {
+          width: 100%;
+          background: #1a1a20;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          color: #f1f1f1;
+          font-size: 12px;
+          padding: 8px 10px;
+          outline: none;
+          cursor: pointer;
+        }
+        .docx-modal.theme-light .docx-model-select {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          color: #0f172a;
+        }
+        .docx-standard-note {
+          background: rgba(59, 130, 246, 0.08);
+          border: 1px solid rgba(59, 130, 246, 0.25);
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          font-size: 11.5px;
+          line-height: 1.45;
+          color: #93c5fd;
+        }
+        .docx-modal.theme-light .docx-standard-note {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          color: #1e40af;
+        }
+        .docx-standard-note svg {
+          color: #3b82f6;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .docx-footer {
+          padding: 14px 22px;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          background: rgba(0, 0, 0, 0.2);
+        }
+        .docx-modal.theme-light .docx-footer {
+          border-top: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+        .docx-btn-cancel {
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #cbd5e1;
+          border-radius: 8px;
+          padding: 8px 16px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .docx-modal.theme-light .docx-btn-cancel {
+          border-color: #cbd5e1;
+          color: #475569;
+        }
+        .docx-btn-cancel:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: #fff;
+        }
+        .docx-modal.theme-light .docx-btn-cancel:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+        .docx-btn-copy {
+          background: rgba(59, 130, 246, 0.15);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+          color: #60a5fa;
+          border-radius: 8px;
+          padding: 8px 16px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          transition: all 0.2s;
+        }
+        .docx-modal.theme-light .docx-btn-copy {
+          background: #eff6ff;
+          border-color: #93c5fd;
+          color: #2563eb;
+        }
+        .docx-btn-copy:hover {
+          background: rgba(59, 130, 246, 0.25);
+          transform: translateY(-1px);
+        }
+        .docx-modal.theme-light .docx-btn-copy:hover {
+          background: #dbeafe;
+        }
+        .docx-btn-confirm {
+          background: linear-gradient(135deg, #d4af37 0%, #b89728 100%);
+          border: 1px solid rgba(212, 175, 55, 0.6);
+          color: #000;
+          border-radius: 8px;
+          padding: 8px 18px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.2s;
+          box-shadow: 0 4px 14px rgba(212, 175, 55, 0.25);
+        }
+        .docx-btn-confirm:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(212, 175, 55, 0.4);
+        }
+      </style>
+
+      <div class="docx-modal ${isLight ? 'theme-light' : ''}" id="mentari-docx-modal-card">
+        <div class="docx-header" id="mentari-docx-modal-header">
+          <div class="docx-header-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <span>Rekap Tugas Forum Diskusi</span>
+          </div>
+          <button class="docx-close-btn" id="docx-btn-close" title="Tutup Modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="docx-body">
+          <div class="docx-info-strip">
+            <div class="docx-student-details">
+              <svg class="docx-student-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <div>
+                <div class="docx-student-name">${studentName || 'Mahasiswa UNPAM'}</div>
+                <div class="docx-student-nim">NIM: ${studentNim || '-'}</div>
+              </div>
+            </div>
+            <div class="docx-count-badge">${pendingCount} Tugas Menunggu</div>
+          </div>
+
+          <div class="docx-section-label">Pilih Format File:</div>
+          <div class="docx-format-grid" id="docx-format-container">
+            <div class="docx-format-card ${selectedFormat === 'docx' ? 'selected' : ''}" id="format-card-docx" data-format="docx">
+              <div class="docx-format-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span class="docx-format-title">Microsoft Word (.docx)</span>
+              </div>
+              <div class="docx-format-desc">
+                Format resmi akademik: Times New Roman 12, margin 4-4-3-3, tabel terstruktur. Cocok untuk arsip formal / cetak fisik.
+              </div>
+            </div>
+
+            <div class="docx-format-card ${selectedFormat === 'md' ? 'selected' : ''}" id="format-card-md" data-format="md">
+              <div class="docx-format-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="18" x2="12" y2="12"></line>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
+                </svg>
+                <span class="docx-format-title">Markdown (.md)</span>
+                <span class="docx-mode-tag" style="background:rgba(59,130,246,0.15); color:#60a5fa; border-color:rgba(59,130,246,0.3);">Hemat Token AI</span>
+              </div>
+              <div class="docx-format-desc">
+                Format teks murni GFM: Pangkas 50%+ token input AI, tanpa XML overhead, siap disalin langsung ke ChatGPT / Claude / Gemini.
+              </div>
+            </div>
+          </div>
+
+          <div class="docx-section-label">Pilih Mode Pembuatan Dokumen:</div>
+          <div class="docx-mode-cards">
+            <!-- Mode Standar -->
+            <div class="docx-mode-card ${selectedMode === 'standard' ? 'selected' : ''}" id="mode-card-standard">
+              <div class="docx-radio-indicator">
+                <div class="docx-radio-dot"></div>
+              </div>
+              <div class="docx-mode-info">
+                <div class="docx-mode-title-row">
+                  <span class="docx-mode-title">Mode Standar (Format Asli Dosen)</span>
+                  <span class="docx-mode-tag">Rekomendasi &amp; Instan</span>
+                </div>
+                <div class="docx-mode-desc">
+                  Mempertahankan 100% susunan struktur teks dosen di forum: heading bab, daftar instruksi, dan tabel rubrik penilaian dikonversi menjadi tabel resmi Word tanpa jeda.
+                </div>
+              </div>
+            </div>
+
+            <!-- Mode AI Gemini -->
+            <div class="docx-mode-card ${selectedMode === 'ai' ? 'selected' : ''}" id="mode-card-ai">
+              <div class="docx-radio-indicator">
+                <div class="docx-radio-dot"></div>
+              </div>
+              <div class="docx-mode-info">
+                <div class="docx-mode-title-row">
+                  <span class="docx-mode-title">Mode Poles AI Gemini (Perjelas Tata Letak)</span>
+                  <span class="docx-mode-tag" style="background: rgba(212,175,55,0.15); color: #fbbf24; border-color: rgba(212,175,55,0.3);">AI Formatter</span>
+                </div>
+                <div class="docx-mode-desc">
+                  AI Gemini merapikan kembali struktur heading (A, B, C), daftar pertanyaan bernomor, dan tabel jika penulisan dosen di forum berantakan. Zero Hallucination: 100% kata-kata asli dosen dipertahankan.
+                </div>
+                <div class="docx-model-picker-wrap" id="docx-model-picker-wrap" style="display: ${selectedMode === 'ai' ? 'flex' : 'none'};">
+                  <label class="docx-model-picker-label">Pilih Model Gemini:</label>
+                  <select class="docx-model-select" id="docx-select-model">
+                    ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === selectedModel ? 'selected' : ''}>${m.name}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="docx-standard-note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <div id="docx-standard-note-text">
+              ${selectedFormat === 'md'
+                ? 'Format Markdown (.md) menghasilkan teks semantik murni GFM (GitHub Flavored Markdown) yang langsung dipahami LLM dengan efisiensi token input optimal.'
+                : 'Dokumen Word (.docx) dihasilkan dengan standar akademik: Times New Roman 12pt, margin A4 (4-4-3-3 cm), spasi 1.5, tabel terstruktur, dan lembar jawaban siap isi per tugas.'}
+            </div>
+          </div>
+        </div>
+
+        <div class="docx-footer">
+          <button class="docx-btn-cancel" id="docx-btn-cancel">Batal</button>
+          <button class="docx-btn-copy" id="docx-btn-copy" style="display: ${selectedFormat === 'md' ? 'flex' : 'none'};">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Salin Prompt AI (.md)</span>
+          </button>
+          <button class="docx-btn-confirm" id="docx-btn-confirm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span id="docx-btn-confirm-text">${selectedFormat === 'md' ? 'Unduh File (.md)' : 'Unduh Dokumen (.docx)'}</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    this.shadow.appendChild(overlay);
+
+    const modalCard = overlay.querySelector('#mentari-docx-modal-card');
+    const modalHeader = overlay.querySelector('#mentari-docx-modal-header');
+    const btnClose = overlay.querySelector('#docx-btn-close');
+    const btnCancel = overlay.querySelector('#docx-btn-cancel');
+    const btnCopy = overlay.querySelector('#docx-btn-copy');
+    const btnConfirm = overlay.querySelector('#docx-btn-confirm');
+    const btnConfirmText = overlay.querySelector('#docx-btn-confirm-text');
+    const noteText = overlay.querySelector('#docx-standard-note-text');
+    const cardFormatDocx = overlay.querySelector('#format-card-docx');
+    const cardFormatMd = overlay.querySelector('#format-card-md');
+    const cardStandard = overlay.querySelector('#mode-card-standard');
+    const cardAi = overlay.querySelector('#mode-card-ai');
+    const pickerWrap = overlay.querySelector('#docx-model-picker-wrap');
+    const selectModel = overlay.querySelector('#docx-select-model');
+
+    this._makeElementDraggable(modalCard, modalHeader);
+
+    const closeModal = () => {
+      overlay.style.animation = 'docxFadeIn 0.15s ease reverse forwards';
+      setTimeout(() => overlay.remove(), 160);
+    };
+
+    btnClose.addEventListener('click', closeModal);
+    btnCancel.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+
+    const updateFormatUI = (fmt) => {
+      selectedFormat = fmt;
+      if (fmt === 'md') {
+        cardFormatMd?.classList.add('selected');
+        cardFormatDocx?.classList.remove('selected');
+        if (btnCopy) btnCopy.style.display = 'flex';
+        if (btnConfirmText) btnConfirmText.textContent = 'Unduh File (.md)';
+        if (noteText) {
+          noteText.textContent = 'Format Markdown (.md) menghasilkan teks semantik murni GFM (GitHub Flavored Markdown) yang langsung dipahami LLM dengan efisiensi token input optimal.';
+        }
+      } else {
+        cardFormatDocx?.classList.add('selected');
+        cardFormatMd?.classList.remove('selected');
+        if (btnCopy) btnCopy.style.display = 'none';
+        if (btnConfirmText) btnConfirmText.textContent = 'Unduh Dokumen (.docx)';
+        if (noteText) {
+          noteText.textContent = 'Dokumen Word (.docx) dihasilkan dengan standar akademik: Times New Roman 12pt, margin A4 (4-4-3-3 cm), spasi 1.5, tabel terstruktur, dan lembar jawaban siap isi per tugas.';
+        }
+      }
+    };
+
+    cardFormatDocx?.addEventListener('click', () => updateFormatUI('docx'));
+    cardFormatMd?.addEventListener('click', () => updateFormatUI('md'));
+
+    cardStandard.addEventListener('click', () => {
+      selectedMode = 'standard';
+      cardStandard.classList.add('selected');
+      cardAi.classList.remove('selected');
+      pickerWrap.style.display = 'none';
+    });
+
+    cardAi.addEventListener('click', (e) => {
+      if (e.target === selectModel) return;
+      selectedMode = 'ai';
+      cardAi.classList.add('selected');
+      cardStandard.classList.remove('selected');
+      pickerWrap.style.display = 'flex';
+    });
+
+    if (selectModel) {
+      selectModel.addEventListener('change', (e) => {
+        selectedModel = e.target.value;
+      });
+    }
+
+    btnCopy?.addEventListener('click', () => {
+      const mode = selectedMode;
+      const model = selectModel ? selectModel.value : selectedModel;
+      closeModal();
+      if (typeof onConfirm === 'function') {
+        onConfirm({ format: 'md', mode, model, action: 'copy' });
+      }
+    });
+
+    btnConfirm.addEventListener('click', () => {
+      const format = selectedFormat;
+      const mode = selectedMode;
+      const model = selectModel ? selectModel.value : selectedModel;
+      closeModal();
+      if (typeof onConfirm === 'function') {
+        onConfirm({ format, mode, model, action: 'download' });
+      }
+    });
+  }
+
   async _handleExportForumRecap(btn, icon, textEl) {
+    if (this._isExportingDocx) return;
+
+    // 1. Dapatkan daftar forum aktif yang BELUM dijawab / belum selesai
+    const pendingForums = (this.activeForums || []).filter(f => !f.completion && !f.answered);
+
+    if (!pendingForums || pendingForums.length === 0) {
+      Toast.info('Luar biasa! Tidak ada tugas forum diskusi yang pending (semua sudah selesai).');
+      return;
+    }
+
+    // 2. Pastikan identitas mahasiswa terambil
+    await this._resolveStudentIdentity();
+
+    // 3. Baca preferensi mode ekspor & model AI yang tersimpan
+    const { docx_export_mode, gemini_model, forum_recap_format } = await Storage.get({
+      docx_export_mode: 'standard',
+      gemini_model: 'gemini-2.5-flash',
+      forum_recap_format: 'docx'
+    });
+
+    // 4. Buka Modal Konfigurasi Ekspor
+    this._showDocxExportModal({
+      pendingCount: pendingForums.length,
+      studentName: this._studentName,
+      studentNim: this._studentNim,
+      initialFormat: forum_recap_format || 'docx',
+      initialMode: docx_export_mode || 'standard',
+      initialModel: gemini_model || 'gemini-2.5-flash',
+      onConfirm: async ({ format, mode, model, action }) => {
+        await Storage.set({ docx_export_mode: mode, gemini_model: model, forum_recap_format: format });
+        await this._executeExportForumRecap({
+          pendingForums,
+          format,
+          action,
+          polishWithAi: mode === 'ai',
+          chosenModel: model,
+          btn,
+          icon,
+          textEl
+        });
+      }
+    });
+  }
+
+  async _executeExportForumRecap({ pendingForums, format = 'docx', action = 'download', polishWithAi, chosenModel, btn, icon, textEl }) {
     if (this._isExportingDocx) return;
     this._isExportingDocx = true;
 
-    const originalText = textEl ? textEl.textContent : 'Rekap Tugas (.docx)';
+    const originalText = textEl ? textEl.textContent : 'Rekap Tugas';
     if (btn) btn.disabled = true;
     if (textEl) textEl.textContent = 'Menyiapkan...';
     if (icon) icon.classList.add('spin-animation');
 
     try {
-      // 1. Dapatkan daftar forum aktif yang BELUM dijawab / belum selesai
-      let pendingForums = (this.activeForums || []).filter(f => !f.completion && !f.answered);
+      const formatLabel = format === 'md' ? 'Markdown (.md)' : 'Word (.docx)';
+      Toast.info(`Menyiapkan rekap untuk ${pendingForums.length} tugas forum diskusi (${formatLabel})...`);
 
-      if (!pendingForums || pendingForums.length === 0) {
-        Toast.info('Luar biasa! Tidak ada tugas forum diskusi yang pending (semua sudah selesai).');
-        return;
-      }
-
-      Toast.info(`Menyiapkan rekap untuk ${pendingForums.length} tugas forum diskusi...`);
-
-      // 2. Pastikan data identitas mahasiswa (Nama & NIM) terambil
-      await this._resolveStudentIdentity();
-
-      // 3. Pastikan daftar topik dan teks soal dosen terambil lengkap
+      // 1. Ambil opsi autentikasi UNPAM
       let fetchOpts = { headers: { 'Accept': 'application/json' }, credentials: 'include' };
       try {
         fetchOpts = await UnpamAuth.getFetchOptions();
@@ -1991,31 +3166,40 @@ class MentariDashboard {
 
       if (textEl) textEl.textContent = 'Memuat Topik...';
 
-      // Pastikan setiap forum pending punya array topics
+      // 2. Pastikan setiap forum pending punya array topics
       await Promise.allSettled(pendingForums.map(async (f) => {
         if (!f.topics || f.topics.length === 0) {
           try {
             const res = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${f.forumId}`, fetchOpts);
             if (res.ok) {
               const topicData = await res.json();
+              f.forumContent = topicData.konten || topicData.deskripsi || f.forumContent || '';
               const topics = topicData.topics || topicData.data || (Array.isArray(topicData) ? topicData : []);
               f.topics = topics.map(t => ({
                 id: t.id,
                 title: t.judul || t.title || t.name || '',
-                message: t.deskripsi || t.pesan || t.message || t.content || t.body || ''
+                message: t.konten || t.deskripsi || t.pesan || t.message || t.content || t.body || ''
               }));
+            }
+          } catch {}
+        } else if (!f.forumContent) {
+          try {
+            const res = await fetch(`https://mentari.unpam.ac.id/api/forum/topic/${f.forumId}`, fetchOpts);
+            if (res.ok) {
+              const topicData = await res.json();
+              f.forumContent = topicData.konten || topicData.deskripsi || '';
             }
           } catch {}
         }
       }));
 
-      // Kumpulkan semua topik yang teks soalnya masih kosong
+      // 3. Kumpulkan semua topik yang teks soalnya masih kosong
       const topicsNeedingContent = [];
       for (const f of pendingForums) {
         if (f.topics && f.topics.length > 0) {
           for (const top of f.topics) {
             if (!top.message || top.message.trim().length === 0) {
-              topicsNeedingContent.push(top);
+              topicsNeedingContent.push({ topic: top, forum: f });
             }
           }
         }
@@ -2023,44 +3207,102 @@ class MentariDashboard {
 
       if (topicsNeedingContent.length > 0) {
         if (textEl) textEl.textContent = 'Mengambil Soal...';
-        await Promise.allSettled(topicsNeedingContent.map(async (top) => {
+        await Promise.allSettled(topicsNeedingContent.map(async (item) => {
+          const { topic: top, forum: f } = item;
           try {
             const content = await this._fetchTopicQuestionContent(top.id, fetchOpts);
             if (content) {
               top.message = content;
+            } else if (f.forumContent) {
+              top.message = f.forumContent;
             }
           } catch (err) {
             console.warn('[Mentari Recap] Gagal mengambil soal untuk topik:', top.id, err);
+            if (f.forumContent) {
+              top.message = f.forumContent;
+            }
           }
         }));
       }
 
-      if (textEl) textEl.textContent = 'Menyusun Docx...';
+      // 4. Jika mode Poles AI Gemini diaktifkan, poles teks soal
+      if (polishWithAi) {
+        const allPendingTopics = [];
+        for (const f of pendingForums) {
+          if (f.topics && f.topics.length > 0) {
+            for (const top of f.topics) {
+              if (top.message && top.message.trim().length > 15) {
+                allPendingTopics.push(top);
+              }
+            }
+          } else if (f.forumContent && f.forumContent.trim().length > 15) {
+            allPendingTopics.push({ message: f.forumContent, isForumContent: true, forum: f });
+          }
+        }
 
-      // 4. Kelompokkan per Mata Kuliah -> Pertemuan
+        const totalToPolish = allPendingTopics.length;
+        if (totalToPolish > 0) {
+          Toast.info(`Merapikan struktur soal dengan AI Gemini (${totalToPolish} tugas)...`);
+          for (let i = 0; i < totalToPolish; i++) {
+            const item = allPendingTopics[i];
+            if (textEl) textEl.textContent = `Poles AI (${i + 1}/${totalToPolish})...`;
+            const polished = await this._polishQuestionWithGemini(item.message, chosenModel);
+            if (item.isForumContent) {
+              item.forum.forumContent = polished;
+            } else {
+              item.message = polished;
+            }
+          }
+        }
+      }
+
+      if (textEl) textEl.textContent = format === 'md' ? 'Menyusun .md...' : 'Menyusun Docx...';
+
+      // 5. Kelompokkan per Mata Kuliah -> Pertemuan
       const courseMap = new Map();
       for (const forum of pendingForums) {
         const cKey = forum.courseCode || forum.courseTitle || 'UNKNOWN';
         if (!courseMap.has(cKey)) {
+          const matchingCourse = (this.courses || []).find(c => 
+            (c.kode_course || c.kode || c.course_code || c.id) === forum.courseCode
+          );
+          let lecturer = forum.courseLecturer || '';
+          if (!lecturer && matchingCourse) {
+            const raw = matchingCourse.nama_dosen || matchingCourse.dosen || matchingCourse.dosen_pengampu || matchingCourse.pengampu;
+            if (typeof raw === 'string') {
+              lecturer = raw.trim();
+            } else if (Array.isArray(raw) && raw.length > 0) {
+              lecturer = raw.map(d => typeof d === 'string' ? d : (d.nama || d.name || d.fullname || '')).filter(Boolean).join(', ');
+            } else if (raw && typeof raw === 'object') {
+              lecturer = (raw.nama || raw.name || raw.fullname || '').trim();
+            }
+          }
+
           courseMap.set(cKey, {
             courseCode: forum.courseCode,
             courseTitle: forum.courseTitle,
+            lecturerName: lecturer || '',
             meetings: []
           });
         }
 
         const cData = courseMap.get(cKey);
+        if (!cData.lecturerName && forum.courseLecturer) {
+          cData.lecturerName = forum.courseLecturer;
+        }
+
         const topics = (forum.topics && forum.topics.length > 0)
           ? forum.topics
-          : [{ title: '', message: '' }];
+          : [{ title: '', message: forum.forumContent || '' }];
 
         for (const top of topics) {
           cData.meetings.push({
             meetingNum: forum.meetingNum,
             sectionName: forum.sectionName,
             forumName: forum.forumName,
+            lecturerName: forum.courseLecturer || cData.lecturerName || '',
             topicTitle: top.title,
-            rawMessage: top.message
+            rawMessage: top.message || forum.forumContent || ''
           });
         }
       }
@@ -2075,24 +3317,48 @@ class MentariDashboard {
         return c;
       });
 
-      // 5. Generate Word DOCX
+      // 6. Generate File berdasarkan format yang dipilih (.docx atau .md)
       const dateString = DocxGenerator.getIndonesianDayAndDate(new Date());
       const safeName = DocxGenerator.sanitizeFileName(this._studentName || 'Mahasiswa');
       const safeNim = DocxGenerator.sanitizeFileName(this._studentNim || 'NIM');
-      const fileName = `Rekap Tugas_${dateString}_${safeName}_${safeNim}.docx`;
 
-      const docxBlob = await DocxGenerator.generateForumRecap({
-        studentName: this._studentName,
-        studentNim: this._studentNim,
-        dateString,
-        courses: coursesPayload
-      });
+      if (format === 'md') {
+        const mdContent = MarkdownGenerator.generateForumRecap({
+          studentName: this._studentName,
+          studentNim: this._studentNim,
+          dateString,
+          courses: coursesPayload
+        });
 
-      DocxGenerator.downloadFile(docxBlob, fileName);
-      Toast.success(`Dokumen berhasil dibuat dan diunduh: ${fileName}`);
+        if (action === 'copy') {
+          const copied = await MarkdownGenerator.copyToClipboard(mdContent);
+          if (copied) {
+            Toast.success('Prompt Rekap Tugas (.md) berhasil disalin ke clipboard! Siap dipaste ke AI.');
+          } else {
+            Toast.warning('Clipboard tidak dapat diakses langsung, mengunduh file .md sebagai gantinya...');
+            const fileName = `Rekap Tugas_${dateString}_${safeName}_${safeNim}.md`;
+            MarkdownGenerator.downloadFile(mdContent, fileName);
+          }
+        } else {
+          const fileName = `Rekap Tugas_${dateString}_${safeName}_${safeNim}.md`;
+          MarkdownGenerator.downloadFile(mdContent, fileName);
+          Toast.success(`File Markdown (.md) berhasil diunduh: ${fileName}`);
+        }
+      } else {
+        const fileName = `Rekap Tugas_${dateString}_${safeName}_${safeNim}.docx`;
+        const docxBlob = await DocxGenerator.generateForumRecap({
+          studentName: this._studentName,
+          studentNim: this._studentNim,
+          dateString,
+          courses: coursesPayload
+        });
+
+        DocxGenerator.downloadFile(docxBlob, fileName);
+        Toast.success(`Dokumen Word (.docx) berhasil dibuat dan diunduh: ${fileName}`);
+      }
     } catch (err) {
-      console.error('[Mentari] Gagal mengekspor rekap forum ke DOCX:', err);
-      Toast.error('Gagal membuat dokumen Word rekap tugas: ' + (err.message || 'Terjadi kesalahan'));
+      console.error('[Mentari] Gagal mengekspor rekap forum:', err);
+      Toast.error('Gagal membuat rekap tugas: ' + (err.message || 'Terjadi kesalahan'));
     } finally {
       this._isExportingDocx = false;
       if (btn) btn.disabled = false;
@@ -2294,28 +3560,74 @@ class MentariDashboard {
       content.className = `forum-accordion-content ${isExpanded ? 'open' : ''}`;
 
       // 1. Render forum items yang tersedia
-      displayItems.forEach(f => {
-        const isDone = this._isForumDone(f);
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'forum-item';
-        itemDiv.innerHTML = `
-          <div class="forum-item-info">
-            <div class="forum-item-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isDone ? '#10b981' : '#f59e0b'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span>${f.sectionName} &bull; ${f.forumName}</span>
-              ${isDone 
-                ? '<span class="badge badge-done">Sudah Dijawab</span>' 
-                : '<span class="badge badge-pending">Belum Dijawab</span>'
-              }
+      if (this.forumFilter === 'all') {
+        const pendingItems = displayItems.filter(f => !this._isForumDone(f));
+        const doneItems = displayItems.filter(f => this._isForumDone(f));
+
+        // Render yang belum selesai sebagai card individual (actionable)
+        pendingItems.forEach(f => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'forum-item';
+          itemDiv.innerHTML = `
+            <div class="forum-item-info">
+              <div class="forum-item-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>${f.sectionName} &bull; ${f.forumName}</span>
+                <span class="badge badge-pending">Belum Dijawab</span>
+              </div>
+              <div class="forum-item-meta">${f.courseTitle} &bull; ${f.sectionName}</div>
             </div>
-            <div class="forum-item-meta">${f.courseTitle} &bull; ${f.sectionName}</div>
-          </div>
-          <a class="forum-btn-action" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
-        `;
-        content.appendChild(itemDiv);
-      });
+            <a class="forum-btn-action" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
+          `;
+          content.appendChild(itemDiv);
+        });
+
+        // Rangkum forum yang sudah selesai menjadi box hijau kompak (Pertemuan x - y Sudah Selesai)
+        if (doneItems.length > 0) {
+          const doneMeetingNums = doneItems.map(f => f.meetingNum).filter(n => n !== null && n !== undefined).sort((a, b) => a - b);
+          const doneRanges = this._computeRanges(doneMeetingNums);
+
+          doneRanges.forEach(range => {
+            const compDiv = document.createElement('div');
+            compDiv.className = 'forum-completed-box';
+            compDiv.innerHTML = `
+              <div class="forum-completed-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span class="forum-completed-title">${range.text} Sudah Selesai</span>
+              </div>
+              <div class="forum-completed-reason">Diskusi dan tanggapan telah berhasil dikirimkan.</div>
+            `;
+            content.appendChild(compDiv);
+          });
+        }
+      } else {
+        displayItems.forEach(f => {
+          const isDone = this._isForumDone(f);
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'forum-item';
+          itemDiv.innerHTML = `
+            <div class="forum-item-info">
+              <div class="forum-item-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${isDone ? '#10b981' : '#f59e0b'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>${f.sectionName} &bull; ${f.forumName}</span>
+                ${isDone 
+                  ? '<span class="badge badge-done">Sudah Dijawab</span>' 
+                  : '<span class="badge badge-pending">Belum Dijawab</span>'
+                }
+              </div>
+              <div class="forum-item-meta">${f.courseTitle} &bull; ${f.sectionName}</div>
+            </div>
+            <a class="forum-btn-action" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(f.courseCode)}/forum/${f.forumId}">Buka Forum</a>
+          `;
+          content.appendChild(itemDiv);
+        });
+      }
 
       // 2. Render pertemuan yang belum tersedia (Pertemuan x - y)
       if (this.forumFilter === 'all' && unavailableRanges.length > 0) {
@@ -2377,8 +3689,20 @@ class MentariDashboard {
     const filterBar = this.shadow?.getElementById('eval-filter-bar');
     if (!filterBar) return;
 
+    // Attach status deterministik per item
+    const byCourse = {};
+    evals.forEach(e => {
+      if (!byCourse[e.courseCode]) byCourse[e.courseCode] = [];
+      byCourse[e.courseCode].push(e);
+    });
+
+    evals.forEach(e => {
+      e._resolvedStatus = this._resolveEvalStatus(e, byCourse[e.courseCode]);
+    });
+
     const total = evals.length;
-    const pendingCount = evals.filter(e => !e.completion && !e.locked).length;
+    const readyCount = evals.filter(e => e._resolvedStatus?.status === 'READY').length;
+    const waitingPrereqCount = evals.filter(e => ['WAITING_FORUM', 'FORUM_NOT_OPEN', 'WAITING_POSTTEST', 'WAITING_PRETEST'].includes(e._resolvedStatus?.status)).length;
     const doneCount = evals.filter(e => e.completion).length;
 
     filterBar.innerHTML = '';
@@ -2388,8 +3712,11 @@ class MentariDashboard {
       <button class="filter-pill ${this.evalFilter === 'all' ? 'active' : ''}" data-filter="all">
         Semua<span class="pill-count">${total}</span>
       </button>
-      <button class="filter-pill ${this.evalFilter === 'pending' ? 'active' : ''}" data-filter="pending">
-        Belum Dikerjakan<span class="pill-count">${pendingCount}</span>
+      <button class="filter-pill ${this.evalFilter === 'ready' ? 'active' : ''}" data-filter="ready">
+        Siap Dikerjakan<span class="pill-count">${readyCount}</span>
+      </button>
+      <button class="filter-pill ${(this.evalFilter === 'waiting_forum' || this.evalFilter === 'waiting_prereq') ? 'active' : ''}" data-filter="waiting_prereq">
+        Tertahan Prasyarat<span class="pill-count">${waitingPrereqCount}</span>
       </button>
       <button class="filter-pill ${this.evalFilter === 'done' ? 'active' : ''}" data-filter="done">
         Sudah Selesai<span class="pill-count">${doneCount}</span>
@@ -2410,6 +3737,18 @@ class MentariDashboard {
     const summaryBar = this.shadow?.getElementById('eval-summary-bar');
     if (!summaryBar) return;
 
+    const byCourse = {};
+    evals.forEach(e => {
+      if (!byCourse[e.courseCode]) byCourse[e.courseCode] = [];
+      byCourse[e.courseCode].push(e);
+    });
+
+    evals.forEach(e => {
+      if (!e._resolvedStatus) {
+        e._resolvedStatus = this._resolveEvalStatus(e, byCourse[e.courseCode]);
+      }
+    });
+
     const preTests = evals.filter(e => e.type === 'PRE_TEST');
     const postTests = evals.filter(e => e.type === 'POST_TEST');
     const kuesioners = evals.filter(e => e.type === 'KUESIONER');
@@ -2418,8 +3757,19 @@ class MentariDashboard {
     const postDone = postTests.filter(e => e.completion).length;
     const kuesDone = kuesioners.filter(e => e.completion).length;
 
+    const readyTotal = evals.filter(e => e._resolvedStatus?.status === 'READY').length;
+    const waitingTotal = evals.filter(e => ['WAITING_FORUM', 'FORUM_NOT_OPEN'].includes(e._resolvedStatus?.status)).length;
+
     summaryBar.innerHTML = `
       <div class="eval-summary">
+        <div class="eval-stat">
+          <div class="eval-stat-value" style="color:#10b981;">${readyTotal}</div>
+          <div class="eval-stat-label">Siap Dikerjakan</div>
+        </div>
+        <div class="eval-stat">
+          <div class="eval-stat-value" style="color:#f59e0b;">${waitingTotal}</div>
+          <div class="eval-stat-label">Tertahan Forum</div>
+        </div>
         <div class="eval-stat">
           <div class="eval-stat-value">${preDone}/${preTests.length}</div>
           <div class="eval-stat-label">Pre-Test</div>
@@ -2431,10 +3781,6 @@ class MentariDashboard {
         <div class="eval-stat">
           <div class="eval-stat-value">${kuesDone}/${kuesioners.length}</div>
           <div class="eval-stat-label">Kuesioner</div>
-        </div>
-        <div class="eval-stat">
-          <div class="eval-stat-value">${preDone + postDone + kuesDone}/${evals.length}</div>
-          <div class="eval-stat-label">Total</div>
         </div>
       </div>
     `;
@@ -2600,6 +3946,12 @@ class MentariDashboard {
     const validModelIds = ALL_MODELS.map(m => m.id);
     const { gemini_model } = await Storage.get('gemini_model', { gemini_model: 'gemini-2.5-flash' });
     const currentModel = (gemini_model && validModelIds.includes(gemini_model)) ? gemini_model : 'gemini-2.5-flash';
+    const storeKues = await Storage.get('mentari_kuesioner_preference');
+    let selectedKuesPref = (storeKues?.mentari_kuesioner_preference === 'tidak') ? 'tidak' : 'iya';
+
+    // Periksa apakah ada sesi Auto-Pilot yang sedang aktif atau terjeda
+    const activeSession = await AutoPilotState.get();
+    const hasActiveSession = Boolean(activeSession && activeSession.active && Array.isArray(activeSession.queue) && activeSession.currentIndex < activeSession.queue.length);
 
     // Hapus overlay lama jika ada
     const existing = this.shadow.getElementById('mentari-autopilot-modal-overlay');
@@ -2759,6 +4111,80 @@ class MentariDashboard {
         .ap-banner-text b {
           color: #fbbf24;
         }
+        .ap-active-banner {
+          background: rgba(245, 158, 11, 0.12);
+          border: 1px solid rgba(245, 158, 11, 0.45);
+          border-radius: 12px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          box-shadow: 0 4px 16px rgba(245, 158, 11, 0.15);
+        }
+        .ap-active-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .ap-active-icon {
+          color: #fbbf24;
+          flex-shrink: 0;
+        }
+        .ap-active-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .ap-active-title {
+          font-size: 12px;
+          font-weight: 700;
+          color: #fbbf24;
+        }
+        .ap-active-desc {
+          font-size: 11px;
+          color: #d1d5db;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 270px;
+        }
+        .ap-active-actions {
+          display: flex;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+        .ap-btn-resume {
+          background: #fbbf24;
+          color: #111;
+          border: none;
+          border-radius: 7px;
+          padding: 6px 12px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .ap-btn-resume:hover {
+          background: #f59e0b;
+        }
+        .ap-btn-reset-session {
+          background: rgba(239, 68, 68, 0.15);
+          color: #f87171;
+          border: 1px solid rgba(239, 68, 68, 0.35);
+          border-radius: 7px;
+          padding: 6px 12px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .ap-btn-reset-session:hover {
+          background: rgba(239, 68, 68, 0.3);
+          color: #ef4444;
+        }
         .ap-field-group {
           display: flex;
           flex-direction: column;
@@ -2801,7 +4227,8 @@ class MentariDashboard {
           grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
           gap: 8px;
         }
-        .ap-mode-card {
+        .ap-mode-card,
+        .ap-pref-card {
           background: #18181d;
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 11px;
@@ -2815,11 +4242,13 @@ class MentariDashboard {
           transition: all 0.2s;
           user-select: none;
         }
-        .ap-mode-card:hover {
+        .ap-mode-card:hover,
+        .ap-pref-card:hover {
           border-color: rgba(212, 175, 55, 0.3);
           background: rgba(255, 255, 255, 0.03);
         }
-        .ap-mode-card.active {
+        .ap-mode-card.active,
+        .ap-pref-card.active {
           background: rgba(212, 175, 55, 0.1);
           border-color: #fbbf24;
           box-shadow: 0 0 14px rgba(212, 175, 55, 0.15);
@@ -2832,7 +4261,8 @@ class MentariDashboard {
           align-items: center;
           gap: 5px;
         }
-        .ap-mode-card.active .ap-mode-title {
+        .ap-mode-card.active .ap-mode-title,
+        .ap-pref-card.active .ap-mode-title {
           color: #fbbf24;
         }
         .ap-mode-sub {
@@ -3153,15 +4583,18 @@ class MentariDashboard {
           background: #ffffff;
           color: #0f172a;
         }
-        .ap-modal.theme-light .ap-mode-card {
+        .ap-modal.theme-light .ap-mode-card,
+        .ap-modal.theme-light .ap-pref-card {
           background: #f8fafc;
           border-color: #e2e8f0;
         }
-        .ap-modal.theme-light .ap-mode-card:hover {
+        .ap-modal.theme-light .ap-mode-card:hover,
+        .ap-modal.theme-light .ap-pref-card:hover {
           border-color: rgba(217, 119, 6, 0.4);
           background: #ffffff;
         }
-        .ap-modal.theme-light .ap-mode-card.active {
+        .ap-modal.theme-light .ap-mode-card.active,
+        .ap-modal.theme-light .ap-pref-card.active {
           background: rgba(217, 119, 6, 0.08);
           border-color: #d97706;
           box-shadow: 0 0 14px rgba(217, 119, 6, 0.15);
@@ -3169,7 +4602,8 @@ class MentariDashboard {
         .ap-modal.theme-light .ap-mode-title {
           color: #0f172a;
         }
-        .ap-modal.theme-light .ap-mode-card.active .ap-mode-title {
+        .ap-modal.theme-light .ap-mode-card.active .ap-mode-title,
+        .ap-modal.theme-light .ap-pref-card.active .ap-mode-title {
           color: #b45309;
         }
         .ap-modal.theme-light .ap-mode-sub {
@@ -3223,6 +4657,32 @@ class MentariDashboard {
           background: #f8fafc;
           border-top-color: #e2e8f0;
         }
+        .ap-modal.theme-light .ap-active-banner {
+          background: rgba(245, 158, 11, 0.15);
+          border-color: rgba(217, 119, 6, 0.45);
+        }
+        .ap-modal.theme-light .ap-active-title {
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-active-desc {
+          color: #475569;
+        }
+        .ap-modal.theme-light .ap-btn-resume {
+          background: #d97706;
+          color: #ffffff;
+        }
+        .ap-modal.theme-light .ap-btn-resume:hover {
+          background: #b45309;
+        }
+        .ap-modal.theme-light .ap-btn-reset-session {
+          background: rgba(239, 68, 68, 0.1);
+          color: #dc2626;
+          border-color: rgba(239, 68, 68, 0.3);
+        }
+        .ap-modal.theme-light .ap-btn-reset-session:hover {
+          background: rgba(239, 68, 68, 0.2);
+          color: #b91c1c;
+        }
         .ap-modal.theme-light .ap-btn-cancel {
           border-color: #cbd5e1;
           color: #475569;
@@ -3239,7 +4699,7 @@ class MentariDashboard {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
-            Auto-Pilot Kuis Batch (Single-Tab)
+            Auto-Pilot Kuis & Evaluasi
           </div>
           <button class="ap-close-btn" id="btn-close-ap-modal" aria-label="Tutup">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3249,12 +4709,33 @@ class MentariDashboard {
         </div>
 
         <div class="ap-content">
+          ${hasActiveSession ? `
+          <div class="ap-active-banner" id="ap-active-session-box">
+            <div class="ap-active-left">
+              <svg class="ap-active-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+              <div class="ap-active-info">
+                <div class="ap-active-title">Sesi Auto-Pilot Aktif / Terjeda (${activeSession.currentIndex + 1}/${activeSession.queue.length})</div>
+                <div class="ap-active-desc" title="${activeSession.queue[activeSession.currentIndex]?.courseTitle || ''} - ${activeSession.queue[activeSession.currentIndex]?.sectionName || ''}">
+                  ${activeSession.queue[activeSession.currentIndex]?.sectionName || ''}: ${activeSession.queue[activeSession.currentIndex]?.courseTitle || ''} (${activeSession.queue[activeSession.currentIndex]?.type || ''})
+                </div>
+              </div>
+            </div>
+            <div class="ap-active-actions">
+              <button class="ap-btn-resume" id="btn-resume-session" type="button" title="Lanjutkan pengerjaan sesi ini">Lanjutkan</button>
+              <button class="ap-btn-reset-session" id="btn-reset-session" type="button" title="Hapus sesi ini dan mulai antrean baru">Hentikan & Reset</button>
+            </div>
+          </div>
+          ` : ''}
+
           <div class="ap-banner">
             <svg class="ap-banner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
             <div class="ap-banner-text">
-              Otomatisasi kuis & evaluasi berurutan di <b>1 tab browser aktif</b> (hemat RAM & anti-freeze). Sesuai aturan akademik, <b>Post-Test otomatis dilewati jika Forum Diskusi & Pre-Test pertemuan terkait belum selesai</b>.
+              Otomatisasi pengerjaan kuis & evaluasi perkuliahan secara berurutan dan aman. Sesuai aturan akademik, <b>Post-Test otomatis dilewati jika Forum Diskusi & Pre-Test pertemuan terkait belum selesai</b>.
             </div>
           </div>
 
@@ -3317,22 +4798,26 @@ class MentariDashboard {
             </select>
           </div>
 
-          <div class="ap-field-group ap-cooldown-wrap">
+          <div class="ap-field-group" id="ap-kuesioner-pref-group" style="${(selectedMode === 'all' || selectedMode === 'kuesioner') ? '' : 'display:none;'}">
             <div class="ap-label">
-              <span>Inter-Quiz Cooldown (Jeda Istirahat)</span>
-              <span id="ap-cooldown-display" class="ap-cooldown-badge">15 detik</span>
+              <span>Preferensi Kuesioner Dosen</span>
+              <span style="color:#10b981; font-size:10px; font-weight:600; text-transform:none;">Evaluasi Pembelajaran</span>
             </div>
-            <div class="ap-slider-row">
-              <input type="range" id="ap-cooldown-slider" class="ap-slider" min="10" max="60" value="15" step="5">
-              <div class="ap-presets">
-                <button class="ap-preset-btn" data-val="10">10s</button>
-                <button class="ap-preset-btn active" data-val="15">15s</button>
-                <button class="ap-preset-btn" data-val="25">25s</button>
-                <button class="ap-preset-btn" data-val="40">40s</button>
+            <div class="ap-mode-grid" id="ap-kues-pref-container" style="grid-template-columns: repeat(2, 1fr);">
+              <div class="ap-pref-card ${selectedKuesPref === 'iya' ? 'active' : ''}" data-kues-pref="iya">
+                <div class="ap-mode-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  Auto Ya
+                </div>
+                <div class="ap-mode-sub">Opsi Ya / Sangat Baik, langsung submit</div>
               </div>
-            </div>
-            <div style="font-size: 11px; color: #888;">
-              Jeda istirahat acak di akhir kuis untuk mensimulasikan tempo manusia dan menghindari deteksi bot.
+              <div class="ap-pref-card ${selectedKuesPref === 'tidak' ? 'active' : ''}" data-kues-pref="tidak">
+                <div class="ap-mode-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  Auto Tidak
+                </div>
+                <div class="ap-mode-sub">Opsi Tidak / Kurang, langsung submit</div>
+              </div>
             </div>
           </div>
 
@@ -3356,7 +4841,7 @@ class MentariDashboard {
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
-            Mulai Auto-Pilot (1 Tab)
+            Mulai Auto-Pilot
           </button>
         </div>
       </div>
@@ -3380,37 +4865,38 @@ class MentariDashboard {
       if (e.target === overlay) close();
     });
 
+    // Event listener untuk tombol Sesi Aktif / Terjeda
+    const btnResumeSession = overlay.querySelector('#btn-resume-session');
+    if (btnResumeSession && activeSession) {
+      btnResumeSession.addEventListener('click', async () => {
+        await AutoPilotState.resume();
+        const targetUrl = activeSession.queue[activeSession.currentIndex]?.url || activeSession.queue[0]?.url;
+        close();
+        if (targetUrl) {
+          Toast.info('Melanjutkan sesi Auto-Pilot...');
+          setTimeout(() => {
+            window.location.href = targetUrl;
+          }, 300);
+        }
+      });
+    }
+
+    const btnResetSession = overlay.querySelector('#btn-reset-session');
+    if (btnResetSession) {
+      btnResetSession.addEventListener('click', async () => {
+        await AutoPilotState.reset();
+        Toast.success('Sesi Auto-Pilot telah direset total.');
+        const activeBox = overlay.querySelector('#ap-active-session-box');
+        if (activeBox) activeBox.remove();
+      });
+    }
+
     const courseSelect = overlay.querySelector('#ap-course-select');
-    const modeCards = overlay.querySelectorAll('.ap-mode-card');
-    const cooldownSlider = overlay.querySelector('#ap-cooldown-slider');
-    const cooldownDisplay = overlay.querySelector('#ap-cooldown-display');
-    const presetBtns = overlay.querySelectorAll('.ap-preset-btn');
+    const modeCards = overlay.querySelectorAll('#ap-mode-container [data-mode]');
     const queueList = overlay.querySelector('#ap-queue-preview-list');
     const queueCount = overlay.querySelector('#ap-queue-count');
     const skippedBox = overlay.querySelector('#ap-skipped-box');
     const btnStart = overlay.querySelector('#btn-start-ap');
-
-    const updateCooldown = (val) => {
-      cooldownSlider.value = val;
-      cooldownDisplay.textContent = `${val} detik`;
-      presetBtns.forEach(b => {
-        if (parseInt(b.dataset.val, 10) === parseInt(val, 10)) {
-          b.classList.add('active');
-        } else {
-          b.classList.remove('active');
-        }
-      });
-    };
-
-    cooldownSlider.addEventListener('input', (e) => {
-      updateCooldown(e.target.value);
-    });
-
-    presetBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        updateCooldown(btn.dataset.val);
-      });
-    });
 
     const parseMeetingNum = (secName) => {
       if (!secName) return 999;
@@ -3422,7 +4908,17 @@ class MentariDashboard {
       const selectedCourse = courseSelect.value;
 
       // Ambil seluruh evaluasi untuk analisis prasyarat
-      let allCourseEvals = this.evaluations.filter(e => !e.locked);
+      let allCourseEvals = this.evaluations.filter(e => {
+        if (selectedMode === 'all' || selectedMode === 'kuesioner') {
+          // KUESIONER yang saat ini locked hanya karena menunggu post-test
+          // TIDAK boleh dibuang di awal, karena akan dibuka setelah post-test selesai!
+          if (e.type === 'KUESIONER') {
+            const isPostAlert = e.lockReason && /post[- ]?test/i.test(e.lockReason);
+            if (!e.locked || isPostAlert || selectedMode === 'all') return true;
+          }
+        }
+        return !e.locked;
+      });
       if (selectedCourse !== 'all') {
         allCourseEvals = allCourseEvals.filter(e => e.courseCode === selectedCourse);
       }
@@ -3440,18 +4936,20 @@ class MentariDashboard {
         courseGroups[e.courseCode].items.push(e);
       });
 
-      const validQueue = [];
+      const preQueue = [];
+      const postQueue = [];
+      const kuesQueue = [];
       const skippedList = [];
 
       for (const cCode in courseGroups) {
         const cGroup = courseGroups[cCode];
 
-        // Kelompokkan per Pertemuan / Section
+        // Kelompokkan per Pertemuan secara deterministik (normalisasi nomor pertemuan via _getMeetingKey)
         const meetingMap = {};
         cGroup.items.forEach(item => {
-          const sec = item.sectionName || 'Umum';
-          if (!meetingMap[sec]) meetingMap[sec] = [];
-          meetingMap[sec].push(item);
+          const mKey = this._getMeetingKey(item.meetingNum, item.sectionName);
+          if (!meetingMap[mKey]) meetingMap[mKey] = [];
+          meetingMap[mKey].push(item);
         });
 
         // Urutkan nomor pertemuan ascending (1, 2, 3... 14)
@@ -3467,73 +4965,127 @@ class MentariDashboard {
           const kuesItem = mItems.find(i => i.type === 'KUESIONER');
 
           let preScheduledInQueue = false;
+          let postScheduledInQueue = false;
 
           // 1. PRE-TEST
           if (preItem && !preItem.completion) {
-            if (selectedMode === 'all' || selectedMode === 'both' || selectedMode === 'pre') {
-              validQueue.push({
-                id: preItem.subId,
-                courseCode: preItem.courseCode,
-                courseTitle: preItem.courseTitle,
-                sectionName: preItem.sectionName,
-                type: 'PRE_TEST',
-                name: preItem.name,
-                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(preItem.courseCode)}/exam/${preItem.subId}`,
-                status: 'pending'
-              });
-              preScheduledInQueue = true;
-            }
+            preQueue.push({
+              id: preItem.subId,
+              courseCode: preItem.courseCode,
+              courseTitle: preItem.courseTitle,
+              sectionName: preItem.sectionName,
+              type: 'PRE_TEST',
+              name: preItem.name,
+              url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(preItem.courseCode)}/exam/${preItem.subId}`,
+              status: 'pending'
+            });
+            preScheduledInQueue = true;
           }
 
           // 2. POST-TEST (Wajib Forum selesai & Pre-Test selesai/terjadwal)
           if (postItem && !postItem.completion) {
-            if (selectedMode === 'all' || selectedMode === 'both' || selectedMode === 'post') {
-              // Cek Forum pertemuan ini
-              const matchingForum = (this.activeForums || []).find(f =>
-                f.courseCode === postItem.courseCode &&
-                (f.sectionName === postItem.sectionName || (f.sectionName && postItem.sectionName && f.sectionName.toLowerCase().trim() === postItem.sectionName.toLowerCase().trim()))
-              );
-              const isForumDone = matchingForum && (matchingForum.completion === true || matchingForum.answered === true);
+            // Cek Forum pertemuan ini menggunakan deterministic meetingKey
+            const meetingKey = this._getMeetingKey(postItem.meetingNum, postItem.sectionName);
+            const meta = this.courseForumsMeta ? this.courseForumsMeta[postItem.courseCode] : null;
+            const sectionForums = (meta && meta.sectionForums) ? meta.sectionForums : {};
+            const forum = sectionForums[meetingKey];
 
-              // Cek Pre-Test pertemuan ini: sudah selesai di server ATAU dijadwalkan tepat sebelum Post-Test ini
-              const isPreDone = (preItem && preItem.completion) || preScheduledInQueue || (!preItem);
+            const matchingForum = (this.activeForums || []).find(f =>
+              f.courseCode === postItem.courseCode &&
+              this._getMeetingKey(f.meetingNum, f.sectionName) === meetingKey
+            );
+            const isForumDone = Boolean(
+              (forum && (forum.completion || forum.answered)) ||
+              (matchingForum && (matchingForum.completion === true || matchingForum.answered === true))
+            );
 
-              if (!isForumDone) {
-                const reason = matchingForum ? 'Forum Diskusi belum dijawab/diselesaikan' : 'Forum Diskusi belum ada/dibuat dosen';
-                skippedList.push({ item: postItem, reason });
-              } else if (!isPreDone) {
-                skippedList.push({ item: postItem, reason: 'Pre-Test pertemuan ini belum diselesaikan' });
-              } else {
-                validQueue.push({
-                  id: postItem.subId,
-                  courseCode: postItem.courseCode,
-                  courseTitle: postItem.courseTitle,
-                  sectionName: postItem.sectionName,
-                  type: 'POST_TEST',
-                  name: postItem.name,
-                  url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(postItem.courseCode)}/exam/${postItem.subId}`,
-                  status: 'pending'
-                });
+            // Cek Pre-Test pertemuan ini: sudah selesai di server ATAU dijadwalkan dalam antrean Pre-Test
+            const isPreDone = (preItem && preItem.completion) || preScheduledInQueue || (!preItem);
+
+            if (!isForumDone) {
+              let reason = 'Forum Diskusi belum dijawab/diselesaikan';
+              if (forum && forum.hasTopics === false) {
+                reason = 'Forum Diskusi belum dibuka dosen (soal belum tersedia)';
+              } else if (!matchingForum && !forum) {
+                reason = 'Forum Diskusi belum dibuka/dibuat dosen';
               }
+              skippedList.push({ item: postItem, reason });
+            } else if (!isPreDone) {
+              skippedList.push({ item: postItem, reason: 'Pre-Test pertemuan ini belum diselesaikan' });
+            } else {
+              postQueue.push({
+                id: postItem.subId,
+                courseCode: postItem.courseCode,
+                courseTitle: postItem.courseTitle,
+                sectionName: postItem.sectionName,
+                type: 'POST_TEST',
+                name: postItem.name,
+                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(postItem.courseCode)}/exam/${postItem.subId}`,
+                status: 'pending'
+              });
+              postScheduledInQueue = true;
             }
           }
 
           // 3. KUESIONER
-          if (kuesItem && !kuesItem.completion) {
-            if (selectedMode === 'all' || selectedMode === 'kuesioner') {
-              validQueue.push({
+          const kuesItems = mItems.filter(i => i.type === 'KUESIONER');
+          for (const kuesItem of kuesItems) {
+            if (kuesItem && !kuesItem.completion) {
+              const isPostDone = (postItem && postItem.completion) || postScheduledInQueue || (!postItem);
+
+              if (selectedMode === 'all') {
+                // Pada mode 'Semua Lengkap', kuesioner dijadwalkan jika post-test sudah selesai atau dijadwalkan
+                if (!isPostDone) {
+                  continue;
+                }
+              } else if (selectedMode === 'kuesioner') {
+                // Pada mode Kuesioner mandiri, kuesioner bisa dijadwalkan jika post-test sudah selesai
+                if (!isPostDone) {
+                  continue;
+                }
+                const isPostAlert = kuesItem.lockReason && /post[- ]?test/i.test(kuesItem.lockReason);
+                if (kuesItem.locked && !isPostAlert) {
+                  continue;
+                }
+              } else if (kuesItem.locked) {
+                // Mode lainnya: kuesioner terkunci tidak dijalankan
+                continue;
+              }
+
+              const statusDesc = (postScheduledInQueue && !postItem?.completion)
+                ? 'Setelah Post-Test Selesai'
+                : 'Siap Diisi';
+
+              kuesQueue.push({
                 id: kuesItem.subId,
+                sectionCode: kuesItem.sectionCode,
                 courseCode: kuesItem.courseCode,
                 courseTitle: kuesItem.courseTitle,
                 sectionName: kuesItem.sectionName,
                 type: 'KUESIONER',
                 name: kuesItem.name,
-                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(kuesItem.courseCode)}/kuesioner/${kuesItem.subId}`,
-                status: 'pending'
+                url: `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(kuesItem.courseCode)}/kuesioner/${encodeURIComponent(kuesItem.sectionCode || kuesItem.subId)}`,
+                status: 'pending',
+                statusLabel: statusDesc
               });
             }
           }
         }
+      }
+
+      // Gabungkan antrean terurut berdasarkan fase/batch:
+      // SEMUA Pre-Test -> SEMUA Post-Test -> SEMUA Kuesioner (Seamless & Non-Interleaved)
+      let validQueue = [];
+      if (selectedMode === 'all') {
+        validQueue = [...preQueue, ...postQueue, ...kuesQueue];
+      } else if (selectedMode === 'both') {
+        validQueue = [...preQueue, ...postQueue];
+      } else if (selectedMode === 'pre') {
+        validQueue = [...preQueue];
+      } else if (selectedMode === 'post') {
+        validQueue = [...postQueue];
+      } else if (selectedMode === 'kuesioner') {
+        validQueue = [...kuesQueue];
       }
 
       // Render Queue Preview
@@ -3555,7 +5107,7 @@ class MentariDashboard {
           } else if (q.type === 'KUESIONER') {
             typeClass = 'kues';
             typeLabel = 'Kuesioner';
-            statusLabel = 'Siap Diisi';
+            statusLabel = q.statusLabel || 'Siap Diisi';
           }
 
           return `
@@ -3602,11 +5154,27 @@ class MentariDashboard {
       activeValidQueue = calculateQueue();
     });
 
+    const kuesPrefGroup = overlay.querySelector('#ap-kuesioner-pref-group');
+    const kuesPrefCards = overlay.querySelectorAll('#ap-kues-pref-container [data-kues-pref]');
+
+    kuesPrefCards.forEach(card => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        kuesPrefCards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedKuesPref = card.dataset.kuesPref || 'iya';
+        Storage.set({ mentari_kuesioner_preference: selectedKuesPref });
+      });
+    });
+
     modeCards.forEach(card => {
       card.addEventListener('click', () => {
         modeCards.forEach(c => c.classList.remove('active'));
         card.classList.add('active');
         selectedMode = card.dataset.mode;
+        if (kuesPrefGroup) {
+          kuesPrefGroup.style.display = (selectedMode === 'all' || selectedMode === 'kuesioner') ? '' : 'none';
+        }
         activeValidQueue = calculateQueue();
       });
     });
@@ -3628,25 +5196,29 @@ class MentariDashboard {
         return;
       }
 
-      const cooldown = parseInt(cooldownSlider.value, 10) || 15;
       const chosenModel = (modelSelect && modelSelect.value && validModelIds.includes(modelSelect.value))
         ? modelSelect.value
         : currentModel;
 
-      await Storage.set({ gemini_model: chosenModel });
-
-      // Simpan state Auto-Pilot ke chrome.storage.local
       await Storage.set({
-        mentari_auto_pilot_state: {
-          active: true,
-          currentIndex: 0,
-          cooldownSec: cooldown,
-          queue: activeValidQueue,
-          startedAt: Date.now(),
-          paused: false,
-          total: activeValidQueue.length,
-          model: chosenModel
-        }
+        gemini_model: chosenModel,
+        mentari_kuesioner_preference: selectedKuesPref
+      });
+
+      // Simpan state Auto-Pilot ke storage via AutoPilotState manager
+      await AutoPilotState.set({
+        active: true,
+        currentIndex: 0,
+        cooldownSec: 0,
+        queue: activeValidQueue,
+        startedAt: Date.now(),
+        paused: false,
+        total: activeValidQueue.length,
+        model: chosenModel,
+        kuesionerPreference: selectedKuesPref,
+        mode: selectedMode,
+        courseScope: courseSelect?.value || 'all',
+        coursesMeta: coursesWithPending
       });
 
       const chosenModelObj = ALL_MODELS.find(m => m.id === chosenModel);
@@ -3686,8 +5258,10 @@ class MentariDashboard {
 
     // 1. Filter status pengerjaan
     let filtered = evalItems;
-    if (this.evalFilter === 'pending') {
-      filtered = filtered.filter(e => !e.completion && !e.locked);
+    if (this.evalFilter === 'ready') {
+      filtered = filtered.filter(e => e._resolvedStatus?.status === 'READY');
+    } else if (this.evalFilter === 'waiting_forum' || this.evalFilter === 'waiting_prereq') {
+      filtered = filtered.filter(e => ['WAITING_FORUM', 'FORUM_NOT_OPEN', 'WAITING_POSTTEST', 'WAITING_PRETEST'].includes(e._resolvedStatus?.status));
     } else if (this.evalFilter === 'done') {
       filtered = filtered.filter(e => e.completion);
     }
@@ -3740,7 +5314,14 @@ class MentariDashboard {
           this._renderEvaluations(this.evaluations, true);
         });
       } else {
-        const filterLabel = this.evalFilter === 'pending' ? 'belum dikerjakan' : 'sudah selesai';
+        const filterLabels = {
+          ready: 'siap dikerjakan',
+          waiting_forum: 'tertahan prasyarat',
+          waiting_prereq: 'tertahan prasyarat',
+          done: 'sudah selesai',
+          pending: 'belum dikerjakan'
+        };
+        const filterLabel = filterLabels[this.evalFilter] || 'sesuai filter';
         evalContainer.innerHTML = `<div class="empty-state">Tidak ada evaluasi yang ${filterLabel}.</div>`;
       }
       return;
@@ -3778,8 +5359,26 @@ class MentariDashboard {
 
     for (const courseCode of courseCodes) {
       const group = grouped[courseCode];
-      const pendingInCourse = group.items.filter(e => !e.completion && !e.locked).length;
+      const readyInCourse = group.items.filter(e => e._resolvedStatus?.status === 'READY').length;
+      const waitingPrereqInCourse = group.items.filter(e => ['WAITING_FORUM', 'FORUM_NOT_OPEN', 'WAITING_POSTTEST', 'WAITING_PRETEST'].includes(e._resolvedStatus?.status)).length;
+      const doneInCourse = group.items.filter(e => e.completion).length;
       const isExpanded = this.expandedCourses.has(courseCode);
+
+      let badgesHtml = '';
+      if (doneInCourse === group.items.length) {
+        badgesHtml = `<span class="badge badge-done">Selesai Semua</span>`;
+      } else {
+        if (readyInCourse > 0) {
+          badgesHtml += `<span class="badge badge-ready">${readyInCourse} Siap</span>`;
+        }
+        if (waitingPrereqInCourse > 0) {
+          badgesHtml += `<span class="badge badge-waiting-forum">${waitingPrereqInCourse} Tertahan</span>`;
+        }
+        const otherPending = group.items.length - doneInCourse - readyInCourse - waitingPrereqInCourse;
+        if (otherPending > 0 && readyInCourse === 0 && waitingPrereqInCourse === 0) {
+          badgesHtml += `<span class="badge badge-pending">${otherPending} Belum</span>`;
+        }
+      }
 
       const card = document.createElement('div');
       card.className = 'eval-course-card';
@@ -3797,10 +5396,7 @@ class MentariDashboard {
           <span title="${group.courseTitle}">${group.courseTitle}</span>
         </div>
         <div class="eval-accordion-meta">
-          ${pendingInCourse > 0 
-            ? `<span class="badge badge-pending">${pendingInCourse} Belum</span>` 
-            : `<span class="badge badge-done">Selesai Semua</span>`
-          }
+          ${badgesHtml}
           <span class="badge" style="background:rgba(255,255,255,0.06); color:#aaa;">${group.items.length} Item</span>
           <svg class="eval-accordion-chevron ${isExpanded ? 'open' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
@@ -3829,26 +5425,32 @@ class MentariDashboard {
           const itemDiv = document.createElement('div');
           itemDiv.className = 'eval-item';
 
+          const st = e._resolvedStatus || this._resolveEvalStatus(e, group.items);
+
           let btnHtml = '';
-          if (e.completion) {
+          if (st.status === 'DONE') {
             btnHtml = `<span class="eval-btn-action eval-btn-done">Selesai</span>`;
-          } else if (e.locked) {
-            btnHtml = `<span class="eval-btn-action eval-btn-locked" title="${e.lockReason || 'Terkunci'}">Terkunci</span>`;
-          } else {
+          } else if (st.isForumAction && st.forumUrl) {
+            btnHtml = `<a class="eval-btn-action eval-btn-goto-forum" target="_self" href="${st.forumUrl}" title="Buka forum diskusi pertemuan ini">${st.buttonLabel}</a>`;
+          } else if (st.canExecute) {
             const url = e.type === 'KUESIONER'
-              ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/kuesioner/${e.subId}`
+              ? `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/kuesioner/${encodeURIComponent(e.sectionCode || e.subId)}`
               : `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}/exam/${e.subId}`;
-            btnHtml = `<a class="eval-btn-action" target="_self" href="${url}">Kerjakan</a>`;
+            btnHtml = `<a class="eval-btn-action eval-btn-ready" target="_self" href="${url}">${st.buttonLabel}</a>`;
+          } else {
+            btnHtml = `<span class="eval-btn-action ${st.buttonClass || 'eval-btn-blocked'}" title="${st.reason || 'Terkunci'}">${st.buttonLabel}</span>`;
           }
+
+          const hintHtml = st.reason ? ` &bull; <span class="eval-status-hint ${st.hintClass || ''}">${st.reason}</span>` : '';
 
           itemDiv.innerHTML = `
             <div class="eval-item-info">
               <div class="eval-item-title">
                 ${typeIcons[e.type] || ''}
                 ${typeLabels[e.type] || e.type}
-                ${e.completion ? '<span class="badge badge-done">Selesai</span>' : (e.locked ? '<span class="badge badge-locked">Terkunci</span>' : '<span class="badge badge-pending">Belum</span>')}
+                <span class="badge ${st.badgeClass}">${st.badgeLabel}</span>
               </div>
-              <div class="eval-item-meta">${e.name} &bull; ${secName}</div>
+              <div class="eval-item-meta">${e.name} &bull; ${secName}${hintHtml}</div>
             </div>
             ${btnHtml}
           `;
@@ -4080,10 +5682,30 @@ class MentariDashboard {
           await Promise.allSettled(chunk.map(async (c) => {
             const courseCode = c.kode_course || c.kode || c.course_code || c.id;
             const courseTitle = c.nama_mata_kuliah || c.coursename || c.name || 'Mata Kuliah';
+            let courseLecturer = '';
+            const rawDosen = c.nama_dosen || c.dosen || c.dosen_pengampu || c.pengampu || c.lecturer;
+            if (typeof rawDosen === 'string' && rawDosen.trim()) {
+              courseLecturer = rawDosen.trim();
+            } else if (Array.isArray(rawDosen) && rawDosen.length > 0) {
+              courseLecturer = rawDosen.map(d => typeof d === 'string' ? d : (d.nama || d.name || d.fullname || '')).filter(Boolean).join(', ');
+            } else if (rawDosen && typeof rawDosen === 'object') {
+              courseLecturer = (rawDosen.nama || rawDosen.name || rawDosen.fullname || '').trim();
+            }
+
             try {
               const cRes = await fetch(`https://mentari.unpam.ac.id/api/user-course/${encodeURIComponent(courseCode)}`, options);
               if (!cRes.ok) return;
               const cData = await cRes.json();
+              if (!courseLecturer && cData && typeof cData === 'object') {
+                const cRawDosen = cData.nama_dosen || cData.dosen || cData.dosen_pengampu || cData.pengampu;
+                if (typeof cRawDosen === 'string' && cRawDosen.trim()) {
+                  courseLecturer = cRawDosen.trim();
+                } else if (Array.isArray(cRawDosen) && cRawDosen.length > 0) {
+                  courseLecturer = cRawDosen.map(d => typeof d === 'string' ? d : (d.nama || d.name || d.fullname || '')).filter(Boolean).join(', ');
+                } else if (cRawDosen && typeof cRawDosen === 'object') {
+                  courseLecturer = (cRawDosen.nama || cRawDosen.name || cRawDosen.fullname || '').trim();
+                }
+              }
               const sections = Array.isArray(cData) ? cData : (cData.data || []);
 
               const forumCandidates = [];
@@ -4116,35 +5738,77 @@ class MentariDashboard {
 
                   // ─── Pre-Test, Post-Test, Kuesioner ────────────────────
                   // Server UNPAM adalah Single Source of Truth mutlak!
-                  if (['PRE_TEST', 'POST_TEST', 'KUESIONER'].includes(sub.kode_template) && sub.id) {
+                  const kt = String(sub.kode_template || sub.template || sub.type || sub.tipe || sub.kode_sub_section || '').trim().toUpperCase();
+                  const subTitle = String(sub.nama_sub_section || sub.judul || sub.title || sub.name || sub.deskripsi || '').toLowerCase();
+                  let resolvedType = null;
+                  if (kt === 'PRE_TEST' || kt === 'PRETEST' || subTitle.includes('pre-test') || subTitle.includes('pre test') || subTitle.includes('pretest')) {
+                    resolvedType = 'PRE_TEST';
+                  } else if (kt === 'POST_TEST' || kt === 'POSTTEST' || subTitle.includes('post-test') || subTitle.includes('post test') || subTitle.includes('posttest')) {
+                    resolvedType = 'POST_TEST';
+                  } else if (
+                    kt.includes('KUES') || kt.includes('KUIS') || kt.includes('SURV') || kt.includes('ANGKET') || kt.includes('EVAL') || kt.includes('EDOM') ||
+                    subTitle.includes('kuesioner') || subTitle.includes('kuisioner') || subTitle.includes('evaluasi') || subTitle.includes('angket') || subTitle.includes('survei') || subTitle.includes('survey') || subTitle.includes('edom')
+                  ) {
+                    resolvedType = 'KUESIONER';
+                  }
+
+                  const validSubId = sub.id || sub._id || sub.id_sub_section || sub.sub_id || (resolvedType ? `${resolvedType}_${meetingNum || section.urutan || 'sec'}` : null);
+
+                  if (resolvedType && validSubId) {
                     const isLocked = !!(sub.warningAlert && sub.warningAlert.length > 0);
-                    const isLmsCompleted = Boolean(
-                      sub.completion === true ||
-                      sub.completion === 1 ||
-                      sub.completion === '1' ||
-                      sub.completion === 'true' ||
-                      sub.is_completed === true ||
-                      sub.completed === true ||
-                      sub.is_done === true ||
-                      sub.status === 'completed' ||
-                      sub.status === 'done' ||
-                      (sub.nilai !== undefined && sub.nilai !== null && sub.nilai !== '') ||
-                      (sub.score !== undefined && sub.score !== null && sub.score !== '') ||
-                      (Array.isArray(sub.history) && sub.history.length > 0)
-                    );
+                    const isPostTestAlert = isLocked && /post[- ]?test/i.test(sub.warningAlert);
+
+                    // Penentuan completion akurat:
+                    // Jika KUESIONER masih mengeluhkan post-test (warningAlert aktif), KUESIONER PASTI BELUM SELESAI!
+                    let isLmsCompleted = false;
+                    if (resolvedType === 'KUESIONER' && isPostTestAlert) {
+                      isLmsCompleted = false;
+                    } else if (resolvedType === 'KUESIONER') {
+                      // Kuesioner tidak memiliki nilai/score ujian, hanya status penyelesaian eksplisit
+                      isLmsCompleted = Boolean(
+                        sub.completion === true ||
+                        sub.completion === 1 ||
+                        sub.completion === '1' ||
+                        sub.completion === 'true' ||
+                        sub.is_completed === true ||
+                        sub.completed === true ||
+                        sub.is_done === true ||
+                        sub.status === 'completed' ||
+                        sub.status === 'done' ||
+                        (Array.isArray(sub.history) && sub.history.length > 0)
+                      );
+                    } else {
+                      // Pre-Test & Post-Test
+                      isLmsCompleted = Boolean(
+                        sub.completion === true ||
+                        sub.completion === 1 ||
+                        sub.completion === '1' ||
+                        sub.completion === 'true' ||
+                        sub.is_completed === true ||
+                        sub.completed === true ||
+                        sub.is_done === true ||
+                        sub.status === 'completed' ||
+                        sub.status === 'done' ||
+                        (sub.nilai !== undefined && sub.nilai !== null && sub.nilai !== '') ||
+                        (sub.score !== undefined && sub.score !== null && sub.score !== '') ||
+                        (Array.isArray(sub.history) && sub.history.length > 0)
+                      );
+                    }
 
                     // Self-healing: jika status resmi di UNPAM belum selesai, buang ID dari storage lokal
-                    if (!isLmsCompleted && completedQuizIds.includes(sub.id)) {
-                      staleCompletedQuizIds.add(sub.id);
+                    if (!isLmsCompleted && completedQuizIds.includes(validSubId)) {
+                      staleCompletedQuizIds.add(validSubId);
                     }
 
                     evalItems.push({
                       courseCode,
                       courseTitle,
                       sectionName,
-                      subId: sub.id,
-                      type: sub.kode_template,
-                      name: sub.nama_sub_section || sub.judul || sub.kode_template,
+                      meetingNum,
+                      sectionCode: section.kode_section || section.nama_section || validSubId,
+                      subId: validSubId,
+                      type: resolvedType,
+                      name: sub.nama_sub_section || sub.judul || resolvedType,
                       completion: isLmsCompleted,
                       locked: isLocked,
                       lockReason: sub.warningAlert || ''
@@ -4155,6 +5819,7 @@ class MentariDashboard {
 
               // Evaluasi seluruh forum candidate untuk mata kuliah ini secara paralel
               const courseForumItems = [];
+              const courseSectionForums = {};
               await Promise.allSettled(forumCandidates.map(async (fc) => {
                 const { sub, meetingNum, sectionName } = fc;
                 const isLmsCompleted = Boolean(sub.completion === true);
@@ -4173,7 +5838,7 @@ class MentariDashboard {
                         topicDetails = topics.map(t => ({
                           id: t.id,
                           title: t.judul || t.title || t.name || '',
-                          message: t.deskripsi || t.pesan || t.message || t.content || t.body || ''
+                          message: t.konten || t.deskripsi || t.pesan || t.message || t.content || t.body || ''
                         }));
                       }
 
@@ -4193,6 +5858,18 @@ class MentariDashboard {
                                 if (td && !td.message) td.message = extractedQuestion;
                               }
                               const replies = replyData.replies || replyData.data || (Array.isArray(replyData) ? replyData : []);
+                              if (!courseLecturer) {
+                                for (const r of replies) {
+                                  if (!r || typeof r !== 'object') continue;
+                                  const rAuthor = (r.fullname || r.nama || r.author || (r.user && (r.user.fullname || r.user.nama || r.user.name)) || '').trim();
+                                  const isDosenRole = r.role === 'dosen' || r.is_dosen === true || r.is_dosen === 1;
+                                  const hasDegree = /s\.pd|m\.pd|dr\.|prof\.|m\.kom|s\.kom|m\.m|s\.e|m\.si|m\.hum|m\.t|s\.t|ph\.d/i.test(rAuthor);
+                                  if ((isDosenRole || hasDegree) && rAuthor) {
+                                    courseLecturer = rAuthor;
+                                    break;
+                                  }
+                                }
+                              }
                               return replies.filter(r => {
                                 const rName = (r.fullname || r.nama || '').toLowerCase();
                                 const rNim = (r.nim || r.username || '').toLowerCase();
@@ -4217,11 +5894,23 @@ class MentariDashboard {
                   } catch {}
                 }
 
+                const meetingKey = this._getMeetingKey(meetingNum, sectionName);
+                courseSectionForums[meetingKey] = {
+                  forumId: sub.id,
+                  forumName: sub.nama_sub_section || sub.judul || 'Forum Diskusi',
+                  hasTopics,
+                  completion: isLmsCompleted,
+                  answered: isAnswered,
+                  sectionName,
+                  meetingNum
+                };
+
                 if (hasTopics) {
                   if (meetingNum !== null) activeMeetingNums.add(meetingNum);
                   courseForumItems.push({
                     courseCode,
                     courseTitle,
+                    courseLecturer: courseLecturer || '',
                     sectionName,
                     meetingNum,
                     forumId: sub.id,
@@ -4246,7 +5935,9 @@ class MentariDashboard {
                 courseTitle,
                 totalSections: sections.length,
                 activeCount: courseForumItems.length,
-                unavailableRanges
+                unavailableRanges,
+                unavailableMeetings,
+                sectionForums: courseSectionForums
               };
 
               forumItems.push(...courseForumItems);

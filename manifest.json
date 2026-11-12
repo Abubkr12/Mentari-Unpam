@@ -36,13 +36,21 @@
     },
     {
       "matches": [
+        "https://mentari.unpam.ac.id/*",
+        "https://my.unpam.ac.id/*"
+      ],
+      "js": [
+        "dist/content/apiKeyManager.js"
+      ]
+    },
+    {
+      "matches": [
         "https://mentari.unpam.ac.id/*"
       ],
       "exclude_matches": [
         "https://mentari.unpam.ac.id/login"
       ],
       "js": [
-        "dist/content/apiKeyManager.js",
         "dist/content/gemini.js",
         "dist/content/token.js",
         "dist/content/content.js"
@@ -66,7 +74,8 @@
     },
     {
       "matches": [
-        "https://mentari.unpam.ac.id/u-courses/*/kuesioner/*"
+        "https://mentari.unpam.ac.id/u-courses/*/kuesioner/*",
+        "https://mentari.unpam.ac.id/u-courses/*/kuisioner/*"
       ],
       "js": [
         "dist/content/kuisioner.js"

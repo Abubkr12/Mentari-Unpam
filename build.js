@@ -88,10 +88,16 @@ async function build() {
         run_at: 'document_start'
       },
       {
+        matches: [
+          'https://mentari.unpam.ac.id/*',
+          'https://my.unpam.ac.id/*'
+        ],
+        js: ['content/apiKeyManager.js']
+      },
+      {
         matches: ['https://mentari.unpam.ac.id/*'],
         exclude_matches: ['https://mentari.unpam.ac.id/login'],
         js: [
-          'content/apiKeyManager.js',
           'content/gemini.js',
           'content/token.js',
           'content/content.js'
@@ -106,7 +112,10 @@ async function build() {
         js: ['content/quiz.js']
       },
       {
-        matches: ['https://mentari.unpam.ac.id/u-courses/*/kuesioner/*'],
+        matches: [
+          'https://mentari.unpam.ac.id/u-courses/*/kuesioner/*',
+          'https://mentari.unpam.ac.id/u-courses/*/kuisioner/*'
+        ],
         js: ['content/kuisioner.js']
       },
       {

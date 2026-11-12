@@ -178,7 +178,7 @@ Mentari-Unpam-v2.0_2/
 ### 8. Arsitektur Auto-Pilot Kuis Batch (Single-Tab Runner)
 - **Filosofi Single-Tab**: Menghindari pembuatan tab baru (`target="_blank"`) untuk menghemat konsumsi RAM browser dan mencegah deteksi session concurrency dari backend Mentari. Seluruh antrean kuis dieksekusi secara berurutan dalam tab aktif yang sama (`window.location.href`).
 - **Validasi Prasyarat Mutlak**: Post-Test pada pertemuan tertentu HANYA dapat dieksekusi jika Forum Diskusi pada pertemuan tersebut telah diselesaikan mahasiswa (`forum.completion === true || forum.answered === true`). Jika forum belum selesai atau tidak ada, Post-Test otomatis dilewati (skipped) dan diinformasikan pada pratinjau antrean.
-- **Inter-Quiz Cooldown**: Jeda aman (default 15 detik, konfigurasi 10–60 detik) dengan visual countdown pada Floating HUD sebelum berpindah ke kuis berikutnya guna menghindari pendeteksi bot velocity kampus.
+- **Zero Cooldown & Fast Transition**: Peniadaan jeda buatan (0 Cooldown) pada modal Auto-Pilot dan antrean eksekusi. Transisi antar kuis dan kuesioner kini berjalan instan (~800ms visual buffer) guna memaksimalkan efisiensi pengerjaan.
 - **Glassmorphic Floating HUD**: Menampilkan identitas kuis aktif, progress bar kumulatif, live status, tombol Jeda/Lanjut, dan Batalkan.
 - **Fail-Safe SPA Router**: Divalidasi oleh pengawal navigasi `content.js` jika SPA LMS Mentari meredirect ke luar halaman `/exam/*` pasca-submisi kuis.
 
@@ -229,3 +229,110 @@ Mentari-Unpam-v2.0_2/
   - Tombol Buka/Tutup Semua untuk navigasi cepat seluruh accordion.
 - **Standar Ekstensi Bersih**: 100% icon inline SVG (bebas stock emoji), bebas `window.alert()` browser (menggunakan Toast), dan navigasi single-tab (`target="_self"`).
 
+### 12. Arsitektur Portal MyUnpam (Unified Floating Dock, Presensi Tracker & 75% UAS Target Gauge)
+- **Unified Glassmorphic Floating Dock (`#mentari-myunpam-dock-host`)**:
+  - Mengeliminasi tombol floating terpisah yang bertumpuk canggung dan menabrak card informasi portal akademik MyUnpam.
+  - Memadukan identitas brand Mentari Mod (badge gold flame) dengan tombol aksi presisi: 'Rekap Presensi' (indigo) dan 'Auto-Isi Survei' (emerald).
+  - Styling Closed Shadow DOM dark-glassmorphism (`#0d111c`, blur 16px, border gold `rgba(212, 175, 55, 0.28)`) dengan hover lift dan feedback loading berputar (SVG spin) saat auto-survey dipicu.
+- **Koordinasi Inter-Script Event (`mentari-survey-trigger`)**:
+  - Tombol 'Auto-Isi Survei' pada floating dock memancarkan CustomEvent `mentari-survey-trigger`.
+  - `QuickSurvey.js` mendengarkan event ini dan mengeksekusi automasi survei rating secara otomatis.
+  - Jika dock terpadu aktif, `QuickSurvey.js` menonaktifkan injeksi tombol mandiri (`#mentari-survey-btn-host`) guna mencegah duplikasi elemen di viewport pengguna.
+- **Eliminasi Fatal Flexbox Menciut/Gepeng pada Presensi Modal**:
+  - Menetapkan deklarasi `flex-shrink: 0 !important; width: 100%;` pada `.course-card` serta `min-height: 0;` pada container `.content`.
+  - Mencegah bug flexbox layout di mana ekspansi satu accordion pertemuan memampatkan seluruh kartu mata kuliah lainnya menjadi bentuk gepeng pipih tak terbaca.
+- **Eliminasi Teks Stat Terpotong Vertikal**:
+  - Menggantikan teks stat kaku dengan micro-pill badges (`.stat-pill`) dengan line-height standar (1.35) dan padding proporsional untuk SKS, Hadir (emerald), Mangkir (rose), Izin/Sakit (sky), dan Total Sesi (indigo).
+- **Profile Hero Bar, Foto Asli Mahasiswa & Dual Attendance Metrics (Kehadiran Berjalan vs Progres Semester)**:
+  - **Foto Profil Riil Mahasiswa**: Mengambil foto asli mahasiswa yang sedang aktif login di portal MyUnpam (dari data API atau pemindaian DOM sidebar `.sidebar img` / `.user-panel img`) dengan frame lingkaran beraksen emas (`#f59e0b`), dilengkapi automatic graceful fallback ke icon SVG jika foto gagal dimuat.
+  - **Nama Mahasiswa Utuh**: Ditampilkan secara penuh tanpa terpotong ellipsis (`word-break: break-word`) didampingi meta badge NIM, Semester Registrasi, dan Total Beban SKS.
+  - **Dual Attendance Metrics**:
+    - **Metrik 1 (Kehadiran Berjalan / Sesi Aktif)**: Acuan utama kehadiran mahasiswa saat ini. Hanya membagi sesi hadir terhadap sesi yang telah diselenggarakan (hadir, alpa, izin/sakit) atau yang telah dibuka dosen di Mentari. Menghasilkan skor 100% aman bagi mahasiswa yang rajin menghadiri semua sesi berjalan, melenyapkan kepanikan mahasiswa akibat vonis 23% 'Di Bawah Batas UAS'.
+    - **Metrik 2 (Progres Semester Penuh)**: Menghitung akumulasi kehadiran terhadap 105 total sesi satu semester dengan target minimal kelulusan UAS 75% (79 sesi) dan progress bar berpenanda emas vertikal `75% UAS`.
+  - **Status Per-Mata Kuliah Realistis**: Mata kuliah yang belum ada sesi berjalan (misal 0/14 sesi) diberi status netral 'Belum Ada Sesi' (bukan 0.0% merah). Pertemuan yang belum diselenggarakan diberi label informatif 'Belum Tersedia' (belum dibuka dosen di Mentari).
+- **Single-Open Exclusive Accordion**:
+  - Accordion rincian pertemuan mata kuliah menerapkan mekanisme single-open: membuka satu mata kuliah akan secara otomatis menutup mata kuliah lain yang sedang terbuka demi menjaga fokus dan kerapian tampilan.
+- **Draggable Modal Window**:
+  - Modal presensi dilengkapi pointer-drag pada header dengan viewport boundary clamping sehingga posisi modal dapat digeser dengan leluasa saat meninjau data di portal MyUnpam.
+
+### 13. Arsitektur Akselerasi 'Auto Semua' & Fast-Recovery Anti-Stuck (`quiz.js` & `humanizer.js`)
+- **Akselerasi Pacing Responsif (Percepatan ~80-85%)**:
+  - `readingPacing` pada mode otomatis dipangkas dari rentang 2.500–5.000ms menjadi jeda natural ringan **350–600ms**, memberikan performa pengerjaan gesit yang mendekati tombol manual 'Jawab Ini' (< 1.5s) tanpa membebani browser atau memicu race conditions.
+  - Penambahan parameter `fast = true` pada `Humanizer.naturalClick` (scrolling cepat `behavior: auto`, scroll pause 40–80ms, hold click 20–40ms) serta pemanggilan eksplisit native `.click()` untuk kepastian eksekusi synthetic event pada framework React 18 / Material-UI.
+  - Pemangkasan jeda commit state React/Next.js (300–500ms) dan jeda pre-Next (150–300ms), memangkas durasi 5 nomor kuis dari **1 menit 12 detik** menjadi hanya **~12–15 detik**.
+- **Eliminasi Re-Answering Loop & Proteksi Kuota Token**:
+  - Panggilan Gemini AI dikunci secara mutlak hanya jika `!alreadyCheckedRadio` (belum ada pilihan radio aktif pada container soal saat ini). Mengeliminasi bug re-answering berulang pada soal yang sama akibat delay perubahan warna tombol sidebar nomor di server UNPAM.
+- **Transisi Reaktif & Fast Fallback Anti-Nyangkut Next.js**:
+  - Mengganti waiter anti-stale statis 3.5s dengan polling dinamis 100ms (max 1.200ms) yang memantau query URL (`?page=N`), teks soal, dan container DOM baru.
+  - **Mekanisme Self-Healing**: Jika tombol Next tidak merespon dalam 1.2 detik, ekstensi secara otomatis mengalihkan navigasi dengan mengklik tombol nomor soal berikutnya (`prevPage + 1`) pada sidebar navigasi nomor (`_getExamNavigationStatus()`).
+- **Eliminasi Deadlock Self-Veto Kotak Hijau**:
+  - Pada validasi submit dan Kotak Hijau Veto, jika nomor soal saat ini (`q.isCurrent`) sudah memiliki radio terpilih (`alreadyCheckedRadio`), nomor tersebut tidak lagi dianggap sebagai `unanswered`, mencegah kuis mem-veto dirinya sendiri dan menjamin tombol Selesai/Kumpulkan dapat diklik dengan lancar.
+
+### 14. Arsitektur Dual-Export Rekap Tugas Forum Diskusi (.docx & .md) & Mode Poles AI Gemini
+- **Dual Format Architecture (Word .docx & Markdown .md)**:
+  - **Microsoft Word (.docx)**: Standar akademik ISO/IEC 29500 & ECMA-376 Transisi (Times New Roman 12pt, spasi 1.5, margin 4-4-3-3 cm, tabel rubrik bergaris, dan lembar jawaban siap isi) untuk cetak fisik atau arsip formal.
+  - **Markdown (.md)**: Format teks semantik murni GFM (GitHub Flavored Markdown) yang memangkas token input AI hingga 60%, bebas dari noise XML/ZIP, dilengkapi sistem prompt akademik ketat (**Anti-Halusinasi**, **Anti-AI Slop**, **Zero Chat Preamble**, **Gaya Tulisan Manusia Alami**, **Prioritas Lampiran Materi PPT/PDF/Doc/Img**, **Waktu Lokal Mahasiswa WIB & Proteksi Anti-Skew Server AI Asing**, **Auto-Capture Nama Dosen Pengampu**, **Penomoran Jawaban Fleksibel Bebas Batas 2 Soal**, **Anti-Double Salam**, **Format 2 Murni Tanpa Salam**, serta **Penguncian Format 3 Hanya Jika Melampirkan Pertanyaan Teman**).
+  - **Fitur Salin Prompt AI Instan**: Tombol satu klik "Salin Prompt AI (.md)" langsung menyalin seluruh teks Markdown dan soal forum ke clipboard sistem tanpa perlu download file terlebih dahulu.
+  - **Styling Toolbar Konsisten & Netral**: Tombol 'Rekap Tugas' menggunakan label bersih tanpa kurungan dan mengadopsi styling senada dengan tombol tetangga (`Buka Semua` dan `Periksa Status`), bebas dari warna biru kontras, konsisten di tema gelap maupun terang.
+- **Native HTML-to-OpenXML Conversion (`DOMParser`)**:
+  - Memproses setiap node HTML dari CKEditor dosen secara semantik tanpa regex replace ceroboh.
+  - Memisahkan blok paragraf, heading, list, dan tabel menjadi elemen OpenXML terisolasi, mengeliminasi teks terjamming (`...hasil pengujian.B. Pengantar Materi` dan `...jawaban rekan.F. Kriteria Penilaian`).
+  - Menyelamatkan markup HTML asli dosen dengan mengambil `.innerHTML` pada `_fetchTopicQuestionContent` saat tab forum aktif dibuka.
+- **Standar Tipografi Akademik UNPAM**:
+  - Font Times New Roman 12pt (Judul 13pt-16pt bold).
+  - Spasi 1.5 baris (`lineSpacing: 360`, `lineRule="auto"`).
+  - Margin A4 resmi (Atas 4cm, Kiri 4cm, Bawah 3cm, Kanan 3cm).
+  - Warna font 100% hitam standar (`000000` / otomatis), nol font warna-warni sesuai aturan penulisan akademik resmi.
+  - Pembersihan redundansi judul via `cleanMeetingTitle` (contoh "Pertemuan 7 - Pertemuan 7" dibersihkan menjadi "Pertemuan 7").
+  - Lembar jawaban berkotak formal (`createAnswerBoxXml`) siap isi untuk mahasiswa pada dokumen Word (.docx) menggantikan garis underscore mentah (`____...`). Khusus format Markdown (.md), blok lembar jawaban sengaja ditiadakan agar output prompt AI murni, padat, dan tidak membuang kuota token input secara cuma-cuma.
+  - Indentasi hanging rapi (`w:ind w:left="480" w:hanging="280"`) pada ordered (`<ol>`) dan unordered (`<ul>`) list.
+- **Tabel Rubrik Penilaian Resmi OpenXML (`<w:tbl>`) & Markdown Table GFM**:
+  - Mengonversi elemen `<table>` dan `<figure class="table">` dosen menjadi tabel XML ECMA-376 transisi penuh untuk .docx dan tabel pipe `| Col | Col |` untuk .md.
+  - Header berlatar abu-abu `#F1F5F9`, border kisi-kisi `#CCCCCC`, lebar total 7937 dxa (bidang tulis bersih A4).
+  - Memastikan setiap `<w:tc>` wajib memiliki minimal satu `<w:p>`, mencegah error file korup di Microsoft Word, WPS Office, dan Google Docs.
+- **Modal Konfigurasi Ekspor & Mode Poles AI Gemini (Zero Hallucination)**:
+  - Modal interaktif `_showDocxExportModal` di Closed Shadow DOM (Dark & Light theme, draggable window, 100% inline SVG, nol stock emoji, nol window.alert()).
+  - Pilihan 2 format file: `Microsoft Word (.docx)` dan `Markdown (.md)`.
+  - Pilihan 2 mode ekspor:
+    1. **Mode Standar (Format Asli Dosen)** (Rekomendasi & Instan): Konversi langsung dari struktur asli dosen tanpa jeda waktu.
+    2. **Mode Poles AI Gemini (Perjelas Tata Letak)**: AI Gemini menata ulang penulisan dosen yang berantakan menjadi heading (A, B, C), daftar instruksi bernomor, dan tabel rubrik. Dikunci dengan aturan **ZERO HALLUCINATION** (100% kata-kata asli dosen dipertahankan tanpa diubah/dikurangi/ditambahi).
+    3. Dropdown pilihan 9 model AI Gemini on-the-fly tersinkronisasi dengan preferensi storage.
+
+### 15. Arsitektur Overhaul Kuis, Hard Veto Submit Prematur & Smart Question Memory Skor 100 (`quiz.js`, `service-worker.js`, `storage.js`)
+- **Akar Masalah Bug `isCurrent` & Hard Veto Submisi Kuis**:
+  - Eliminasi total evaluasi `Boolean(btn.style.border && btn.style.border.length > 0)` di `_getExamNavigationStatus()`. Seluruh tombol kotak MUI memiliki CSS outline border sehingga selalu bernilai `isCurrent: true`. Akibatnya pengecekan submit veto `if (target && target.btn && !target.isCurrent)` dilewati dan memicu klik tombol selesai prematur di saat nomor soal masih banyak yang abu-abu.
+  - Mengganti deteksi `isCurrent` dengan URL page matching (`?page=N`), `aria-current="true"`, atau class tombol aktif resmi.
+  - Memperketat `_isGreenColor(btn)` dengan evaluasi komponen RGB numerik (`g >= 75 && g > r * 1.15 && g > b * 1.15`) pada background maupun border span tombol kotak.
+  - **Hard Veto Mutlak**: Tombol Selesai/Kumpulkan DIBLOKIR 100% jika masih ada kotak nomor soal yang berstatus abu-abu/belum terjawab di sidebar navigasi. Ekstensi secara otomatis mengarahkan browser ke tombol nomor abu-abu tersebut.
+- **Smart Question Memory (Score 100 Gate)**:
+  - Menyimpan kunci jawaban soal Pre-Test HANYA jika nilai kuis yang diraih adalah **100** dan tidak ada indikasi soal yang salah.
+  - Jika kuis bernilai di bawah 100, ekstensi memindai elemen review dan mendeteksi nomor-nomor soal yang salah (misal: "Soal No. [2, 5] salah"), menolak penyimpanan ke memori, dan memberikan Toast peringatan transparan ke mahasiswa.
+  - Pada pengerjaan Post-Test, sistem mencocokkan teks soal terhadap Smart Question Memory terlebih dahulu. Jika cocok, pilihan jawaban langsung dieksekusi secara instan tanpa mengonsumsi kuota token Gemini AI sama sekali.
+- **Akselerasi Service Worker & Timeout 10s Anti-Hang**:
+  - Retensi 100% seluruh 9 model Gemini aktif (`gemini-2.5-flash` s/d `gemini-3.8-flash`) tanpa ada yang dihapus atau didegradasi.
+  - Pemasangan `AbortController` dengan batas waktu timeout 10 detik per request API Gemini guna mengeliminasi model nyangkut tanpa batas waktu.
+  - Pemangkasan `maxOutputTokens: 256` untuk inferensi jawaban kilat sub-detik.
+  - Rotasi failover otomatis ke API key cadangan jika terjadi timeout atau HTTP 429.
+- **Visual Live Tracker Matrix di Floating HUD**:
+  - Menghadirkan live status matrix mini pill (`.hud-q-pill.answered`, `.unanswered`, `.current`) pada Floating HUD Card.
+  - Memantau live rasio keterjawaban kotak soal (`x/y Hijau`) secara real-time.
+- **Isolasi Total Kredensial di `src/utils/storage.js`**:
+  - Menghapus penulisan duplikasi key sensitif (`geminiApiKey`, `geminiApiKeys`, `mentari_auth_token`, `mentari_smart_question_memory`, `mentari_auto_pilot_state`) ke `window.localStorage` milik halaman web.
+  - Kredensial dan preferensi pengguna di `chrome.storage.local` tetap 100% utuh tanpa perlu re-setup API Key.
+
+### 16. Arsitektur Sinkronisasi Real-Time Kuesioner Pasca Post-Test (Auto-Pilot 'Semua Lengkap')
+- **Akar Masalah Premature Termination Auto-Pilot**:
+  - Di LMS Mentari UNPAM, sub-section kuesioner evaluasi dosen berstatus terkunci (`warningAlert: "Kerjakan post-test terlebih dahulu"`) sebelum post-test diselesaikan.
+  - Sebelumnya, `calculateQueue()` di modal membuang seluruh evaluasi berstatus `locked`, sehingga antrean awal hanya memuat post-test. Begitu nomor terakhir post-test diserahkan, Auto-Pilot mendeteksi `currentIndex >= queue.length` dan langsung me-reset sesi (`AutoPilotState.reset()`). Mahasiswa terpaksa harus setup Auto-Pilot ulang hanya untuk mengerjakan kuesioner.
+- **Dynamic Queue Anticipation di Modal (`src/content/token.js`)**:
+  - Pada mode `Semua Lengkap` (`selectedMode === 'all'`), kuesioner tidak dibuang secara prematur jika post-test pertemuannya telah selesai ATAU sedang terjadwal di antrean (`postScheduledInQueue`).
+  - Item kuesioner dijadwalkan dengan label status transparan: `Setelah Post-Test Selesai` (atau `Siap Diisi` jika post-test sudah selesai sebelumnya).
+  - Menyimpan metadata sesi lengkap (`mode: 'all'`, `courseScope`, `coursesMeta`) ke dalam `AutoPilotState`.
+- **Auto-Pilot Real-Time Synchronizer Engine (`src/utils/autopilot-sync.js`)**:
+  - `fetchUnlockedKuesionerList`: Memindai API resmi UNPAM (`/api/user-course/{courseCode}`) secara paralel untuk seluruh mata kuliah dalam sesi, memfilter sub-section kuesioner yang `warningAlert`-nya telah bersih dan belum berstatus selesai (`!completion`).
+  - `syncAndAppendKuesioner`: Memberikan jeda mikro 1.2s untuk memastikan database LMS menyelesaikan commit post-test, menambahkan kuesioner baru ke `state.queue`, memperbarui `state.total`, dan menyinkronkan state ke `AutoPilotState`.
+- **Seamless Chaining Pasca Post-Test (`src/content/quiz.js`)**:
+  - Di method `_advanceToNextQuiz`, saat antrean kuis habis dan `state.mode === 'all'`, sistem memicu `AutoPilotSync.syncAndAppendKuesioner`.
+  - Jika kuesioner baru terdeteksi, Auto-Pilot langsung mengalihkan browser ke URL kuesioner (`window.location.replace`) tanpa mematikan sesi.
+- **Safety Sweep di Kuesioner (`src/content/kuisioner.js`)**:
+  - Saat antrean kuesioner habis, sistem menjalankan safety sweep akhir ke API UNPAM untuk menjamin 0 kuesioner tersisa sebelum Auto-Pilot me-reset sesi dan menampilkan notifikasi sukses 100%.

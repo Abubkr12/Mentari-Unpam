@@ -8,7 +8,7 @@
     findButtonByText(keywords, root = document, includeDisabled = false) {
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
-      const buttons = root.querySelectorAll('button, a[role="button"], input[type="button"], input[type="submit"], div[role="button"]');
+      const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
       for (const btn of buttons) {
         if (btn.offsetParent === null && !btn.getClientRects().length) continue;
         if (!includeDisabled) {
@@ -30,9 +30,10 @@
       const list = Array.isArray(keywords) ? keywords : [keywords];
       const normalized = list.map((k) => k.trim().toLowerCase());
       const matches = [];
-      const buttons = root.querySelectorAll('button, a[role="button"], div[role="button"]');
+      const buttons = root.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[role="button"], span[role="button"], .MuiButton-root, .MuiButtonBase-root');
       for (const btn of buttons) {
-        const text = (btn.textContent || "").trim().toLowerCase();
+        if (btn.offsetParent === null && !btn.getClientRects().length) continue;
+        const text = (btn.textContent || btn.value || "").trim().toLowerCase();
         if (normalized.some((kw) => text.includes(kw))) {
           matches.push(btn);
         }
@@ -104,6 +105,70 @@
           subtree: true
         });
       });
+    },
+    /**
+     * Mengisi value input atau textarea yang kompatibel dengan React Controlled Components
+     */
+    setNativeValue(element, value) {
+      if (!element) return;
+      const proto = element instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (nativeSetter) {
+        nativeSetter.call(element, value);
+      } else {
+        element.value = value;
+      }
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    /**
+     * Mencentang radio button dengan React native property setter & synthetic events
+     */
+    setNativeRadioChecked(inputEl) {
+      if (!inputEl) return;
+      const input = inputEl.tagName === "INPUT" ? inputEl : inputEl.querySelector?.('input[type="radio"]') || inputEl;
+      if (!input || input.tagName !== "INPUT") {
+        try {
+          inputEl.click();
+        } catch (_) {
+        }
+        return;
+      }
+      const parentLabel = input.closest("label, .MuiFormControlLabel-root");
+      const radioContainer = input.closest('.MuiRadio-root, [role="radio"]');
+      if (input._valueTracker) {
+        input._valueTracker.setValue("");
+      }
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+      if (nativeSetter) {
+        nativeSetter.call(input, true);
+      } else {
+        input.checked = true;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (parentLabel) {
+        try {
+          parentLabel.click();
+        } catch (_) {
+        }
+      } else if (radioContainer) {
+        try {
+          radioContainer.click();
+        } catch (_) {
+        }
+      } else {
+        try {
+          input.click();
+        } catch (_) {
+        }
+      }
+      if (!input.checked) {
+        if (nativeSetter) nativeSetter.call(input, true);
+        else input.checked = true;
+      }
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     }
   };
 
@@ -151,11 +216,10 @@
      * Menyimpan pasangan key-value ke chrome.storage.local
      */
     async set(items) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              this._setLocalStorageFallback(items);
               resolve(true);
             });
           } else {
@@ -255,7 +319,16 @@
     },
     _setLocalStorageFallback(items) {
       if (typeof localStorage === "undefined") return;
+      const sensitiveKeys = [
+        "geminiApiKey",
+        "geminiApiKeys",
+        "mentari_auth_token",
+        "mentari_smart_question_memory",
+        "mentari_completed_quiz_ids",
+        "mentari_auto_pilot_state"
+      ];
       for (const [k, v] of Object.entries(items)) {
+        if (sensitiveKeys.includes(k)) continue;
         try {
           localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
         } catch {
@@ -334,6 +407,10 @@
         }
         toMigrate.mentari_legacy_migrated = true;
         await this.set(toMigrate);
+        try {
+          localStorage.removeItem("geminiApiKey");
+        } catch {
+        }
         console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);

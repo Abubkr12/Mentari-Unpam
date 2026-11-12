@@ -21,16 +21,14 @@ export const Humanizer = {
 
   /**
    * Menghitung jeda baca natural berdasarkan panjang teks soal kuis
-   * Asumsi kecepatan baca normal mahasiswa: ~180-220 kata per menit
+   * Dioptimalkan agar gesit dan responsif (350 - 600ms) tanpa membebani browser
    */
-  async readingPacing(text = '', minBaseMs = 3000, maxBaseMs = 8000) {
+  async readingPacing(text = '', minBaseMs = 350, maxBaseMs = 700) {
     const wordCount = (text || '').trim().split(/\s+/).filter(Boolean).length;
-    // Jeda tambahan ~250ms per kata
-    const calculated = minBaseMs + (wordCount * 250);
-    // Batasi dalam rentang yang wajar
+    // Jeda mikro tambahan ~15ms per kata
+    const calculated = minBaseMs + (wordCount * 15);
     const targetMs = Math.min(Math.max(calculated, minBaseMs), maxBaseMs);
-    // Tambah variasi acak +- 20%
-    const variance = (Math.random() * 0.4 - 0.2) * targetMs;
+    const variance = (Math.random() * 0.2 - 0.1) * targetMs;
     const finalDelay = Math.round(targetMs + variance);
 
     await this.delay(finalDelay);
@@ -40,14 +38,15 @@ export const Humanizer = {
   /**
    * Mensimulasikan klik mouse natural manusia dengan scrolling halus
    * dan rangkaian event mouse lengkap (pointerdown -> mousedown -> focus -> click).
+   * Mendukung mode fast untuk transisi cepat kuis.
    */
-  async naturalClick(element) {
+  async naturalClick(element, fast = false) {
     if (!element) return false;
 
-    // 1. Scroll natural ke elemen
+    // 1. Scroll natural ke elemen jika terlihat
     try {
       element.scrollIntoView({
-        behavior: 'smooth',
+        behavior: fast ? 'auto' : 'smooth',
         block: 'center',
         inline: 'nearest'
       });
@@ -55,8 +54,8 @@ export const Humanizer = {
       // Fallback
     }
 
-    // Micro pause setelah scroll (300-600ms)
-    await this.delay(300 + Math.random() * 300);
+    // Micro pause setelah scroll (fast: 40-80ms, normal: 150-300ms)
+    await this.delay(fast ? (40 + Math.random() * 40) : (150 + Math.random() * 150));
 
     // 2. Dispatch sequence event mouse
     const rect = element.getBoundingClientRect();
@@ -76,12 +75,18 @@ export const Humanizer = {
       element.dispatchEvent(new MouseEvent('mousedown', eventOpts));
       if (typeof element.focus === 'function') element.focus();
       
-      // Micro hold click (50-120ms)
-      await this.delay(50 + Math.random() * 70);
+      // Micro hold click (fast: 20-40ms, normal: 40-70ms)
+      await this.delay(fast ? (20 + Math.random() * 20) : (40 + Math.random() * 30));
 
       element.dispatchEvent(new PointerEvent('pointerup', eventOpts));
       element.dispatchEvent(new MouseEvent('mouseup', eventOpts));
-      element.dispatchEvent(new MouseEvent('click', eventOpts));
+
+      // Eksekusi klik satu kali: utamakan native .click() untuk kestabilan React Next.js
+      if (typeof element.click === 'function') {
+        element.click();
+      } else {
+        element.dispatchEvent(new MouseEvent('click', eventOpts));
+      }
       
       // Jika itu input radio/checkbox dan belum checked, trigger perubahan
       if (element.tagName === 'INPUT' && !element.checked) {

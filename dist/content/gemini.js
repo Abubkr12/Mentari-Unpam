@@ -43,11 +43,10 @@
      * Menyimpan pasangan key-value ke chrome.storage.local
      */
     async set(items) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              this._setLocalStorageFallback(items);
               resolve(true);
             });
           } else {
@@ -147,7 +146,16 @@
     },
     _setLocalStorageFallback(items) {
       if (typeof localStorage === "undefined") return;
+      const sensitiveKeys = [
+        "geminiApiKey",
+        "geminiApiKeys",
+        "mentari_auth_token",
+        "mentari_smart_question_memory",
+        "mentari_completed_quiz_ids",
+        "mentari_auto_pilot_state"
+      ];
       for (const [k, v] of Object.entries(items)) {
+        if (sensitiveKeys.includes(k)) continue;
         try {
           localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
         } catch {
@@ -226,6 +234,10 @@
         }
         toMigrate.mentari_legacy_migrated = true;
         await this.set(toMigrate);
+        try {
+          localStorage.removeItem("geminiApiKey");
+        } catch {
+        }
         console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);

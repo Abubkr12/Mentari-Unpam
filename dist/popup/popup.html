@@ -7,13 +7,13 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body {
-      width: 280px;
+      width: 290px;
       background: #141418;
       color: #f0f0f0;
       padding: 16px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
     .header {
       display: flex;
@@ -58,6 +58,95 @@
     .status-label { color: #888; }
     .status-val { font-weight: 600; color: #10b981; }
     .status-val.warning { color: #f59e0b; }
+    .status-val.danger { color: #ef4444; }
+
+    /* Quick API Key Box */
+    .quick-api-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .quick-api-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .quick-api-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #d4af37;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .api-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+    }
+    .api-badge.active {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+    }
+    .quick-input-wrap {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .quick-input {
+      flex: 1;
+      min-width: 0;
+      background: #1e1e24;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: #fff;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .quick-input:focus {
+      border-color: #d4af37;
+      box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.15);
+    }
+    .btn-quick-save {
+      background: #d4af37;
+      color: #121212;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-quick-save:hover {
+      background: #e6be40;
+      transform: translateY(-1px);
+    }
+    .btn-quick-save:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .quick-api-hint {
+      font-size: 10px;
+      color: #888;
+      line-height: 1.3;
+    }
+
     .btn-group {
       display: flex;
       flex-direction: column;
@@ -67,7 +156,7 @@
       background: #d4af37;
       color: #121212;
       border: none;
-      padding: 10px 14px;
+      padding: 9px 14px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 700;
@@ -95,13 +184,31 @@
       text-align: center;
       font-size: 10px;
       color: #666;
-      padding-top: 4px;
+      padding-top: 2px;
     }
     .msg-feedback {
       font-size: 11px;
-      color: #f59e0b;
+      padding: 8px 10px;
+      border-radius: 6px;
       text-align: center;
       display: none;
+      line-height: 1.3;
+      transition: all 0.2s;
+    }
+    .msg-feedback.success {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #10b981;
+    }
+    .msg-feedback.error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+    }
+    .msg-feedback.warning {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #f59e0b;
     }
   </style>
 </head>
@@ -121,11 +228,37 @@
       <span class="status-label">Model Gemini:</span>
       <span class="status-val" id="model-status" style="color:#d4af37;">-</span>
     </div>
+    <div class="status-row">
+      <span class="status-label">Status API Key:</span>
+      <span class="status-val" id="api-status-label">Memeriksa...</span>
+    </div>
+  </div>
+
+  <div class="quick-api-card" id="quick-api-section">
+    <div class="quick-api-header">
+      <span class="quick-api-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 2l-2 2m-1-1l-2 2m-1-1l-2 2M3 21l9-9m0 0l3-3m-3 3l-3-3m3 3l3 3"></path>
+        </svg>
+        Quick API Key Gemini
+      </span>
+      <span class="api-badge" id="api-badge">Memeriksa</span>
+    </div>
+    <div class="quick-input-wrap">
+      <input type="password" id="input-quick-api-key" class="quick-input" placeholder="AQ... atau AIza..." spellcheck="false" autocomplete="off">
+      <button class="btn-quick-save" id="btn-save-quick-key" type="button" title="Simpan & Validasi Key">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Simpan
+      </button>
+    </div>
+    <div class="quick-api-hint" id="quick-api-hint">Masukkan API Key dari Google AI Studio.</div>
   </div>
 
   <div class="btn-group">
     <button class="btn" id="btn-toggle-dashboard">Buka Dashboard Mentari</button>
-    <button class="btn btn-secondary" id="btn-open-settings">Pengaturan API Key</button>
+    <button class="btn btn-secondary" id="btn-open-settings">Pengaturan Lengkap API Key</button>
   </div>
 
   <div class="msg-feedback" id="feedback-msg"></div>

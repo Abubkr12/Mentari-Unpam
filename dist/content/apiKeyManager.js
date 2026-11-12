@@ -43,11 +43,10 @@
      * Menyimpan pasangan key-value ke chrome.storage.local
      */
     async set(items) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         try {
           if (this.isContextValid() && chrome.storage && chrome.storage.local) {
             chrome.storage.local.set(items, () => {
-              this._setLocalStorageFallback(items);
               resolve(true);
             });
           } else {
@@ -147,7 +146,16 @@
     },
     _setLocalStorageFallback(items) {
       if (typeof localStorage === "undefined") return;
+      const sensitiveKeys = [
+        "geminiApiKey",
+        "geminiApiKeys",
+        "mentari_auth_token",
+        "mentari_smart_question_memory",
+        "mentari_completed_quiz_ids",
+        "mentari_auto_pilot_state"
+      ];
       for (const [k, v] of Object.entries(items)) {
+        if (sensitiveKeys.includes(k)) continue;
         try {
           localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
         } catch {
@@ -226,6 +234,10 @@
         }
         toMigrate.mentari_legacy_migrated = true;
         await this.set(toMigrate);
+        try {
+          localStorage.removeItem("geminiApiKey");
+        } catch {
+        }
         console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
       } catch (e) {
         console.log("[Storage] Auto-migrasi info:", e.message);
@@ -438,16 +450,18 @@
       if (this.host) return;
       this.host = document.createElement("div");
       this.host.id = "mentari-api-key-host";
+      this.host.style.cssText = "position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: auto !important; display: none;";
       this.shadow = this.host.attachShadow({ mode: "closed" });
       const style = document.createElement("style");
       style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; }
+      :host { position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; }
       .overlay {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.75);
         backdrop-filter: blur(8px);
-        z-index: 2147483640;
+        z-index: 2147483647 !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -806,6 +820,15 @@
       const btnCancel = this.shadow.getElementById("btn-cancel");
       const btnClose = this.shadow.getElementById("btn-close");
       const btnToggleVis = this.shadow.getElementById("btn-toggle-vis");
+      inputKey.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          btnAddKey.click();
+        }
+      });
+      inputKey.addEventListener("keypress", (e) => e.stopPropagation());
+      inputKey.addEventListener("keyup", (e) => e.stopPropagation());
+      inputKey.addEventListener("paste", (e) => e.stopPropagation());
       btnToggleVis.addEventListener("click", () => {
         inputKey.type = inputKey.type === "password" ? "text" : "password";
       });
@@ -942,15 +965,23 @@
     }
     async openModal() {
       this._buildModalDOM();
+      if (this.host) {
+        this.host.style.display = "block";
+      }
       await this._loadAndRenderKeys();
-      const overlay = this.shadow.querySelector(".overlay");
+      const overlay = this.shadow?.querySelector(".overlay");
       if (overlay) overlay.classList.add("open");
       this.isOpen = true;
+      const inputKey = this.shadow?.getElementById("input-api-key");
+      setTimeout(() => inputKey?.focus(), 150);
     }
     closeModal() {
       if (!this.shadow) return;
       const overlay = this.shadow.querySelector(".overlay");
       if (overlay) overlay.classList.remove("open");
+      if (this.host) {
+        this.host.style.display = "none";
+      }
       this.isOpen = false;
     }
   };

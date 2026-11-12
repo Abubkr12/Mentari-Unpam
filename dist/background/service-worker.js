@@ -140,9 +140,29 @@ async function handleGetApiKeys() {
     activeKey: store.geminiApiKey || keys[0] || ""
   };
 }
+function resolveUpstreamModel(modelId) {
+  if (!modelId) return "gemini-3.5-flash-lite";
+  const directModels = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash"
+  ];
+  if (directModels.includes(modelId)) {
+    return modelId;
+  }
+  if (modelId === "gemini-3-flash") return "gemini-3-flash-preview";
+  if (modelId === "gemini-3.5-flash") return "gemini-3.6-flash";
+  if (modelId === "gemini-3.7-flash") return "gemini-3.8-flash";
+  return modelId;
+}
 async function handleGenerateContent({ prompt, systemInstruction = "", model = null }) {
   const store = await chrome.storage.local.get(["geminiApiKey", "geminiApiKeys", "gemini_model"]);
   const activeModel = model || store.gemini_model || "gemini-2.5-flash";
+  const targetEngineModel = resolveUpstreamModel(activeModel);
   let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
   if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
     keyPool.unshift(store.geminiApiKey);
@@ -164,11 +184,16 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
       }
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature: 0.1,
       topP: 0.95,
       maxOutputTokens: 2048
     }
   };
+  if (targetEngineModel.startsWith("gemini-3")) {
+    bodyPayload.generationConfig.thinkingConfig = {
+      thinkingLevel: "minimal"
+    };
+  }
   if (systemInstruction) {
     bodyPayload.systemInstruction = {
       parts: [{ text: systemInstruction }]
@@ -177,13 +202,17 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
   let lastError = null;
   for (let i = 0; i < keyPool.length; i++) {
     const currentKey = keyPool[i];
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${currentKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetEngineModel}:generateContent?key=${currentKey}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1e4);
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload)
+        body: JSON.stringify(bodyPayload),
+        signal: controller.signal
       });
+      clearTimeout(timer);
       if (response.ok) {
         const resJson = await response.json();
         const candidate = resJson.candidates?.[0];
@@ -196,12 +225,18 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
           success: true,
           text: textOut,
           model: activeModel,
+          engine: targetEngineModel,
           keyIndex: i + 1,
           totalKeys: keyPool.length
         };
       }
       const errData = await response.json().catch(() => ({}));
       const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
+      if (response.status === 404) {
+        console.warn(`[Service Worker] Model ${targetEngineModel} tidak ditemukan di Google API (404). Memutus perulangan key.`);
+        lastError = errMsg;
+        break;
+      }
       const isQuotaOrLimit = response.status === 429 || response.status === 403 || errMsg.toLowerCase().includes("quota") || errMsg.toLowerCase().includes("rate limit") || errMsg.toLowerCase().includes("resource has been exhausted");
       if (isQuotaOrLimit && i < keyPool.length - 1) {
         console.warn(`[Service Worker] API Key ke-${i + 1} terkena limit (${errMsg}). Beralih otomatis ke API Key cadangan berikutnya...`);
@@ -211,28 +246,42 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
         lastError = errMsg;
       }
     } catch (netErr) {
-      lastError = netErr.message;
+      clearTimeout(timer);
+      const isAbort = netErr.name === "AbortError";
+      lastError = isAbort ? `Timeout 10s: Model ${activeModel} tidak merespon dalam 10 detik` : netErr.message;
+      console.warn(`[Service Worker] Percobaan API Key ke-${i + 1} gagal (${lastError}).`);
       if (i < keyPool.length - 1) continue;
     }
   }
-  if (activeModel !== "gemini-2.5-flash") {
+  if (targetEngineModel !== "gemini-2.5-flash") {
+    console.log(`[Service Worker] Mengaktifkan fallback darurat ke gemini-2.5-flash...`);
+    const fbPayload = {
+      contents: bodyPayload.contents,
+      generationConfig: { temperature: 0.1, topP: 0.95, maxOutputTokens: 256 }
+    };
+    if (systemInstruction) fbPayload.systemInstruction = bodyPayload.systemInstruction;
     for (const fbKey of keyPool) {
+      const fbCtrl = new AbortController();
+      const fbTimer = setTimeout(() => fbCtrl.abort(), 8e3);
       try {
         const fbRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${fbKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(bodyPayload)
+          body: JSON.stringify(fbPayload),
+          signal: fbCtrl.signal
         });
+        clearTimeout(fbTimer);
         if (fbRes.ok) {
           const fbJson = await fbRes.json();
           const fbText = fbJson.candidates?.[0]?.content?.parts?.[0]?.text || "";
           return {
             success: true,
             text: fbText,
-            model: "Gemini 2.5 Flash (Fallback Kuota)"
+            model: `${activeModel} -> Gemini 2.5 Flash (Fallback Kuota/Kecepatan)`
           };
         }
-      } catch {
+      } catch (fbErr) {
+        clearTimeout(fbTimer);
       }
     }
   }

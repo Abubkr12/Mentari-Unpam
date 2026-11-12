@@ -50,11 +50,11 @@ export const Storage = {
    * Menyimpan pasangan key-value ke chrome.storage.local
    */
   async set(items) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       try {
         if (this.isContextValid() && chrome.storage && chrome.storage.local) {
           chrome.storage.local.set(items, () => {
-            this._setLocalStorageFallback(items);
+            // Isolasi penuh: TIDAK menduplikasi kredensial atau state privat ke window.localStorage
             resolve(true);
           });
         } else {
@@ -146,7 +146,17 @@ export const Storage = {
 
   _setLocalStorageFallback(items) {
     if (typeof localStorage === 'undefined') return;
+    // DAFTAR HITAM: Kredensial dan state privat ekstensi DILARANG keras ditulis ke window.localStorage milik halaman web!
+    const sensitiveKeys = [
+      'geminiApiKey',
+      'geminiApiKeys',
+      'mentari_auth_token',
+      'mentari_smart_question_memory',
+      'mentari_completed_quiz_ids',
+      'mentari_auto_pilot_state'
+    ];
     for (const [k, v] of Object.entries(items)) {
+      if (sensitiveKeys.includes(k)) continue;
       try {
         localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
       } catch {}
@@ -233,9 +243,69 @@ export const Storage = {
 
       toMigrate.mentari_legacy_migrated = true;
       await this.set(toMigrate);
+      try {
+        localStorage.removeItem('geminiApiKey');
+      } catch {}
       console.log('[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.');
     } catch (e) {
       console.log('[Storage] Auto-migrasi info:', e.message);
     }
   }
 };
+
+/**
+ * Manajer Terpusat State Auto-Pilot Mentari UNPAM
+ * Menjamin Single Source of Truth, eliminasi sesi ganda, dan reset bersih
+ */
+export const AutoPilotState = {
+  KEY: 'mentari_auto_pilot_state',
+
+  async get() {
+    const res = await Storage.get(this.KEY);
+    const state = res?.[this.KEY];
+    if (state && typeof state === 'object' && Array.isArray(state.queue)) {
+      return state;
+    }
+    return null;
+  },
+
+  async set(state) {
+    return Storage.set({ [this.KEY]: state });
+  },
+
+  async reset() {
+    return Storage.set({
+      [this.KEY]: {
+        active: false,
+        finished: false,
+        paused: false,
+        queue: [],
+        currentIndex: 0,
+        pauseReason: null,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  async pause(reason = 'Terjeda') {
+    const state = await this.get();
+    if (!state) return null;
+    state.paused = true;
+    state.pauseReason = reason;
+    state.updatedAt = Date.now();
+    await this.set(state);
+    return state;
+  },
+
+  async resume() {
+    const state = await this.get();
+    if (!state) return null;
+    state.active = true;
+    state.paused = false;
+    state.pauseReason = null;
+    state.updatedAt = Date.now();
+    await this.set(state);
+    return state;
+  }
+};
+
