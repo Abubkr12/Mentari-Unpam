@@ -6,6 +6,7 @@
 import { DOM } from '../utils/dom.js';
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
+import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 
 class MentariContentEntry {
   constructor() {
@@ -91,7 +92,7 @@ class MentariContentEntry {
     btn.setAttribute('aria-label', 'Dashboard Mentari Mod');
     btn.style.cssText = `
       margin-right: 8px;
-      padding: 8px;
+      padding: 6px;
       background-color: transparent;
       border: 0;
       border-radius: 50%;
@@ -99,24 +100,23 @@ class MentariContentEntry {
       align-items: center;
       justify-content: center;
       outline: 0;
-      color: #ff7b00;
       cursor: pointer;
       position: relative;
-      transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms ease;
     `;
 
     btn.innerHTML = `
-      <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium" focusable="false" aria-hidden="true" viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: currentColor;">
-        <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
-      </svg>
+      ${getBrandSvgMarkup(24, true)}
       <span class="MuiTouchRipple-root"></span>
     `;
 
     btn.addEventListener('mouseenter', () => {
-      btn.style.backgroundColor = 'rgba(255, 123, 0, 0.14)';
+      btn.style.backgroundColor = 'rgba(30, 58, 138, 0.12)';
+      btn.style.transform = 'scale(1.05)';
     });
     btn.addEventListener('mouseleave', () => {
       btn.style.backgroundColor = 'transparent';
+      btn.style.transform = 'scale(1)';
     });
 
     btn.addEventListener('click', (e) => {
@@ -156,21 +156,23 @@ class MentariContentEntry {
       .launcher-btn {
         width: 48px;
         height: 48px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #ff7b00, #ea580c);
+        border-radius: 14px;
+        background: #0F172A;
         color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.25);
-        box-shadow: 0 8px 24px rgba(255, 123, 0, 0.42);
+        border: 1.5px solid rgba(245, 158, 11, 0.5);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.35);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
+        padding: 0;
         transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s;
         outline: none;
       }
       .launcher-btn:hover {
-        transform: scale(1.08);
-        box-shadow: 0 10px 28px rgba(255, 123, 0, 0.55);
+        transform: scale(1.06);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.48);
       }
       .launcher-btn:active {
         transform: scale(0.96);
@@ -186,12 +188,18 @@ class MentariContentEntry {
         font-weight: 700;
         padding: 5px 10px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 123, 0, 0.35);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
         pointer-events: none;
         opacity: 0;
         transform: translateX(-6px);
         transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .launcher-wrap.theme-light .tooltip {
+        background: #ffffff;
+        color: #0f172a;
+        border-color: #cbd5e1;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
       }
       .launcher-wrap:hover .tooltip {
         opacity: 1;
@@ -201,15 +209,17 @@ class MentariContentEntry {
 
     const wrap = document.createElement('div');
     wrap.className = 'launcher-wrap';
+    ThemeHelper.getEffectiveTheme().then((t) => {
+      wrap.classList.toggle('theme-light', t === 'light');
+    });
+    ThemeHelper.watchTheme((t) => {
+      wrap.classList.toggle('theme-light', t === 'light');
+    });
 
     const btn = document.createElement('button');
     btn.className = 'launcher-btn';
     btn.setAttribute('aria-label', 'Dashboard Mentari Mod');
-    btn.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
-      </svg>
-    `;
+    btn.innerHTML = getBrandSvgMarkup(46, true);
 
     const tooltip = document.createElement('div');
     tooltip.className = 'tooltip';

@@ -1,6 +1,10 @@
 import esbuild from 'esbuild';
 import fs from 'fs';
 import path from 'path';
+import JSZip from 'jszip';
+
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const shouldZip = process.argv.includes('--zip');
 
 const entries = [
   { in: 'src/background/service-worker.js', out: 'dist/background/service-worker', format: 'esm' },
@@ -29,11 +33,12 @@ async function build() {
   }
 
   // Copy assets
-  if (fs.existsSync('src/assets/icon.png')) {
-    fs.copyFileSync('src/assets/icon.png', 'dist/assets/icon.png');
-  }
-  if (fs.existsSync('src/assets/background.png')) {
-    fs.copyFileSync('src/assets/background.png', 'dist/assets/background.png');
+  const assetFiles = ['icon.png', 'icon-16.png', 'icon-48.png', 'icon-128.png', 'icon.svg', 'background.png'];
+  for (const file of assetFiles) {
+    const srcPath = path.join('src/assets', file);
+    if (fs.existsSync(srcPath)) {
+      fs.copyFileSync(srcPath, path.join('dist/assets', file));
+    }
   }
   if (fs.existsSync('src/popup/popup.html')) {
     fs.copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
@@ -59,8 +64,8 @@ async function build() {
   // Generate dist/manifest.json dengan path RELATIF terhadap folder dist/
   const distManifest = {
     manifest_version: 3,
-    name: 'Mentari Mod v2.0',
-    version: '2.1.0',
+    name: 'Mentari Mod Modern Edition',
+    version: pkg.version,
     description: 'Ekstensi modern untuk meningkatkan pengalaman belajar di MENTARI UNPAM dengan asisten AI Gemini generasi baru, anti-deteksi, dan manajemen presensi.',
     permissions: ['scripting', 'activeTab', 'storage'],
     host_permissions: [
@@ -75,7 +80,7 @@ async function build() {
     },
     action: {
       default_popup: 'popup/popup.html',
-      default_icon: 'assets/icon.png'
+      default_icon: 'assets/icon-128.png'
     },
     content_scripts: [
       {
@@ -153,9 +158,9 @@ async function build() {
       }
     ],
     icons: {
-      '16': 'assets/icon.png',
-      '48': 'assets/icon.png',
-      '128': 'assets/icon.png'
+      '16': 'assets/icon-16.png',
+      '48': 'assets/icon-48.png',
+      '128': 'assets/icon-128.png'
     }
   };
   fs.writeFileSync('dist/manifest.json', JSON.stringify(distManifest, null, 2));
@@ -170,7 +175,7 @@ async function build() {
     },
     action: {
       default_popup: 'dist/popup/popup.html',
-      default_icon: 'dist/assets/icon.png'
+      default_icon: 'dist/assets/icon-128.png'
     },
     content_scripts: distManifest.content_scripts.map(cs => ({
       ...cs,
@@ -181,13 +186,36 @@ async function build() {
       resources: war.resources.map(r => `dist/${r}`)
     })),
     icons: {
-      '16': 'dist/assets/icon.png',
-      '48': 'dist/assets/icon.png',
-      '128': 'dist/assets/icon.png'
+      '16': 'dist/assets/icon-16.png',
+      '48': 'dist/assets/icon-48.png',
+      '128': 'dist/assets/icon-128.png'
     }
   };
   fs.writeFileSync('manifest.json', JSON.stringify(rootManifest, null, 2));
   console.log('  ✓ Updated root manifest.json');
+
+  if (shouldZip) {
+    const releaseDir = 'release';
+    if (!fs.existsSync(releaseDir)) fs.mkdirSync(releaseDir, { recursive: true });
+    const zipPath = path.join(releaseDir, `Mentari-Unpam-v${pkg.version}-extension.zip`);
+    const zip = new JSZip();
+
+    const addDirToZip = (dir, zipFolder) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          addDirToZip(fullPath, zipFolder.folder(entry.name));
+        } else {
+          zipFolder.file(entry.name, fs.readFileSync(fullPath));
+        }
+      }
+    };
+
+    addDirToZip('dist', zip);
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } });
+    fs.writeFileSync(zipPath, buffer);
+    console.log(`  ✓ Packaged release zip: ${zipPath} (${(buffer.length / 1024).toFixed(1)} KB)`);
+  }
 
   console.log('\n✨ Build selesai! Ekstensi siap digunakan.');
 }

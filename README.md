@@ -1,26 +1,32 @@
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/bc206a62-4b37-4064-a1af-872e7a157463" width="160" alt="MENTARI Logo">
+  <img src="./src/assets/icon.png" width="128" alt="Mentari Mod Modern Edition Logo">
   
-  # MENTARI MOD — Modern Edition v2.1
+  # MENTARI MOD — Modern Edition v2.1.1
   ### *Asisten Pembelajaran Daring Cerdas & Terpadu LMS Universitas Pamulang*
   
-  [![Version](https://img.shields.io/badge/version-2.1.0-orange?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam)
-  [![Manifest](https://img.shields.io/badge/Manifest-V3-blue?style=for-the-badge)](https://developer.chrome.com/docs/extensions/mv3/)
+  [![Version](https://img.shields.io/badge/version-2.1.1-blue?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)
+  [![Manifest](https://img.shields.io/badge/Manifest-V3-amber?style=for-the-badge)](https://developer.chrome.com/docs/extensions/mv3/)
   [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
+
+  **[Unduh Rilis Ekstensi (.zip) & Source Code Terbaru](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)**
 </div>
 
 ---
 
-## 📖 Tentang Mentari Mod Modern Edition
+## Tentang Mentari Mod Modern Edition
 
-**Mentari Mod Modern Edition** adalah browser extension berbasis Manifest V3 yang merevolusi cara mahasiswa Universitas Pamulang berinteraksi dengan portal LMS [mentari.unpam.ac.id](https://mentari.unpam.ac.id). Ekstensi ini menggabungkan dasbor manajemen perkuliahan satu pintu, sistem pelacak prasyarat evaluasi akademik bertingkat, serta otomatisasi pengerjaan kuis dan kuesioner berbasis kecerdasan buatan Google Gemini.
+**Mentari Mod Modern Edition** adalah browser extension berbasis Manifest V3 yang dirancang untuk mengoptimalkan pengalaman mahasiswa Universitas Pamulang pada portal LMS [mentari.unpam.ac.id](https://mentari.unpam.ac.id). Ekstensi ini menggabungkan dasbor manajemen perkuliahan satu pintu, sistem pelacak prasyarat evaluasi akademik bertingkat, tema adaptif otomatis (Light/Dark mengikuti browser atau OS), serta otomatisasi pengerjaan kuis dan kuesioner berbasis kecerdasan buatan Google Gemini.
 
 ---
 
-## 🖥️ Panduan Antarmuka & Fitur Utama (Interface Guide)
+## Panduan Antarmuka & Fitur Utama (Interface Guide)
 
-### 1. Tombol Pemicu Melayang (Floating Action Button / FAB)
-- Terletak di pojok halaman portal Mentari.
+### 1. Sambutan Awal & Tema Adaptif Otomatis
+- **Tema Adaptif**: Saat pertama kali dipasang, tampilan ekstensi otomatis menyesuaikan mode warna sistem/browser Anda (Terang atau Gelap), dan dapat diganti kapan saja di header dasbor.
+- **Sambutan Pemasangan Awal (Once-Only)**: Panduan singkat interaktif saat pemasangan pertama sebelum konfigurasi API Key Gemini (otomatis tidak muncul lagi setelah selesai dikonfigurasi).
+
+### 2. Tombol Pemicu Melayang (Floating Action Button / FAB)
+- Terletak di pojok halaman portal Mentari serta di bilah navigasi atas.
 - Berfungsi sebagai tombol pintas instan untuk membuka Dasbor Utama Mentari Mod tanpa perlu beralih halaman.
 
 ### 2. Tab Kuis & Evaluasi (Evaluation Matrix Hub)
@@ -62,50 +68,42 @@ Fitur otomatisasi sekuensial cerdas untuk menyelesaikan evaluasi tanpa hambatan 
 
 ---
 
-## 🚀 Panduan Instalasi (Step-by-Step)
+## Panduan Instalasi (Step-by-Step)
 
-### Prasyarat
-- Browser berbasis Chromium: Google Chrome, Microsoft Edge, Brave, atau Opera.
-- Node.js (v18 ke atas) jika ingin melakukan kompilasi dari source code.
+### Opsi A: Dari Paket Rilis Resmi (`.zip`) — Direkomendasikan
+1. Buka halaman [Releases](https://github.com/Abubkr12/Mentari-Unpam/releases/latest) dan unduh file **`Mentari-Unpam-v2.1.1-extension.zip`**.
+2. Ekstrak file `.zip` tersebut ke sebuah folder permanen di komputer Anda (misal `C:\Extensions\Mentari-Unpam`).
+3. Buka browser Chromium (Chrome/Edge/Brave) lalu ketik `chrome://extensions/` di address bar.
+4. Nyalakan toggle **"Developer mode"** (Mode pengembang) di pojok kanan atas.
+5. Klik tombol **"Load unpacked"** di pojok kiri atas, lalu pilih folder hasil ekstraksi tadi (folder yang berisi `manifest.json`).
 
-### Langkah Pemasangan Ekstensi di Chrome
-
-1. **Buka Halaman Ekstensi**:
-   - Ketik `chrome://extensions/` di address bar browser Anda lalu tekan Enter.
-2. **Aktifkan Mode Pengembang (Developer Mode)**:
-   - Nyalakan toggle **"Developer mode"** di pojok kanan atas halaman.
-3. **Muat Ekstensi (Load Unpacked)**:
-   - Klik tombol **"Load unpacked"** (Muat yang belum dibongkar) di pojok kiri atas.
-4. **Pilih Folder `dist/`**:
-   - Navigasikan ke direktori proyek lokal Anda dan pilih folder:
-     ```
-     <lokasi-proyek>/dist
-     ```
-     *(Contoh pada PC Anda: `c:\Users\Abu Bakar Al Adny\Downloads\Compressed\Mentari-Unpam-v2.0_2\dist`)*
-5. **Selesai**:
-   - Ekstensi Mentari Mod Modern Edition langsung aktif dan siap digunakan di portal LMS UNPAM.
-
-### Kompilasi Ulang (Jika Mengubah Kode Sumber)
-Jika Anda melakukan perubahan pada kode sumber di dalam folder `src/`, jalankan perintah build:
-```bash
-npm run build
-# atau
-node build.js
-```
-Setelah build selesai, cukup klik ikon **Refresh (Reload)** pada kartu ekstensi di `chrome://extensions/`.
+### Opsi B: Build dari Source Code (Pengembang)
+1. Clone repository dan install dependensi:
+   ```bash
+   git clone https://github.com/Abubkr12/Mentari-Unpam.git
+   cd Mentari-Unpam
+   npm install
+   ```
+2. Jalankan build (atau buat sekaligus paket `.zip` rilis):
+   ```bash
+   npm run build
+   # atau untuk menghasilkan bundle + zip di folder release/
+   npm run release
+   ```
+3. Pada `chrome://extensions/` (Developer mode aktif), klik **"Load unpacked"** lalu pilih folder **`dist/`** di dalam direktori proyek Anda.
 
 ---
 
-## 🛠️ Tech Stack & Arsitektur
+## Tech Stack & Arsitektur
 - **Platform**: Chrome Extensions Manifest V3
-- **Bundler**: esbuild (Zero-config ultra-fast JS bundler)
+- **Bundler & Packager**: esbuild + JSZip
 - **AI Core**: Google Gemini Generative Language API
 - **Document Exporter**: `docx` library & custom markdown parser
-- **State Engine**: Chrome Storage Local API & Event-driven DOM Observers
+- **State Engine**: Chrome Storage Local API & Adaptive Theme Listener
 
 ---
 
-## 📄 Lisensi & Kontributor
+## Lisensi & Kontributor
 - **Original Creator (Upstream)**: [Lukman Muludin](https://github.com/lukman754) ([lukman754/Mentari-Unpam](https://github.com/lukman754/Mentari-Unpam))
 - **Modern Edition Overhaul & Maintainer**: [Abu Bakar Al Adny](https://github.com/Abubkr12) ([Abubkr12/Mentari-Unpam](https://github.com/Abubkr12/Mentari-Unpam))
 

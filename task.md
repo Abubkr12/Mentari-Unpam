@@ -1,10 +1,18 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- [ ] **Rebranding Icon Orisinal (UNPAM x Mentari)**: Merancang ikon baru yang simpel dan modern memadukan aksen Universitas Pamulang (biru navy/emas, siluet buku/perisai) dan Mentari (matahari terbit/oranye hangat) tanpa menimpa logo author lama, lalu menghasilkan aset PNG multi-ukuran (`16`, `48`, `128`) dan memperbarui `README.md`.
-- [ ] **GitHub Release & Packaging Ekstensi (`.zip` + Source Code)**: Menambahkan skrip pengemasan otomatis folder `dist/` menjadi `Mentari-Unpam-v2.1.0-extension.zip`, lalu menerbitkan rilis resmi di GitHub Releases (`Abubkr12/Mentari-Unpam`) lengkap dengan aset zip ekstensi siap pakai dan source code.
+- Tidak ada task aktif saat ini. Rebranding ikon orisinal (UNPAM x Mentari), tema adaptif otomatis OS/browser, sambutan pemasangan awal (once-only), serta pengemasan & penerbitan GitHub Release `v2.1.1` telah tuntas.
 
 ## Arsip
+- [x] Rebranding Ikon Orisinal, Tema Adaptif, Sambutan Onboarding & Rilis GitHub `v2.1.1`:
+  1. **Ikon Orisinal UNPAM x Mentari (`src/assets/icon.svg`, `icon-16.png`, `icon-48.png`, `icon-128.png`, `icon.png`)**:
+     - Merancang emblem vektor orisinal memadukan perisai/buku akademis UNPAM (deep navy `#0F172A`–`#1E3A8A` + aksen emas `#F59E0B`) dengan matahari terbit Mentari (`#F97316`–`#FBBF24`), menggantikan seluruh logo author lama di `manifest.json`, `content.js`, `token.js`, `presensi.js`, `popup.html`, `README.md`, dan URL update checker di `service-worker.js`.
+  2. **Tema Adaptif OS/Browser Otomatis (`src/utils/theme.js`)**:
+     - Mendeteksi `prefers-color-scheme` sistem/browser saat pemasangan baru sehingga mode Terang/Gelap langsung menyesuaikan tampilan Windows/Chrome pengguna pada `apiKeyManager.js`, `token.js`, `home.js`, `popup.html`, `gemini.js`, dan `toast.js`, disertai sinkronisasi lintas modul saat diganti manual.
+  3. **Sambutan Pemasangan Pertama / Onboarding (`src/content/apiKeyManager.js`)**:
+     - Merancang tampilan sambutan (`view-welcome`) sesuai pedoman `antislop-ui` dengan animasi opening satu arah yang rapi (tanpa loop/glow berlebihan), dan flag `mentari_onboarding_completed` sehingga hanya muncul sekali saat pemasangan fresh sebelum setup API Key.
+  4. **Packaging & GitHub Release (`build.js`, `package.json`)**:
+     - Menambahkan skrip rilis otomatis menggunakan `jszip` (`npm run release`) menghasilkan `release/Mentari-Unpam-v2.1.1-extension.zip`, lalu menerbitkan GitHub Release `v2.1.1` beserta source code dan lampiran `.zip` siap pakai.
 - [x] Perbaikan Bug Input API Key Tidak Bisa Diketik pada Akun Fresh di `/login` (`src/content/apiKeyManager.js`, `src/content/token.js`):
   1. **Akar Masalah Terungkap (Live DOM Verification di `mentari.unpam.ac.id/login`)**:
      - Halaman login MENTARI UNPAM menggunakan komponen Material UI `<Drawer>` (`MuiDrawer-modal MuiModal-root`) yang membungkus form login dengan `<FocusTrap>` (`sentinelStart` & `sentinelEnd`).

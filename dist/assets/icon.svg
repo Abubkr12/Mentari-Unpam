@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <defs>
+    <linearGradient id="unpam-navy" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="mentari-sun" x1="64" y1="22" x2="64" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="gold-trim" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FBBF24" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#D97706" stop-opacity="0.25"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base UNPAM Academic Navy Squircle -->
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#unpam-navy)"/>
+  <rect x="5" y="5" width="118" height="118" rx="27" stroke="url(#gold-trim)" stroke-width="2"/>
+
+  <!-- Subtle Horizon Glow Band -->
+  <path d="M22 76C34 70 48 67 64 67C80 67 94 70 106 76" stroke="#F59E0B" stroke-opacity="0.22" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Minimal Geometric Sunburst Rays (Mentari Accent) -->
+  <rect x="61" y="18" width="6" height="13" rx="3" fill="#FBBF24"/>
+  <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(-34 64 62)"/>
+  <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(34 64 62)"/>
+  <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(-68 64 62)"/>
+  <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(68 64 62)"/>
+
+  <!-- Rising Sun Sphere -->
+  <circle cx="64" cy="61" r="20" fill="url(#mentari-sun)"/>
+
+  <!-- Navy Horizon Cutout framing the Book -->
+  <path d="M22 72C36 65 51 67 64 76C77 67 92 65 106 72V99C92 91 77 93 64 102C51 93 36 91 22 99V72Z" fill="#0F172A"/>
+
+  <!-- Open Book & Geometric 'M' Silhouette (UNPAM Knowledge Crest) -->
+  <path d="M27 73.5C39 67.5 52 70 62.5 78.5V97.5C52 89.5 39 87.5 27 93.5V73.5Z" fill="#FFFFFF"/>
+  <path d="M101 73.5C89 67.5 76 70 65.5 78.5V97.5C76 89.5 89 87.5 101 93.5V73.5Z" fill="#E2E8F0"/>
+
+  <!-- Central Academic Gold Spine Accent -->
+  <rect x="62.5" y="77" width="3" height="22" rx="1.5" fill="#F59E0B"/>
+</svg>

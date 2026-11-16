@@ -245,6 +245,71 @@
     }
   };
 
+  // src/utils/theme.js
+  var ThemeHelper = {
+    detectSystemTheme() {
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+      } catch {
+      }
+      return "light";
+    },
+    async getEffectiveTheme() {
+      try {
+        const res = await Storage.get("mentari_theme", { mentari_theme: null });
+        const saved = res?.mentari_theme;
+        if (saved === "light" || saved === "dark") {
+          return saved;
+        }
+      } catch {
+      }
+      return this.detectSystemTheme();
+    },
+    async setManualTheme(theme) {
+      if (theme !== "light" && theme !== "dark") return;
+      await Storage.set({ mentari_theme: theme });
+      try {
+        window.dispatchEvent(new CustomEvent("mentari-theme-changed", { detail: { theme } }));
+      } catch {
+      }
+    },
+    watchTheme(callback) {
+      if (typeof callback !== "function") return;
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          const mq = window.matchMedia("(prefers-color-scheme: dark)");
+          const onMediaChange = async () => {
+            const res = await Storage.get("mentari_theme", { mentari_theme: null });
+            if (!res?.mentari_theme) {
+              callback(this.detectSystemTheme());
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", onMediaChange);
+          else if (mq.addListener) mq.addListener(onMediaChange);
+        }
+      } catch {
+      }
+      try {
+        window.addEventListener("mentari-theme-changed", (e) => {
+          if (e.detail?.theme) callback(e.detail.theme);
+        });
+      } catch {
+      }
+      try {
+        if (Storage.isContextValid() && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local" && changes.mentari_theme?.newValue) {
+              callback(changes.mentari_theme.newValue);
+            }
+          });
+        }
+      } catch {
+      }
+    }
+  };
+
   // src/utils/toast.js
   var ToastManager = class {
     constructor() {
@@ -342,6 +407,16 @@
       .toast-warning .toast-icon { color: #f59e0b; }
       .toast-error { border-left: 3px solid #ef4444; }
       .toast-error .toast-icon { color: #ef4444; }
+      /* Light Theme */
+      .toast-card.theme-light {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .toast-card.theme-light .toast-title { color: #0f172a; }
+      .toast-card.theme-light .toast-message { color: #475569; }
+      .toast-card.theme-light .toast-close:hover { color: #0f172a; }
     `;
       this.container = document.createElement("div");
       this.container.className = "toast-container";
@@ -383,7 +458,12 @@
         duration = 4500
       } = typeof options === "string" ? { message: options } : options;
       const card = document.createElement("div");
-      card.className = `toast-card toast-${type}`;
+      const isLightSync = ThemeHelper.detectSystemTheme() === "light";
+      card.className = `toast-card toast-${type} ${isLightSync ? "theme-light" : ""}`;
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        card.classList.toggle("theme-light", t === "light");
+      }).catch(() => {
+      });
       card.innerHTML = `
       <div class="toast-icon">${this._getIconSvg(type)}</div>
       <div class="toast-content">
@@ -632,6 +712,64 @@
         transition: all 0.2s;
       }
       .chat-send:hover { background: #e6be40; }
+
+      /* Light Theme */
+      .chat-window.theme-light {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.16);
+      }
+      .chat-window.theme-light .chat-header {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-title-group svg { color: #1e3a8a; }
+      .chat-window.theme-light .chat-model-select {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #1e3a8a;
+      }
+      .chat-window.theme-light .chat-model-select option {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-close { color: #64748b; }
+      .chat-window.theme-light .chat-close:hover { color: #0f172a; }
+      .chat-window.theme-light .msg-user {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .chat-window.theme-light .msg-ai {
+        background: #f1f5f9;
+        color: #0f172a;
+        border-color: #e2e8f0;
+      }
+      .chat-window.theme-light .chips-row { border-top-color: #e2e8f0; }
+      .chat-window.theme-light .chip {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #334155;
+      }
+      .chat-window.theme-light .chip:hover {
+        background: #eff6ff;
+        color: #1e3a8a;
+      }
+      .chat-window.theme-light .chat-footer {
+        background: #f8fafc;
+        border-top-color: #e2e8f0;
+      }
+      .chat-window.theme-light .chat-input {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-input:focus { border-color: #1e3a8a; }
+      .chat-window.theme-light .chat-send {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .chat-window.theme-light .chat-send:hover { background: #1e40af; }
     `;
       const container = document.createElement("div");
       container.innerHTML = `
@@ -690,6 +828,12 @@
       const body = this.shadow.getElementById("chat-body");
       const modelSelect = this.shadow.getElementById("chat-model-select");
       const validModelIds = ALL_MODELS.map((m) => m.id);
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        windowEl?.classList.toggle("theme-light", t === "light");
+      });
+      ThemeHelper.watchTheme((t) => {
+        windowEl?.classList.toggle("theme-light", t === "light");
+      });
       Storage.get("gemini_model").then(({ gemini_model }) => {
         if (gemini_model && validModelIds.includes(gemini_model)) {
           modelSelect.value = gemini_model;

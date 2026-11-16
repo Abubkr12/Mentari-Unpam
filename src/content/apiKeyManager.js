@@ -1,35 +1,57 @@
 /**
- * Mentari Mod Modern Edition - Multi-API Key Manager
- * Mengelola Google Gemini API Key (AQ. & AIza...) dengan Closed Shadow DOM.
- * Mendukung Multi-Key Failover Pool dengan rotasi otomatis saat limit kuota/429.
+ * Mentari Mod Modern Edition - Onboarding & Multi-API Key Manager
+ * Mengelola sambutan pemasangan pertama kali (once-only) dan Google Gemini API Key pool
+ * dalam Closed Shadow DOM dengan deteksi tema adaptif OS/browser (Light & Dark).
  */
 
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
+import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 
 class ApiKeyManager {
   constructor() {
     this.host = null;
     this.shadow = null;
     this.isOpen = false;
+    this.currentView = 'apikey'; // 'welcome' | 'apikey'
+    this.currentTheme = ThemeHelper.detectSystemTheme();
+    this._windowFocusGuard = null;
     this._init();
   }
 
   async _init() {
-    // Jalankan auto-migrasi data lama jika ada
     await Storage.autoMigrateLegacyStorage();
+    this.currentTheme = await ThemeHelper.getEffectiveTheme();
 
-    // Dengarkan event eksternal dari modul lain
-    window.addEventListener('mentari-update-api-key', () => {
-      this.openModal();
+    ThemeHelper.watchTheme((newTheme) => {
+      this.currentTheme = newTheme;
+      this._applyTheme();
     });
 
-    // Periksa apakah API key sudah ada di storage
-    const store = await Storage.get(['geminiApiKey', 'geminiApiKeys']);
-    const hasKey = store.geminiApiKey || (Array.isArray(store.geminiApiKeys) && store.geminiApiKeys.length > 0);
-    if (!hasKey) {
-      // Tampilkan popup jika belum ada key
-      setTimeout(() => this.openModal(), 1200);
+    window.addEventListener('mentari-update-api-key', () => {
+      this.openModal('apikey');
+    });
+
+    const store = await Storage.get([
+      'geminiApiKey',
+      'geminiApiKeys',
+      'mentari_onboarding_completed'
+    ]);
+    const hasKey = Boolean(
+      store.geminiApiKey ||
+      (Array.isArray(store.geminiApiKeys) && store.geminiApiKeys.length > 0)
+    );
+    const isOnboarded = store.mentari_onboarding_completed === true;
+
+    if (hasKey && !isOnboarded) {
+      await Storage.set({ mentari_onboarding_completed: true });
+      return;
+    }
+
+    if (!isOnboarded && !hasKey) {
+      setTimeout(() => this.openModal('welcome'), 900);
+    } else if (!hasKey) {
+      setTimeout(() => this.openModal('apikey'), 1100);
     }
   }
 
@@ -37,6 +59,15 @@ class ApiKeyManager {
     if (!key || typeof key !== 'string') return '••••••••';
     if (key.length <= 12) return key.slice(0, 4) + '...' + key.slice(-2);
     return key.slice(0, 7) + '...' + key.slice(-4);
+  }
+
+  _applyTheme() {
+    if (!this.shadow) return;
+    const overlay = this.shadow.querySelector('.overlay');
+    const modal = this.shadow.querySelector('.modal');
+    const isLight = this.currentTheme === 'light';
+    overlay?.classList.toggle('theme-light', isLight);
+    modal?.classList.toggle('theme-light', isLight);
   }
 
   _buildModalDOM() {
@@ -51,139 +82,322 @@ class ApiKeyManager {
     style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; }
       :host { position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; }
+
+      @keyframes modalReveal {
+        from { opacity: 0; transform: translateY(10px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes emblemSettle {
+        from { opacity: 0; transform: scale(0.86); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      @keyframes stepSlideIn {
+        from { opacity: 0; transform: translateX(12px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes rowFadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
       .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.75);
-        backdrop-filter: blur(8px);
+        background: rgba(9, 10, 14, 0.72);
+        backdrop-filter: blur(6px);
         z-index: 2147483647 !important;
         display: flex;
         align-items: center;
         justify-content: center;
         opacity: 0;
         visibility: hidden;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity 0.22s ease, visibility 0.22s ease;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        padding: 16px;
+      }
+      .overlay.theme-light {
+        background: rgba(15, 23, 42, 0.42);
       }
       .overlay.open {
         opacity: 1;
         visibility: visible;
       }
+
       .modal {
-        width: 490px;
-        max-width: 94vw;
-        background: #141416;
-        border: 1px solid rgba(212, 175, 55, 0.35);
-        border-radius: 16px;
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        width: 488px;
+        max-width: 100%;
+        background: #141519;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
         overflow: hidden;
-        transform: scale(0.95);
-        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        color: #e5e5e5;
+        color: #f1f5f9;
         max-height: 90vh;
         display: flex;
         flex-direction: column;
       }
       .overlay.open .modal {
-        transform: scale(1);
+        animation: modalReveal 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
+
+      /* Light Theme Surface */
+      .modal.theme-light {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
+        color: #0f172a;
+      }
+
       .header {
-        padding: 18px 22px;
+        padding: 16px 22px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: rgba(255, 255, 255, 0.02);
+        background: #18191e;
       }
+      .modal.theme-light .header {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+      }
+
       .header-title {
         font-size: 15px;
         font-weight: 700;
-        color: #fff;
+        color: #ffffff;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
       }
-      .header-icon {
-        color: #d4af37;
-        width: 18px;
-        height: 18px;
+      .modal.theme-light .header-title {
+        color: #0f172a;
       }
+
       .close-btn {
-        background: none;
+        background: transparent;
         border: none;
-        color: #888;
+        color: #94a3b8;
         cursor: pointer;
-        padding: 4px;
+        padding: 6px;
         display: flex;
-        border-radius: 6px;
-        transition: all 0.2s;
+        border-radius: 8px;
+        transition: background-color 0.18s, color 0.18s;
       }
       .close-btn:hover {
-        color: #fff;
+        color: #ffffff;
         background: rgba(255, 255, 255, 0.08);
       }
+      .modal.theme-light .close-btn {
+        color: #64748b;
+      }
+      .modal.theme-light .close-btn:hover {
+        color: #0f172a;
+        background: #e2e8f0;
+      }
+
+      /* Onboarding / Welcome View */
+      .view-section {
+        display: none;
+        flex-direction: column;
+      }
+      .view-section.active {
+        display: flex;
+        animation: stepSlideIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .welcome-body {
+        padding: 28px 24px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .welcome-hero {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+      }
+      .welcome-emblem {
+        flex-shrink: 0;
+        width: 52px;
+        height: 52px;
+        animation: emblemSettle 0.36s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .welcome-headline {
+        font-size: 19px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+        line-height: 1.25;
+        color: #ffffff;
+      }
+      .modal.theme-light .welcome-headline {
+        color: #0f172a;
+      }
+      .welcome-sub {
+        margin-top: 6px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+      .modal.theme-light .welcome-sub {
+        color: #475569;
+      }
+
+      .welcome-list {
+        display: flex;
+        flex-direction: column;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .modal.theme-light .welcome-list {
+        border-color: #e2e8f0;
+      }
+
+      .welcome-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 13px 2px;
+        opacity: 0;
+        animation: rowFadeUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .welcome-row:nth-child(1) { animation-delay: 60ms; }
+      .welcome-row:nth-child(2) { animation-delay: 120ms; }
+      .welcome-row:nth-child(3) { animation-delay: 180ms; }
+      .welcome-row + .welcome-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .modal.theme-light .welcome-row + .welcome-row {
+        border-top-color: #f1f5f9;
+      }
+
+      .row-index {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: #f59e0b;
+        padding-top: 2px;
+        flex-shrink: 0;
+      }
+      .modal.theme-light .row-index {
+        color: #1e3a8a;
+      }
+      .row-copy h4 {
+        font-size: 13px;
+        font-weight: 650;
+        color: #f8fafc;
+        margin-bottom: 2px;
+      }
+      .modal.theme-light .row-copy h4 {
+        color: #0f172a;
+      }
+      .row-copy p {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #94a3b8;
+      }
+      .modal.theme-light .row-copy p {
+        color: #475569;
+      }
+
+      .welcome-note {
+        font-size: 11.5px;
+        color: #64748b;
+        line-height: 1.4;
+      }
+
+      /* API Key Body */
       .content {
         padding: 20px 22px;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 15px;
         overflow-y: auto;
       }
       .info-box {
         font-size: 12px;
         line-height: 1.5;
-        color: #aaa;
-        background: rgba(255, 255, 255, 0.03);
-        padding: 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
+        color: #cbd5e1;
+        background: #1b1c22;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .modal.theme-light .info-box {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+        color: #334155;
       }
       .info-box a {
-        color: #d4af37;
+        color: #f59e0b;
         text-decoration: none;
         font-weight: 600;
       }
-      .info-box a:hover {
-        text-decoration: underline;
+      .modal.theme-light .info-box a {
+        color: #1e3a8a;
       }
+      .info-box a:hover { text-decoration: underline; }
+
+      .quota-note {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed rgba(255, 255, 255, 0.1);
+        font-size: 11px;
+        color: #fbbf24;
+      }
+      .modal.theme-light .quota-note {
+        border-top-color: #cbd5e1;
+        color: #b45309;
+      }
+
       .section-label {
         font-size: 11px;
         font-weight: 700;
-        color: #bbb;
+        color: #94a3b8;
         text-transform: uppercase;
-        letter-spacing: 0.6px;
+        letter-spacing: 0.4px;
         display: flex;
         align-items: center;
         justify-content: space-between;
       }
+      .modal.theme-light .section-label {
+        color: #475569;
+      }
+
       .keys-list {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        max-height: 190px;
+        max-height: 180px;
         overflow-y: auto;
         padding-right: 4px;
-      }
-      .keys-list::-webkit-scrollbar {
-        width: 4px;
-      }
-      .keys-list::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 4px;
       }
       .key-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: #1a1a1e;
+        background: #1b1c22;
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 10px;
-        padding: 10px 14px;
-        transition: border-color 0.2s;
+        padding: 10px 12px;
+      }
+      .modal.theme-light .key-item {
+        background: #f8fafc;
+        border-color: #e2e8f0;
       }
       .key-item.active {
-        border-color: rgba(212, 175, 55, 0.45);
-        background: rgba(212, 175, 55, 0.04);
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.06);
+      }
+      .modal.theme-light .key-item.active {
+        border-color: #1e3a8a;
+        background: #eff6ff;
       }
       .key-left {
         display: flex;
@@ -194,8 +408,10 @@ class ApiKeyManager {
       .key-code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 12px;
-        color: #f1f1f1;
-        letter-spacing: 0.5px;
+        color: #f1f5f9;
+      }
+      .modal.theme-light .key-code {
+        color: #0f172a;
       }
       .key-badge {
         font-size: 10px;
@@ -203,63 +419,60 @@ class ApiKeyManager {
         padding: 2px 7px;
         border-radius: 6px;
         text-transform: uppercase;
-        letter-spacing: 0.4px;
       }
       .key-badge.primary {
-        background: rgba(212, 175, 55, 0.18);
-        color: #d4af37;
-        border: 1px solid rgba(212, 175, 55, 0.35);
+        background: rgba(245, 158, 11, 0.18);
+        color: #fbbf24;
+      }
+      .modal.theme-light .key-badge.primary {
+        background: #dbeafe;
+        color: #1e3a8a;
       }
       .key-badge.backup {
         background: rgba(56, 189, 248, 0.12);
         color: #38bdf8;
-        border: 1px solid rgba(56, 189, 248, 0.25);
       }
-      .key-actions {
-        display: flex;
-        align-items: center;
-        gap: 6px;
+      .modal.theme-light .key-badge.backup {
+        background: #f1f5f9;
+        color: #475569;
       }
+      .key-actions { display: flex; align-items: center; gap: 6px; }
       .key-btn {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
         padding: 5px 8px;
-        color: #bbb;
+        color: #cbd5e1;
         cursor: pointer;
         font-size: 11px;
         display: flex;
         align-items: center;
         gap: 4px;
-        transition: all 0.2s;
       }
-      .key-btn:hover {
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
+      .modal.theme-light .key-btn {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #334155;
       }
-      .key-btn.btn-set-primary:hover {
-        border-color: rgba(212, 175, 55, 0.4);
-        color: #d4af37;
-      }
-      .key-btn.btn-delete:hover {
-        border-color: rgba(239, 68, 68, 0.4);
-        color: #ef4444;
-      }
+      .key-btn:hover { background: rgba(255, 255, 255, 0.12); }
+      .modal.theme-light .key-btn:hover { background: #f1f5f9; }
+      .key-btn.btn-delete:hover { color: #ef4444; border-color: rgba(239, 68, 68, 0.45); }
+
       .empty-keys {
         font-size: 12px;
-        color: #777;
+        color: #94a3b8;
         text-align: center;
-        padding: 16px;
+        padding: 14px;
         background: rgba(255, 255, 255, 0.02);
         border-radius: 8px;
-        border: 1px dashed rgba(255, 255, 255, 0.08);
+        border: 1px dashed rgba(255, 255, 255, 0.12);
       }
-      .add-form {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-top: 4px;
+      .modal.theme-light .empty-keys {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #64748b;
       }
+
       .input-wrapper {
         position: relative;
         display: flex;
@@ -267,73 +480,108 @@ class ApiKeyManager {
       }
       .input-field {
         width: 100%;
-        background: #1e1e22;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: #1e1f26;
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 10px;
         padding: 10px 42px 10px 14px;
-        color: #fff;
+        color: #ffffff;
         font-size: 13px;
         outline: none;
-        transition: border-color 0.2s;
-        font-family: monospace;
+        transition: border-color 0.18s, box-shadow 0.18s;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         user-select: text !important;
         -webkit-user-select: text !important;
         pointer-events: auto !important;
       }
       .input-field:focus {
-        border-color: #d4af37;
-        box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2);
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+      }
+      .modal.theme-light .input-field {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .modal.theme-light .input-field:focus {
+        border-color: #1e3a8a;
+        box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.16);
       }
       .toggle-vis {
         position: absolute;
         right: 10px;
         background: none;
         border: none;
-        color: #777;
+        color: #94a3b8;
         cursor: pointer;
         display: flex;
         align-items: center;
         padding: 4px;
-        transition: color 0.2s;
       }
-      .toggle-vis:hover {
-        color: #d4af37;
-      }
+      .toggle-vis:hover { color: #f59e0b; }
+      .modal.theme-light .toggle-vis:hover { color: #1e3a8a; }
+
       .footer {
-        padding: 16px 22px;
-        background: rgba(255, 255, 255, 0.02);
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 14px 22px;
+        background: #18191e;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
+        align-items: center;
         gap: 10px;
       }
+      .modal.theme-light .footer {
+        background: #f8fafc;
+        border-top-color: #e2e8f0;
+      }
+      .footer-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-left: auto;
+      }
+
       .btn {
-        padding: 9px 18px;
+        padding: 9px 16px;
         border-radius: 8px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         border: none;
-        transition: all 0.2s;
-        display: flex;
+        transition: background-color 0.18s, transform 0.18s, color 0.18s;
+        display: inline-flex;
         align-items: center;
         gap: 6px;
       }
       .btn-cancel {
         background: transparent;
-        color: #888;
+        color: #94a3b8;
       }
       .btn-cancel:hover {
-        color: #fff;
-        background: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.06);
       }
+      .modal.theme-light .btn-cancel {
+        color: #475569;
+      }
+      .modal.theme-light .btn-cancel:hover {
+        color: #0f172a;
+        background: #e2e8f0;
+      }
+
       .btn-save {
-        background: #d4af37;
-        color: #121212;
+        background: #f59e0b;
+        color: #0f172a;
       }
       .btn-save:hover {
-        background: #e6be40;
+        background: #fbbf24;
         transform: translateY(-1px);
+      }
+      .modal.theme-light .btn-save {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .modal.theme-light .btn-save:hover {
+        background: #1e40af;
       }
       .btn-save:disabled {
         opacity: 0.6;
@@ -348,11 +596,9 @@ class ApiKeyManager {
     overlay.innerHTML = `
       <div class="modal">
         <div class="header">
-          <div class="header-title">
-            <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 2l-2 2m-1-1l-2 2m-1-1l-2 2M3 21l9-9m0 0l3-3m-3 3l-3-3m3 3l3 3"></path>
-            </svg>
-            Koneksi Google Gemini AI
+          <div class="header-title" id="modal-header-title">
+            ${getBrandSvgMarkup(22, true)}
+            <span id="header-title-text">Koneksi Google Gemini AI</span>
           </div>
           <button class="close-btn" id="btn-close" aria-label="Tutup">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -361,34 +607,81 @@ class ApiKeyManager {
           </button>
         </div>
 
-        <div class="content">
-          <div class="info-box">
-            Dapatkan API Key gratis di Google AI Studio:<br>
-            <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">
-              https://aistudio.google.com/api-keys
-            </a>
-            <div style="margin-top:6px; font-size:11px; color:#9ca3af;">
-              <b>Multi-Key Failover:</b> Kamu bisa menambahkan banyak API Key. Saat key utama terkena limit kuota / HTTP 429, sistem otomatis beralih ke key cadangan berikutnya tanpa henti.
+        <!-- VIEW 1: Sambutan Pemasangan Pertama (Once-Only) -->
+        <div class="view-section" id="view-welcome">
+          <div class="welcome-body">
+            <div class="welcome-hero">
+              <div class="welcome-emblem">${getBrandSvgMarkup(52, true)}</div>
+              <div>
+                <h2 class="welcome-headline">Selamat Datang di Mentari Mod</h2>
+                <p class="welcome-sub">Asisten perkuliahan UNPAM v2.1 untuk memantau forum, prasyarat kuis, serta otomatisasi evaluasi dengan Gemini AI.</p>
+              </div>
             </div>
-            <div style="margin-top:6px; font-size:11px; color:#fbbf24; border-top:1px dashed rgba(255,255,255,0.08); padding-top:6px;">
-              <b>Info Kuota (RPD/RPM):</b> Limit harian (RPD) akan reset otomatis setiap hari oleh Google. API Key yang limit <b>tidak perlu dihapus</b> karena tetap tersimpan di laptop dan otomatis bisa dipakai kembali besok saat kuota reset.
+
+            <div class="welcome-list">
+              <div class="welcome-row">
+                <span class="row-index">01</span>
+                <div class="row-copy">
+                  <h4>Pelacakan Prasyarat Akurat</h4>
+                  <p>Memisahkan kuis yang siap dikerjakan dari item yang masih tertahan forum atau post-test.</p>
+                </div>
+              </div>
+              <div class="welcome-row">
+                <span class="row-index">02</span>
+                <div class="row-copy">
+                  <h4>Asisten Forum & Ekspor Dokumen</h4>
+                  <p>Menyusun draf tanggapan diskusi dan mengunduh materi ke format Word (.docx) atau Markdown.</p>
+                </div>
+              </div>
+              <div class="welcome-row">
+                <span class="row-index">03</span>
+                <div class="row-copy">
+                  <h4>Otomasi Cerdas Multi-Key</h4>
+                  <p>Mendukung banyak API Key Gemini gratis dengan rotasi otomatis dan jeda pengerjaan natural.</p>
+                </div>
+              </div>
+            </div>
+
+            <p class="welcome-note">Tampilan otomatis mengikuti tema perangkat Anda. Sambutan ini hanya muncul sekali saat pemasangan awal.</p>
+          </div>
+
+          <div class="footer">
+            <button class="btn btn-cancel" id="btn-skip-welcome" type="button">Lewati dulu</button>
+            <div class="footer-right">
+              <button class="btn btn-save" id="btn-start-setup" type="button">Lanjut Setup API Key</button>
             </div>
           </div>
+        </div>
 
-          <div class="section-label">
-            <span>Daftar API Key Tersimpan</span>
-            <span id="keys-count-badge" style="color:#d4af37; font-size:10px;">0 Key</span>
-          </div>
+        <!-- VIEW 2: Pengaturan Multi-Key Gemini AI -->
+        <div class="view-section" id="view-apikey">
+          <div class="content">
+            <div class="info-box">
+              Dapatkan API Key gratis di Google AI Studio:<br>
+              <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">
+                https://aistudio.google.com/api-keys
+              </a>
+              <div style="margin-top:6px; font-size:11.5px;">
+                <b>Multi-Key Failover:</b> Tambahkan lebih dari satu API Key. Saat key utama menyentuh limit kuota (HTTP 429), ekstensi beralih ke key cadangan secara otomatis.
+              </div>
+              <div class="quota-note">
+                <b>Info Kuota:</b> Limit harian (RPD) di-reset setiap hari oleh Google. Key yang limit tidak perlu dihapus karena otomatis aktif kembali keesokan harinya.
+              </div>
+            </div>
 
-          <div class="keys-list" id="keys-list-container">
-            <div class="empty-keys">Memuat daftar API Key...</div>
-          </div>
+            <div class="section-label">
+              <span>Daftar API Key Tersimpan</span>
+              <span id="keys-count-badge">0 Key</span>
+            </div>
 
-          <div class="section-label" style="margin-top:6px;">
-            <span>Tambah API Key Baru</span>
-          </div>
+            <div class="keys-list" id="keys-list-container">
+              <div class="empty-keys">Memuat daftar API Key...</div>
+            </div>
 
-          <div class="add-form">
+            <div class="section-label" style="margin-top:4px;">
+              <span>Tambah API Key Baru</span>
+            </div>
+
             <div class="input-wrapper">
               <input type="password" id="input-api-key" class="input-field" placeholder="Masukkan AQ... atau AIza..." spellcheck="false" autocomplete="off">
               <button class="toggle-vis" id="btn-toggle-vis" type="button" aria-label="Lihat Key">
@@ -399,16 +692,13 @@ class ApiKeyManager {
               </button>
             </div>
           </div>
-        </div>
 
-        <div class="footer">
-          <button class="btn btn-cancel" id="btn-cancel">Tutup</button>
-          <button class="btn btn-save" id="btn-add-key">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Tambah & Uji Key
-          </button>
+          <div class="footer">
+            <button class="btn btn-cancel" id="btn-cancel" type="button">Tutup</button>
+            <div class="footer-right">
+              <button class="btn btn-save" id="btn-add-key" type="button">Tambah & Uji Key</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -417,7 +707,7 @@ class ApiKeyManager {
     this.shadow.appendChild(overlay);
     document.body.appendChild(this.host);
 
-    // Isolasi event fokus & keyboard agar tidak dibajak MUI FocusTrap (misal di /login MuiDrawer)
+    // Isolasi penuh event fokus & keyboard dari MUI FocusTrap (khususnya di /login)
     const isolatedEvents = [
       'focusin', 'focusout', 'keydown', 'keypress', 'keyup',
       'paste', 'copy', 'cut', 'mousedown', 'pointerdown', 'input', 'beforeinput'
@@ -436,51 +726,61 @@ class ApiKeyManager {
       window.addEventListener('focus', this._windowFocusGuard, true);
     }
 
-    // Event handlers
+    // Bind Controls
     const inputKey = this.shadow.getElementById('input-api-key');
     const btnAddKey = this.shadow.getElementById('btn-add-key');
     const btnCancel = this.shadow.getElementById('btn-cancel');
     const btnClose = this.shadow.getElementById('btn-close');
     const btnToggleVis = this.shadow.getElementById('btn-toggle-vis');
+    const btnStartSetup = this.shadow.getElementById('btn-start-setup');
+    const btnSkipWelcome = this.shadow.getElementById('btn-skip-welcome');
 
-    // Isolasi Event Keyboard & Auto-Submit on Enter
     inputKey.addEventListener('mousedown', (e) => {
       e.stopPropagation();
       inputKey.focus();
     });
     inputKey.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') {
-        btnAddKey.click();
-      }
+      if (e.key === 'Enter') btnAddKey.click();
     });
-    inputKey.addEventListener('keypress', (e) => e.stopPropagation());
-    inputKey.addEventListener('keyup', (e) => e.stopPropagation());
-    inputKey.addEventListener('paste', (e) => e.stopPropagation());
-    inputKey.addEventListener('focusin', (e) => e.stopPropagation());
+    ['keypress', 'keyup', 'paste', 'focusin'].forEach((evt) => {
+      inputKey.addEventListener(evt, (e) => e.stopPropagation());
+    });
 
     btnToggleVis.addEventListener('click', () => {
       inputKey.type = inputKey.type === 'password' ? 'text' : 'password';
     });
 
-    const close = () => this.closeModal();
+    const close = async () => {
+      if (this.currentView === 'welcome') {
+        await Storage.set({ mentari_onboarding_completed: true });
+      }
+      this.closeModal();
+    };
     btnCancel.addEventListener('click', close);
     btnClose.addEventListener('click', close);
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close();
     });
 
-    // Tambah Key baru
+    btnSkipWelcome.addEventListener('click', async () => {
+      await Storage.set({ mentari_onboarding_completed: true });
+      this.closeModal();
+    });
+
+    btnStartSetup.addEventListener('click', async () => {
+      await Storage.set({ mentari_onboarding_completed: true });
+      this._switchView('apikey');
+    });
+
     btnAddKey.addEventListener('click', async () => {
       const keyVal = inputKey.value.trim();
-
       if (!keyVal) {
         Toast.warning('Silakan masukkan API Key Gemini Anda.');
         return;
       }
 
-      // Cek apakah key sudah ada di daftar
-      const currentKeysRes = await new Promise(r => chrome.runtime.sendMessage({ action: 'getGeminiApiKeys' }, r));
+      const currentKeysRes = await new Promise((r) => chrome.runtime.sendMessage({ action: 'getGeminiApiKeys' }, r));
       if (currentKeysRes?.keys?.includes(keyVal)) {
         Toast.warning('API Key ini sudah tersimpan di dalam daftar.');
         return;
@@ -489,25 +789,19 @@ class ApiKeyManager {
       btnAddKey.disabled = true;
       btnAddKey.textContent = 'Memverifikasi...';
 
-      // Verifikasi via Service Worker
       chrome.runtime.sendMessage({
         action: 'addGeminiApiKey',
         apiKey: keyVal
       }, async (res) => {
         btnAddKey.disabled = false;
-        btnAddKey.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Tambah & Uji Key
-        `;
+        btnAddKey.textContent = 'Tambah & Uji Key';
 
         if (res && res.valid) {
           inputKey.value = '';
-          Toast.success('API Key valid dan berhasil ditambahkan ke pool!');
+          await Storage.set({ mentari_onboarding_completed: true });
+          Toast.success('API Key valid dan berhasil ditambahkan ke pool.');
           await this._loadAndRenderKeys();
 
-          // Notifikasi ke seluruh modul
           window.dispatchEvent(new CustomEvent('gemini-api-key-updated', {
             detail: { apiKey: keyVal }
           }));
@@ -516,6 +810,30 @@ class ApiKeyManager {
         }
       });
     });
+
+    this._applyTheme();
+  }
+
+  _switchView(viewName) {
+    this.currentView = viewName;
+    if (!this.shadow) return;
+
+    const welcomeEl = this.shadow.getElementById('view-welcome');
+    const apikeyEl = this.shadow.getElementById('view-apikey');
+    const titleText = this.shadow.getElementById('header-title-text');
+
+    if (viewName === 'welcome') {
+      welcomeEl?.classList.add('active');
+      apikeyEl?.classList.remove('active');
+      if (titleText) titleText.textContent = 'Mentari Mod Modern Edition';
+    } else {
+      welcomeEl?.classList.remove('active');
+      apikeyEl?.classList.add('active');
+      if (titleText) titleText.textContent = 'Koneksi Google Gemini AI';
+      this._loadAndRenderKeys();
+      const inputKey = this.shadow.getElementById('input-api-key');
+      setTimeout(() => inputKey?.focus(), 140);
+    }
   }
 
   async _loadAndRenderKeys() {
@@ -542,7 +860,7 @@ class ApiKeyManager {
       }
 
       container.innerHTML = '';
-      keys.forEach((key, idx) => {
+      keys.forEach((key) => {
         const isPrimary = key === activeKey;
         const itemDiv = document.createElement('div');
         itemDiv.className = `key-item ${isPrimary ? 'active' : ''}`;
@@ -556,25 +874,17 @@ class ApiKeyManager {
           </div>
           <div class="key-actions">
             ${!isPrimary ? `
-              <button class="key-btn btn-set-primary" data-key="${key}" title="Jadikan API Key Utama">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                </svg>
-                Utamakan
-              </button>
+              <button class="key-btn btn-set-primary" data-key="${key}" title="Jadikan API Key Utama">Utamakan</button>
             ` : ''}
-            <button class="key-btn btn-delete" data-key="${key}" title="Hapus API Key ini">
+            <button class="key-btn btn-delete" data-key="${key}" title="Hapus API Key ini" aria-label="Hapus Key">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                <line x1="10" y1="11" x2="10" y2="17"></line>
-                <line x1="14" y1="11" x2="14" y2="17"></line>
               </svg>
             </button>
           </div>
         `;
 
-        // Action Set Primary
         const btnSet = itemDiv.querySelector('.btn-set-primary');
         if (btnSet) {
           btnSet.addEventListener('click', () => {
@@ -593,7 +903,6 @@ class ApiKeyManager {
           });
         }
 
-        // Action Delete
         const btnDel = itemDiv.querySelector('.btn-delete');
         if (btnDel) {
           btnDel.addEventListener('click', () => {
@@ -617,19 +926,18 @@ class ApiKeyManager {
     });
   }
 
-  async openModal() {
+  async openModal(view = 'apikey') {
+    this.currentTheme = await ThemeHelper.getEffectiveTheme();
     this._buildModalDOM();
     this.isOpen = true;
+    this._applyTheme();
     if (this.host) {
       this.host.style.display = 'block';
     }
-    await this._loadAndRenderKeys();
+    this._switchView(view);
 
     const overlay = this.shadow?.querySelector('.overlay');
     if (overlay) overlay.classList.add('open');
-
-    const inputKey = this.shadow?.getElementById('input-api-key');
-    setTimeout(() => inputKey?.focus(), 150);
   }
 
   closeModal() {

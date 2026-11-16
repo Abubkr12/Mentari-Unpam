@@ -418,6 +418,96 @@
     }
   };
 
+  // src/utils/theme.js
+  var ThemeHelper = {
+    detectSystemTheme() {
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+      } catch {
+      }
+      return "light";
+    },
+    async getEffectiveTheme() {
+      try {
+        const res = await Storage.get("mentari_theme", { mentari_theme: null });
+        const saved = res?.mentari_theme;
+        if (saved === "light" || saved === "dark") {
+          return saved;
+        }
+      } catch {
+      }
+      return this.detectSystemTheme();
+    },
+    async setManualTheme(theme) {
+      if (theme !== "light" && theme !== "dark") return;
+      await Storage.set({ mentari_theme: theme });
+      try {
+        window.dispatchEvent(new CustomEvent("mentari-theme-changed", { detail: { theme } }));
+      } catch {
+      }
+    },
+    watchTheme(callback) {
+      if (typeof callback !== "function") return;
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          const mq = window.matchMedia("(prefers-color-scheme: dark)");
+          const onMediaChange = async () => {
+            const res = await Storage.get("mentari_theme", { mentari_theme: null });
+            if (!res?.mentari_theme) {
+              callback(this.detectSystemTheme());
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", onMediaChange);
+          else if (mq.addListener) mq.addListener(onMediaChange);
+        }
+      } catch {
+      }
+      try {
+        window.addEventListener("mentari-theme-changed", (e) => {
+          if (e.detail?.theme) callback(e.detail.theme);
+        });
+      } catch {
+      }
+      try {
+        if (Storage.isContextValid() && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local" && changes.mentari_theme?.newValue) {
+              callback(changes.mentari_theme.newValue);
+            }
+          });
+        }
+      } catch {
+      }
+    }
+  };
+  function getBrandSvgMarkup(size = 24, rounded = true) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${size}" height="${size}" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="mm-navy-${size}" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#1E3A8A"/>
+        <stop offset="100%" stop-color="#0F172A"/>
+      </linearGradient>
+      <linearGradient id="mm-sun-${size}" x1="64" y1="22" x2="64" y2="78" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#FBBF24"/>
+        <stop offset="100%" stop-color="#F97316"/>
+      </linearGradient>
+    </defs>
+    ${rounded ? `<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#mm-navy-${size})"/><rect x="5" y="5" width="118" height="118" rx="27" stroke="#F59E0B" stroke-opacity="0.4" stroke-width="2"/>` : ""}
+    <rect x="61" y="18" width="6" height="13" rx="3" fill="#FBBF24"/>
+    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(-34 64 62)"/>
+    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(34 64 62)"/>
+    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(-68 64 62)"/>
+    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(68 64 62)"/>
+    <circle cx="64" cy="61" r="20" fill="url(#mm-sun-${size})"/>
+    <path d="M22 72C36 65 51 67 64 76C77 67 92 65 106 72V99C92 91 77 93 64 102C51 93 36 91 22 99V72Z" fill="#0F172A"/>
+    <path d="M27 73.5C39 67.5 52 70 62.5 78.5V97.5C52 89.5 39 87.5 27 93.5V73.5Z" fill="#FFFFFF"/>
+    <path d="M101 73.5C89 67.5 76 70 65.5 78.5V97.5C76 89.5 89 87.5 101 93.5V73.5Z" fill="#E2E8F0"/>
+    <rect x="62.5" y="77" width="3" height="22" rx="1.5" fill="#F59E0B"/>
+  </svg>`;
+  }
+
   // src/utils/toast.js
   var ToastManager = class {
     constructor() {
@@ -515,6 +605,16 @@
       .toast-warning .toast-icon { color: #f59e0b; }
       .toast-error { border-left: 3px solid #ef4444; }
       .toast-error .toast-icon { color: #ef4444; }
+      /* Light Theme */
+      .toast-card.theme-light {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .toast-card.theme-light .toast-title { color: #0f172a; }
+      .toast-card.theme-light .toast-message { color: #475569; }
+      .toast-card.theme-light .toast-close:hover { color: #0f172a; }
     `;
       this.container = document.createElement("div");
       this.container.className = "toast-container";
@@ -556,7 +656,12 @@
         duration = 4500
       } = typeof options === "string" ? { message: options } : options;
       const card = document.createElement("div");
-      card.className = `toast-card toast-${type}`;
+      const isLightSync = ThemeHelper.detectSystemTheme() === "light";
+      card.className = `toast-card toast-${type} ${isLightSync ? "theme-light" : ""}`;
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        card.classList.toggle("theme-light", t === "light");
+      }).catch(() => {
+      });
       card.innerHTML = `
       <div class="toast-icon">${this._getIconSvg(type)}</div>
       <div class="toast-content">
@@ -660,7 +765,7 @@
       btn.setAttribute("aria-label", "Dashboard Mentari Mod");
       btn.style.cssText = `
       margin-right: 8px;
-      padding: 8px;
+      padding: 6px;
       background-color: transparent;
       border: 0;
       border-radius: 50%;
@@ -668,22 +773,21 @@
       align-items: center;
       justify-content: center;
       outline: 0;
-      color: #ff7b00;
       cursor: pointer;
       position: relative;
-      transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms ease;
     `;
       btn.innerHTML = `
-      <svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeMedium" focusable="false" aria-hidden="true" viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: currentColor;">
-        <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
-      </svg>
+      ${getBrandSvgMarkup(24, true)}
       <span class="MuiTouchRipple-root"></span>
     `;
       btn.addEventListener("mouseenter", () => {
-        btn.style.backgroundColor = "rgba(255, 123, 0, 0.14)";
+        btn.style.backgroundColor = "rgba(30, 58, 138, 0.12)";
+        btn.style.transform = "scale(1.05)";
       });
       btn.addEventListener("mouseleave", () => {
         btn.style.backgroundColor = "transparent";
+        btn.style.transform = "scale(1)";
       });
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -717,21 +821,23 @@
       .launcher-btn {
         width: 48px;
         height: 48px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #ff7b00, #ea580c);
+        border-radius: 14px;
+        background: #0F172A;
         color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.25);
-        box-shadow: 0 8px 24px rgba(255, 123, 0, 0.42);
+        border: 1.5px solid rgba(245, 158, 11, 0.5);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.35);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
+        padding: 0;
         transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s;
         outline: none;
       }
       .launcher-btn:hover {
-        transform: scale(1.08);
-        box-shadow: 0 10px 28px rgba(255, 123, 0, 0.55);
+        transform: scale(1.06);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.48);
       }
       .launcher-btn:active {
         transform: scale(0.96);
@@ -747,12 +853,18 @@
         font-weight: 700;
         padding: 5px 10px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 123, 0, 0.35);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
         pointer-events: none;
         opacity: 0;
         transform: translateX(-6px);
         transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .launcher-wrap.theme-light .tooltip {
+        background: #ffffff;
+        color: #0f172a;
+        border-color: #cbd5e1;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
       }
       .launcher-wrap:hover .tooltip {
         opacity: 1;
@@ -761,14 +873,16 @@
     `;
       const wrap = document.createElement("div");
       wrap.className = "launcher-wrap";
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        wrap.classList.toggle("theme-light", t === "light");
+      });
+      ThemeHelper.watchTheme((t) => {
+        wrap.classList.toggle("theme-light", t === "light");
+      });
       const btn = document.createElement("button");
       btn.className = "launcher-btn";
       btn.setAttribute("aria-label", "Dashboard Mentari Mod");
-      btn.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
-      </svg>
-    `;
+      btn.innerHTML = getBrandSvgMarkup(46, true);
       const tooltip = document.createElement("div");
       tooltip.className = "tooltip";
       tooltip.textContent = "Dashboard Mentari Mod";

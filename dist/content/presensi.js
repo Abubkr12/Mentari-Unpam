@@ -577,6 +577,96 @@
     UnpamAuth.installLiveSniffer();
   }
 
+  // src/utils/theme.js
+  var ThemeHelper = {
+    detectSystemTheme() {
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+      } catch {
+      }
+      return "light";
+    },
+    async getEffectiveTheme() {
+      try {
+        const res = await Storage.get("mentari_theme", { mentari_theme: null });
+        const saved = res?.mentari_theme;
+        if (saved === "light" || saved === "dark") {
+          return saved;
+        }
+      } catch {
+      }
+      return this.detectSystemTheme();
+    },
+    async setManualTheme(theme) {
+      if (theme !== "light" && theme !== "dark") return;
+      await Storage.set({ mentari_theme: theme });
+      try {
+        window.dispatchEvent(new CustomEvent("mentari-theme-changed", { detail: { theme } }));
+      } catch {
+      }
+    },
+    watchTheme(callback) {
+      if (typeof callback !== "function") return;
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          const mq = window.matchMedia("(prefers-color-scheme: dark)");
+          const onMediaChange = async () => {
+            const res = await Storage.get("mentari_theme", { mentari_theme: null });
+            if (!res?.mentari_theme) {
+              callback(this.detectSystemTheme());
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", onMediaChange);
+          else if (mq.addListener) mq.addListener(onMediaChange);
+        }
+      } catch {
+      }
+      try {
+        window.addEventListener("mentari-theme-changed", (e) => {
+          if (e.detail?.theme) callback(e.detail.theme);
+        });
+      } catch {
+      }
+      try {
+        if (Storage.isContextValid() && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local" && changes.mentari_theme?.newValue) {
+              callback(changes.mentari_theme.newValue);
+            }
+          });
+        }
+      } catch {
+      }
+    }
+  };
+  function getBrandSvgMarkup(size = 24, rounded = true) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${size}" height="${size}" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="mm-navy-${size}" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#1E3A8A"/>
+        <stop offset="100%" stop-color="#0F172A"/>
+      </linearGradient>
+      <linearGradient id="mm-sun-${size}" x1="64" y1="22" x2="64" y2="78" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#FBBF24"/>
+        <stop offset="100%" stop-color="#F97316"/>
+      </linearGradient>
+    </defs>
+    ${rounded ? `<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#mm-navy-${size})"/><rect x="5" y="5" width="118" height="118" rx="27" stroke="#F59E0B" stroke-opacity="0.4" stroke-width="2"/>` : ""}
+    <rect x="61" y="18" width="6" height="13" rx="3" fill="#FBBF24"/>
+    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(-34 64 62)"/>
+    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(34 64 62)"/>
+    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(-68 64 62)"/>
+    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(68 64 62)"/>
+    <circle cx="64" cy="61" r="20" fill="url(#mm-sun-${size})"/>
+    <path d="M22 72C36 65 51 67 64 76C77 67 92 65 106 72V99C92 91 77 93 64 102C51 93 36 91 22 99V72Z" fill="#0F172A"/>
+    <path d="M27 73.5C39 67.5 52 70 62.5 78.5V97.5C52 89.5 39 87.5 27 93.5V73.5Z" fill="#FFFFFF"/>
+    <path d="M101 73.5C89 67.5 76 70 65.5 78.5V97.5C76 89.5 89 87.5 101 93.5V73.5Z" fill="#E2E8F0"/>
+    <rect x="62.5" y="77" width="3" height="22" rx="1.5" fill="#F59E0B"/>
+  </svg>`;
+  }
+
   // src/utils/toast.js
   var ToastManager = class {
     constructor() {
@@ -674,6 +764,16 @@
       .toast-warning .toast-icon { color: #f59e0b; }
       .toast-error { border-left: 3px solid #ef4444; }
       .toast-error .toast-icon { color: #ef4444; }
+      /* Light Theme */
+      .toast-card.theme-light {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .toast-card.theme-light .toast-title { color: #0f172a; }
+      .toast-card.theme-light .toast-message { color: #475569; }
+      .toast-card.theme-light .toast-close:hover { color: #0f172a; }
     `;
       this.container = document.createElement("div");
       this.container.className = "toast-container";
@@ -715,7 +815,12 @@
         duration = 4500
       } = typeof options === "string" ? { message: options } : options;
       const card = document.createElement("div");
-      card.className = `toast-card toast-${type}`;
+      const isLightSync = ThemeHelper.detectSystemTheme() === "light";
+      card.className = `toast-card toast-${type} ${isLightSync ? "theme-light" : ""}`;
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        card.classList.toggle("theme-light", t === "light");
+      }).catch(() => {
+      });
       card.innerHTML = `
       <div class="toast-icon">${this._getIconSvg(type)}</div>
       <div class="toast-content">
@@ -946,17 +1051,7 @@
       container.innerHTML = `
       <div class="dock-brand">
         <span class="dock-brand-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
+          ${getBrandSvgMarkup(18, true)}
         </span>
         <span class="dock-brand-text">MENTARI</span>
       </div>

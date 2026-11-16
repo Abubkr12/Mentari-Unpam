@@ -1,4 +1,315 @@
 (() => {
+  // src/utils/storage.js
+  var Storage = {
+    /**
+     * Memeriksa apakah context extension masih valid dan aktif
+     */
+    isContextValid() {
+      try {
+        return typeof chrome !== "undefined" && !!chrome.runtime && !!chrome.runtime.id;
+      } catch {
+        return false;
+      }
+    },
+    /**
+     * Mengambil satu atau beberapa nilai dari chrome.storage.local
+     */
+    async get(keys, defaults = {}) {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(keys, (result) => {
+              if (chrome.runtime?.lastError) {
+                console.log("[Storage] Info reading storage:", chrome.runtime.lastError.message);
+                resolve(this._getLocalStorageFallback(keys, defaults));
+              } else {
+                resolve(Object.assign({}, defaults, result));
+              }
+            });
+          } else {
+            resolve(this._getLocalStorageFallback(keys, defaults));
+          }
+        } catch (e) {
+          if (e.message && e.message.includes("Extension context invalidated")) {
+            console.warn("[Storage] Extension context invalidated (ekstensi baru di-reload). Menggunakan fallback lokal.");
+          } else {
+            console.error("[Storage] Get failed:", e);
+          }
+          resolve(this._getLocalStorageFallback(keys, defaults));
+        }
+      });
+    },
+    /**
+     * Menyimpan pasangan key-value ke chrome.storage.local
+     */
+    async set(items) {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set(items, () => {
+              resolve(true);
+            });
+          } else {
+            this._setLocalStorageFallback(items);
+            resolve(true);
+          }
+        } catch (e) {
+          this._setLocalStorageFallback(items);
+          resolve(true);
+        }
+      });
+    },
+    /**
+     * Menghapus satu atau beberapa keys dari chrome.storage.local
+     */
+    async remove(keys) {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.remove(keys, () => resolve(true));
+          } else {
+            const keyList = Array.isArray(keys) ? keys : [keys];
+            keyList.forEach((k) => {
+              try {
+                localStorage.removeItem(k);
+              } catch {
+              }
+            });
+            resolve(true);
+          }
+        } catch {
+          resolve(true);
+        }
+      });
+    },
+    /**
+     * Mengambil semua data dari chrome.storage.local (atau fallback localStorage)
+     */
+    async getAll() {
+      return new Promise((resolve) => {
+        try {
+          if (this.isContextValid() && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(null, (result) => {
+              if (chrome.runtime?.lastError) {
+                console.log("[Storage] Info reading all storage:", chrome.runtime.lastError.message);
+                resolve(this._getAllLocalStorageFallback());
+              } else {
+                resolve(result || {});
+              }
+            });
+          } else {
+            resolve(this._getAllLocalStorageFallback());
+          }
+        } catch (e) {
+          resolve(this._getAllLocalStorageFallback());
+        }
+      });
+    },
+    _getAllLocalStorageFallback() {
+      const res = {};
+      if (typeof localStorage === "undefined") return res;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        try {
+          const val = localStorage.getItem(k);
+          if (val !== null) {
+            try {
+              res[k] = JSON.parse(val);
+            } catch {
+              res[k] = val;
+            }
+          }
+        } catch {
+        }
+      }
+      return res;
+    },
+    _getLocalStorageFallback(keys, defaults = {}) {
+      const res = Object.assign({}, defaults);
+      if (typeof localStorage === "undefined") return res;
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      keyList.forEach((k) => {
+        try {
+          const val = localStorage.getItem(k);
+          if (val !== null) {
+            try {
+              res[k] = JSON.parse(val);
+            } catch {
+              res[k] = val;
+            }
+          }
+        } catch {
+        }
+      });
+      return res;
+    },
+    _setLocalStorageFallback(items) {
+      if (typeof localStorage === "undefined") return;
+      const sensitiveKeys = [
+        "geminiApiKey",
+        "geminiApiKeys",
+        "mentari_auth_token",
+        "mentari_smart_question_memory",
+        "mentari_completed_quiz_ids",
+        "mentari_auto_pilot_state"
+      ];
+      for (const [k, v] of Object.entries(items)) {
+        if (sensitiveKeys.includes(k)) continue;
+        try {
+          localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
+        } catch {
+        }
+      }
+    },
+    /**
+     * Auto-migrasi transparan dari localStorage lama ke chrome.storage.local.
+     * Dipanggil saat ekstensi pertama kali aktif.
+     */
+    async autoMigrateLegacyStorage() {
+      try {
+        if (typeof window === "undefined" || !window.localStorage) return;
+        const { mentari_legacy_migrated } = await this.get("mentari_legacy_migrated", { mentari_legacy_migrated: false });
+        if (mentari_legacy_migrated) return;
+        const legacyKeys = [
+          "mentari_auth_token",
+          "mentari_user_info",
+          "mentari_course_data",
+          "geminiApiKey",
+          "gemini_model",
+          "gemini_quota",
+          "mentari_auto_finish_quiz",
+          "access"
+        ];
+        const validModels = [
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-3-flash",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3.6-flash",
+          "gemini-3.7-flash",
+          "gemini-3.8-flash"
+        ];
+        const toMigrate = {};
+        let hasData = false;
+        const existing = await this.get(["gemini_model", "geminiApiKey"]);
+        for (const k of legacyKeys) {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            try {
+              if (k === "geminiApiKey") {
+                if (!existing.geminiApiKey) {
+                  try {
+                    toMigrate[k] = atob(raw);
+                  } catch {
+                    toMigrate[k] = raw;
+                  }
+                  hasData = true;
+                }
+              } else if (k === "gemini_model") {
+                let parsedModel = raw;
+                try {
+                  parsedModel = JSON.parse(raw);
+                } catch {
+                }
+                if (!existing.gemini_model && validModels.includes(parsedModel)) {
+                  toMigrate[k] = parsedModel;
+                  hasData = true;
+                }
+              } else {
+                if (!existing[k]) {
+                  toMigrate[k] = JSON.parse(raw);
+                  hasData = true;
+                }
+              }
+            } catch {
+              if (!existing[k]) {
+                toMigrate[k] = raw;
+                hasData = true;
+              }
+            }
+          }
+        }
+        toMigrate.mentari_legacy_migrated = true;
+        await this.set(toMigrate);
+        try {
+          localStorage.removeItem("geminiApiKey");
+        } catch {
+        }
+        console.log("[Storage] Auto-migrasi dari legacy localStorage berhasil diselesaikan.");
+      } catch (e) {
+        console.log("[Storage] Auto-migrasi info:", e.message);
+      }
+    }
+  };
+
+  // src/utils/theme.js
+  var ThemeHelper = {
+    detectSystemTheme() {
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+      } catch {
+      }
+      return "light";
+    },
+    async getEffectiveTheme() {
+      try {
+        const res = await Storage.get("mentari_theme", { mentari_theme: null });
+        const saved = res?.mentari_theme;
+        if (saved === "light" || saved === "dark") {
+          return saved;
+        }
+      } catch {
+      }
+      return this.detectSystemTheme();
+    },
+    async setManualTheme(theme) {
+      if (theme !== "light" && theme !== "dark") return;
+      await Storage.set({ mentari_theme: theme });
+      try {
+        window.dispatchEvent(new CustomEvent("mentari-theme-changed", { detail: { theme } }));
+      } catch {
+      }
+    },
+    watchTheme(callback) {
+      if (typeof callback !== "function") return;
+      try {
+        if (typeof window !== "undefined" && window.matchMedia) {
+          const mq = window.matchMedia("(prefers-color-scheme: dark)");
+          const onMediaChange = async () => {
+            const res = await Storage.get("mentari_theme", { mentari_theme: null });
+            if (!res?.mentari_theme) {
+              callback(this.detectSystemTheme());
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", onMediaChange);
+          else if (mq.addListener) mq.addListener(onMediaChange);
+        }
+      } catch {
+      }
+      try {
+        window.addEventListener("mentari-theme-changed", (e) => {
+          if (e.detail?.theme) callback(e.detail.theme);
+        });
+      } catch {
+      }
+      try {
+        if (Storage.isContextValid() && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local" && changes.mentari_theme?.newValue) {
+              callback(changes.mentari_theme.newValue);
+            }
+          });
+        }
+      } catch {
+      }
+    }
+  };
+
   // src/utils/toast.js
   var ToastManager = class {
     constructor() {
@@ -96,6 +407,16 @@
       .toast-warning .toast-icon { color: #f59e0b; }
       .toast-error { border-left: 3px solid #ef4444; }
       .toast-error .toast-icon { color: #ef4444; }
+      /* Light Theme */
+      .toast-card.theme-light {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .toast-card.theme-light .toast-title { color: #0f172a; }
+      .toast-card.theme-light .toast-message { color: #475569; }
+      .toast-card.theme-light .toast-close:hover { color: #0f172a; }
     `;
       this.container = document.createElement("div");
       this.container.className = "toast-container";
@@ -137,7 +458,12 @@
         duration = 4500
       } = typeof options === "string" ? { message: options } : options;
       const card = document.createElement("div");
-      card.className = `toast-card toast-${type}`;
+      const isLightSync = ThemeHelper.detectSystemTheme() === "light";
+      card.className = `toast-card toast-${type} ${isLightSync ? "theme-light" : ""}`;
+      ThemeHelper.getEffectiveTheme().then((t) => {
+        card.classList.toggle("theme-light", t === "light");
+      }).catch(() => {
+      });
       card.innerHTML = `
       <div class="toast-icon">${this._getIconSvg(type)}</div>
       <div class="toast-content">

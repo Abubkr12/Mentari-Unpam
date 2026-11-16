@@ -21,10 +21,11 @@ Menjadikan Mentari Mod Modern Edition sebagai asisten belajar daring terlengkap,
 - [x] Perbaikan anomali kuesioner hilang pada antrean (8 Post-Test vs 8 Kuesioner berimbang).
 - [x] Perbaikan crash `ReferenceError: waitingForumInCourse is not defined`.
 - [x] Perbaikan bug input API Key terblokir Material UI `FocusTrap` pada halaman `/login` akun fresh (`apiKeyManager.js` & `token.js`).
+- [x] Rebranding ikon orisinal (kombinasi aksen UNPAM + Mentari yang simpel & elegan, menggantikan seluruh ikon author lama).
+- [x] Tema adaptif otomatis OS/browser (`prefers-color-scheme`) di seluruh modul serta layar sambutan pemasangan awal (`once-only`).
+- [x] Pengemasan build `.zip` otomatis (`dist/`) dan penerbitan GitHub Release resmi `v2.1.1` (Source Code + Extension `.zip`).
 
-### Milestone 3: Rebranding, Distribusi Rilis & Fitur Lanjutan — RENCANA
-- [ ] Rebranding ikon orisinal (kombinasi aksen UNPAM + Mentari yang simpel & elegan, bebas menimpa ikon author lama).
-- [ ] Pengemasan build `.zip` otomatis (`dist/`) dan penerbitan GitHub Release resmi (Source Code + Extension `.zip`).
+### Milestone 3: Fitur Lanjutan (v2.2 & Roadmap) — RENCANA
 - [ ] Deteksi cerdas batas waktu pengumpulan tugas kuliah mandiri (Assignment Deadline Reminder).
 - [ ] Fitur preview dokumen materi kuliah (PDF/PPT) langsung di dalam modal tanpa download berulang.
 - [ ] Peningkatan personalisasi gaya bahasa mahasiswa pada generator draf forum diskusi.

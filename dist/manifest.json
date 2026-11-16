@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Mentari Mod v2.0",
-  "version": "2.1.0",
+  "name": "Mentari Mod Modern Edition",
+  "version": "2.1.1",
   "description": "Ekstensi modern untuk meningkatkan pengalaman belajar di MENTARI UNPAM dengan asisten AI Gemini generasi baru, anti-deteksi, dan manajemen presensi.",
   "permissions": [
     "scripting",
@@ -20,7 +20,7 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_icon": "assets/icon.png"
+    "default_icon": "assets/icon-128.png"
   },
   "content_scripts": [
     {
@@ -126,8 +126,8 @@
     }
   ],
   "icons": {
-    "16": "assets/icon.png",
-    "48": "assets/icon.png",
-    "128": "assets/icon.png"
+    "16": "assets/icon-16.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
   }
 }

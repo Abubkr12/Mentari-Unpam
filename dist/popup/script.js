@@ -1,6 +1,18 @@
 (() => {
   // src/popup/script.js
   document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      chrome.storage.local.get(["mentari_theme"], (res) => {
+        if (res?.mentari_theme === "light") {
+          document.body.classList.add("theme-light");
+          document.body.classList.remove("theme-dark");
+        } else if (res?.mentari_theme === "dark") {
+          document.body.classList.add("theme-dark");
+          document.body.classList.remove("theme-light");
+        }
+      });
+    } catch {
+    }
     const pageStatus = document.getElementById("page-status");
     const modelStatus = document.getElementById("model-status");
     const apiStatusLabel = document.getElementById("api-status-label");

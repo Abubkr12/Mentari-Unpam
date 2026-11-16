@@ -383,7 +383,7 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
  */
 async function handleCheckUpdate() {
   try {
-    const res = await fetch('https://api.github.com/repos/lukman754/Mentari-Unpam/releases/latest', {
+    const res = await fetch('https://api.github.com/repos/Abubkr12/Mentari-Unpam/releases/latest', {
       headers: { 'Accept': 'application/vnd.github.v3+json' }
     });
     if (res.ok) {

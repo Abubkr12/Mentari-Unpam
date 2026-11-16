@@ -3,6 +3,8 @@
  * Pengganti native alert() browser dengan Closed Shadow DOM & SVG icons (bebas stock emoji).
  */
 
+import { ThemeHelper } from './theme.js';
+
 class ToastManager {
   constructor() {
     this.host = null;
@@ -106,6 +108,16 @@ class ToastManager {
       .toast-warning .toast-icon { color: #f59e0b; }
       .toast-error { border-left: 3px solid #ef4444; }
       .toast-error .toast-icon { color: #ef4444; }
+      /* Light Theme */
+      .toast-card.theme-light {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .toast-card.theme-light .toast-title { color: #0f172a; }
+      .toast-card.theme-light .toast-message { color: #475569; }
+      .toast-card.theme-light .toast-close:hover { color: #0f172a; }
     `;
 
     this.container = document.createElement('div');
@@ -156,7 +168,11 @@ class ToastManager {
     } = typeof options === 'string' ? { message: options } : options;
 
     const card = document.createElement('div');
-    card.className = `toast-card toast-${type}`;
+    const isLightSync = ThemeHelper.detectSystemTheme() === 'light';
+    card.className = `toast-card toast-${type} ${isLightSync ? 'theme-light' : ''}`;
+    ThemeHelper.getEffectiveTheme().then((t) => {
+      card.classList.toggle('theme-light', t === 'light');
+    }).catch(() => {});
     card.innerHTML = `
       <div class="toast-icon">${this._getIconSvg(type)}</div>
       <div class="toast-content">

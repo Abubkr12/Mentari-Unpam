@@ -1,10 +1,11 @@
 {
   "name": "mentari-mod-modern",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Ekstensi modern untuk meningkatkan pengalaman belajar di MENTARI UNPAM dengan asisten AI Gemini generasi baru, anti-deteksi, dan manajemen presensi.",
   "type": "module",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "release": "node build.js --zip"
   },
   "keywords": [
     "mentari",
@@ -12,7 +13,7 @@
     "chrome-extension",
     "gemini-ai"
   ],
-  "author": "Lukman Muludin & Contributors",
+  "author": "Abu Bakar Al Adny (Modern Edition) / Original by Lukman Muludin",
   "license": "MIT",
   "devDependencies": {
     "esbuild": "^0.28.2"

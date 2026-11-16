@@ -5,6 +5,7 @@
 
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
+import { ThemeHelper } from '../utils/theme.js';
 
 const ALL_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
@@ -223,6 +224,64 @@ class GeminiChatbot {
         transition: all 0.2s;
       }
       .chat-send:hover { background: #e6be40; }
+
+      /* Light Theme */
+      .chat-window.theme-light {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.16);
+      }
+      .chat-window.theme-light .chat-header {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-title-group svg { color: #1e3a8a; }
+      .chat-window.theme-light .chat-model-select {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #1e3a8a;
+      }
+      .chat-window.theme-light .chat-model-select option {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-close { color: #64748b; }
+      .chat-window.theme-light .chat-close:hover { color: #0f172a; }
+      .chat-window.theme-light .msg-user {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .chat-window.theme-light .msg-ai {
+        background: #f1f5f9;
+        color: #0f172a;
+        border-color: #e2e8f0;
+      }
+      .chat-window.theme-light .chips-row { border-top-color: #e2e8f0; }
+      .chat-window.theme-light .chip {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #334155;
+      }
+      .chat-window.theme-light .chip:hover {
+        background: #eff6ff;
+        color: #1e3a8a;
+      }
+      .chat-window.theme-light .chat-footer {
+        background: #f8fafc;
+        border-top-color: #e2e8f0;
+      }
+      .chat-window.theme-light .chat-input {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .chat-window.theme-light .chat-input:focus { border-color: #1e3a8a; }
+      .chat-window.theme-light .chat-send {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .chat-window.theme-light .chat-send:hover { background: #1e40af; }
     `;
 
     const container = document.createElement('div');
@@ -284,6 +343,13 @@ class GeminiChatbot {
     const body = this.shadow.getElementById('chat-body');
     const modelSelect = this.shadow.getElementById('chat-model-select');
     const validModelIds = ALL_MODELS.map(m => m.id);
+
+    ThemeHelper.getEffectiveTheme().then((t) => {
+      windowEl?.classList.toggle('theme-light', t === 'light');
+    });
+    ThemeHelper.watchTheme((t) => {
+      windowEl?.classList.toggle('theme-light', t === 'light');
+    });
 
     // Sinkronisasi model yang tersimpan
     Storage.get('gemini_model').then(({ gemini_model }) => {

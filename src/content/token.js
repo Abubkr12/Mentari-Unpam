@@ -8,6 +8,7 @@ import { UnpamAuth } from '../utils/unpam-auth.js';
 import { Toast } from '../utils/toast.js';
 import { DocxGenerator } from '../utils/docx-generator.js';
 import { MarkdownGenerator } from '../utils/md-generator.js';
+import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 
 const ALL_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Akurasi 100% - Rekomendasi)' },
@@ -44,19 +45,19 @@ class MentariDashboard {
     this._currentFetchPromise = null;
     this._studentName = '';
     this._studentNim = '';
-    this.currentTheme = 'dark';
+    this.currentTheme = ThemeHelper.detectSystemTheme();
     this._init();
   }
 
   async _init() {
     console.log('[Mentari Mod] Dashboard & Token Engine aktif.');
 
-    // Muat preferensi tema dari storage
+    // Muat preferensi tema adaptif (mengikuti OS/browser jika belum disetel manual)
     try {
-      const { mentari_theme } = await Storage.get('mentari_theme', { mentari_theme: 'dark' });
-      if (mentari_theme === 'light' || mentari_theme === 'dark') {
-        this.currentTheme = mentari_theme;
-      }
+      this.currentTheme = await ThemeHelper.getEffectiveTheme();
+      ThemeHelper.watchTheme((newTheme) => {
+        this._applyTheme(newTheme);
+      });
     } catch {}
 
     // Pasang sniffer
@@ -1308,9 +1309,7 @@ class MentariDashboard {
       <div class="modal">
         <div class="header" id="dashboard-modal-header">
           <div class="brand">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff7b00">
-              <path d="M13.5 0.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5 0.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
-            </svg>
+            ${getBrandSvgMarkup(22, true)}
             Mentari Mod
             <span class="brand-badge">Modern Edition</span>
           </div>
@@ -1588,7 +1587,7 @@ class MentariDashboard {
 
   async setTheme(theme) {
     this.currentTheme = theme === 'light' ? 'light' : 'dark';
-    await Storage.set({ mentari_theme: this.currentTheme });
+    await ThemeHelper.setManualTheme(this.currentTheme);
     this._applyTheme(this.currentTheme);
     Toast.info(`Tema diubah ke: ${this.currentTheme === 'light' ? 'Mode Terang' : 'Mode Gelap'}`);
   }
