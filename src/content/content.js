@@ -156,11 +156,10 @@ class MentariContentEntry {
       .launcher-btn {
         width: 48px;
         height: 48px;
-        border-radius: 14px;
-        background: #0F172A;
-        color: #ffffff;
-        border: 1.5px solid rgba(245, 158, 11, 0.5);
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.35);
+        border-radius: 50%;
+        background: transparent;
+        border: none;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -171,8 +170,8 @@ class MentariContentEntry {
         outline: none;
       }
       .launcher-btn:hover {
-        transform: scale(1.06);
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.48);
+        transform: scale(1.07);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.38);
       }
       .launcher-btn:active {
         transform: scale(0.96);

@@ -3091,29 +3091,44 @@
       }
     }
   };
-  function getBrandSvgMarkup(size = 24, rounded = true) {
+  function getBrandSvgMarkup(size = 24) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${size}" height="${size}" fill="none" aria-hidden="true">
     <defs>
-      <linearGradient id="mm-navy-${size}" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#1E3A8A"/>
-        <stop offset="100%" stop-color="#0F172A"/>
+      <linearGradient id="mm-red-${size}" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#DC2626"/>
+        <stop offset="100%" stop-color="#B91C1C"/>
       </linearGradient>
-      <linearGradient id="mm-sun-${size}" x1="64" y1="22" x2="64" y2="78" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#FBBF24"/>
-        <stop offset="100%" stop-color="#F97316"/>
+      <linearGradient id="mm-orange-${size}" x1="64" y1="14" x2="64" y2="68" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#FB923C"/>
+        <stop offset="100%" stop-color="#EA580C"/>
       </linearGradient>
     </defs>
-    ${rounded ? `<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#mm-navy-${size})"/><rect x="5" y="5" width="118" height="118" rx="27" stroke="#F59E0B" stroke-opacity="0.4" stroke-width="2"/>` : ""}
-    <rect x="61" y="18" width="6" height="13" rx="3" fill="#FBBF24"/>
-    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(-34 64 62)"/>
-    <rect x="61" y="18" width="6" height="12" rx="3" fill="#FBBF24" transform="rotate(34 64 62)"/>
-    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(-68 64 62)"/>
-    <rect x="61" y="21" width="6" height="10" rx="3" fill="#F97316" transform="rotate(68 64 62)"/>
-    <circle cx="64" cy="61" r="20" fill="url(#mm-sun-${size})"/>
-    <path d="M22 72C36 65 51 67 64 76C77 67 92 65 106 72V99C92 91 77 93 64 102C51 93 36 91 22 99V72Z" fill="#0F172A"/>
-    <path d="M27 73.5C39 67.5 52 70 62.5 78.5V97.5C52 89.5 39 87.5 27 93.5V73.5Z" fill="#FFFFFF"/>
-    <path d="M101 73.5C89 67.5 76 70 65.5 78.5V97.5C76 89.5 89 87.5 101 93.5V73.5Z" fill="#E2E8F0"/>
-    <rect x="62.5" y="77" width="3" height="22" rx="1.5" fill="#F59E0B"/>
+    <circle cx="64" cy="64" r="61" fill="url(#mm-red-${size})"/>
+    <circle cx="64" cy="64" r="54.5" fill="#FACC15"/>
+    <circle cx="64" cy="64" r="50" fill="#FFFDF2"/>
+    <path d="M64 15L73.5 50.5L111 59L73.5 67.5L64 111L54.5 67.5L17 59L54.5 50.5Z" fill="#263386"/>
+    <g fill="url(#mm-orange-${size})">
+      <path d="M18.03 49.23 A47 47 0 0 1 25.98 31.37 L44.18 44.60 A24.5 24.5 0 0 0 40.04 53.91 Z"/>
+      <path d="M30.77 25.77 A47 47 0 0 1 47.93 14.83 L55.62 35.98 A24.5 24.5 0 0 0 46.68 41.68 Z"/>
+      <path d="M80.07 14.83 A47 47 0 0 1 97.23 25.77 L81.32 41.68 A24.5 24.5 0 0 0 72.38 35.98 Z"/>
+      <path d="M102.02 31.37 A47 47 0 0 1 109.97 49.23 L87.96 53.91 A24.5 24.5 0 0 0 83.82 44.60 Z"/>
+    </g>
+    <path d="M27 84.5C38 77.5 51.5 79 64 87V102C51.5 94.5 38.5 93 29 99L27 84.5Z" fill="#1E2978"/>
+    <path d="M101 84.5C90 77.5 76.5 79 64 87V102C76.5 94.5 89.5 93 99 99L101 84.5Z" fill="#4756B3"/>
+    <circle cx="64" cy="59" r="21" fill="#FFFFFF" stroke="#DC2626" stroke-width="3.2"/>
+    <circle cx="64" cy="59" r="16" fill="#FACC15"/>
+    <g fill="#15803D">
+      <path d="M62.5 57.5C58 53 54 48 53.5 46.5C56 46 60.5 50.5 62.5 57.5Z"/>
+      <path d="M65.5 57.5C70 53 74 48 74.5 46.5C72 46 67.5 50.5 65.5 57.5Z"/>
+      <path d="M62.5 60.5C58 65 54 70 53.5 71.5C56 72 60.5 67.5 62.5 60.5Z"/>
+      <path d="M65.5 60.5C70 65 74 70 74.5 71.5C72 72 67.5 67.5 65.5 60.5Z"/>
+    </g>
+    <g fill="#FFFFFF">
+      <path d="M64 44.5C67 47.5 67 51.5 64 54.5C61 51.5 61 47.5 64 44.5Z"/>
+      <path d="M64 73.5C61 70.5 61 66.5 64 63.5C67 66.5 67 70.5 64 73.5Z"/>
+      <path d="M49.5 59C52.5 56 56.5 56 59.5 59C56.5 62 52.5 62 49.5 59Z"/>
+      <path d="M78.5 59C75.5 62 71.5 62 68.5 59C71.5 56 75.5 56 78.5 59Z"/>
+    </g>
   </svg>`;
   }
 
