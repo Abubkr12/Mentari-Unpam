@@ -5686,6 +5686,32 @@ ${items}
       this.shadow.appendChild(style);
       this.shadow.appendChild(overlay);
       document.body.appendChild(this.host);
+      const isolatedEvents = [
+        "focusin",
+        "focusout",
+        "keydown",
+        "keypress",
+        "keyup",
+        "paste",
+        "copy",
+        "cut",
+        "mousedown",
+        "pointerdown",
+        "input",
+        "beforeinput"
+      ];
+      isolatedEvents.forEach((evt) => {
+        this.host.addEventListener(evt, (e) => e.stopPropagation(), false);
+      });
+      if (!this._windowFocusGuard) {
+        this._windowFocusGuard = (e) => {
+          if (this.isOpen && (e.target === this.host || this.host?.contains(e.target))) {
+            e.stopImmediatePropagation();
+          }
+        };
+        window.addEventListener("focusin", this._windowFocusGuard, true);
+        window.addEventListener("focus", this._windowFocusGuard, true);
+      }
       const close = () => this.closeModal();
       this.shadow.getElementById("btn-close").addEventListener("click", close);
       overlay.addEventListener("click", (e) => {

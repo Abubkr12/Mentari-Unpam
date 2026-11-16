@@ -1,9 +1,22 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Seluruh perombakan antarmuka, perbaikan anomali kuesioner, dan standardisasi dokumentasi (PRD, Architecture, Design, Schema, Goals, README) telah tuntas.
+- [ ] **Rebranding Icon Orisinal (UNPAM x Mentari)**: Merancang ikon baru yang simpel dan modern memadukan aksen Universitas Pamulang (biru navy/emas, siluet buku/perisai) dan Mentari (matahari terbit/oranye hangat) tanpa menimpa logo author lama, lalu menghasilkan aset PNG multi-ukuran (`16`, `48`, `128`) dan memperbarui `README.md`.
+- [ ] **GitHub Release & Packaging Ekstensi (`.zip` + Source Code)**: Menambahkan skrip pengemasan otomatis folder `dist/` menjadi `Mentari-Unpam-v2.1.0-extension.zip`, lalu menerbitkan rilis resmi di GitHub Releases (`Abubkr12/Mentari-Unpam`) lengkap dengan aset zip ekstensi siap pakai dan source code.
 
 ## Arsip
+- [x] Perbaikan Bug Input API Key Tidak Bisa Diketik pada Akun Fresh di `/login` (`src/content/apiKeyManager.js`, `src/content/token.js`):
+  1. **Akar Masalah Terungkap (Live DOM Verification di `mentari.unpam.ac.id/login`)**:
+     - Halaman login MENTARI UNPAM menggunakan komponen Material UI `<Drawer>` (`MuiDrawer-modal MuiModal-root`) yang membungkus form login dengan `<FocusTrap>` (`sentinelStart` & `sentinelEnd`).
+     - Saat ekstensi baru dipasang pada profil Chrome fresh (belum ada API Key), `ApiKeyManager` otomatis membuka modal di `document.body` menggunakan Closed Shadow DOM.
+     - Ketika input `#input-api-key` difokuskan atau diklik, event `focusin` (`composed: true`) menembus batas Shadow DOM ke `document`. Listener `FocusTrap` milik MUI mendeteksi fokus keluar dari drawer lalu langsung membajak fokus kembali ke `.MuiDrawer-paper`, sehingga user tidak bisa mengetik atau menempelkan API Key sama sekali.
+  2. **Resolusi**:
+     - Menambahkan isolasi event bubble pada host Shadow DOM (`focusin`, `focusout`, `keydown`, `keypress`, `keyup`, `paste`, `copy`, `cut`, `mousedown`, `pointerdown`, `input`, `beforeinput`) di `apiKeyManager.js` dan `token.js`.
+     - Menambahkan capture-phase focus guard (`_windowFocusGuard`) di `window` untuk `focusin` dan `focus` saat modal aktif (`this.isOpen`), memblokir `MuiDrawer` FocusTrap agar tidak merebut fokus.
+     - Memastikan `this.isOpen = true` disetel di awal `openModal()` dan menambahkan `user-select: text !important` pada `.input-field`.
+  3. **Verifikasi**:
+     - Simulasi langsung di `https://mentari.unpam.ac.id/login` membuktikan fokus bertahan di dalam Shadow DOM input (`shadowActiveIsInput: true`) dan input karakter (`AIzaSyTestKey12345`) berhasil terbaca penuh.
+     - Rebuild via `node build.js` sukses tanpa error dan lolos `node -c`.
 - [x] Standardisasi & Overhaul Dokumentasi Modern Edition v2.1:
   1. Pembuatan dokumen arsitektur dan produk: `PRD.md`, `Architecture.md`, `Design.md`, `Schema.md`, dan `Goals.md` sesuai spesifikasi antislop dan kebutuhan proyek.
   2. Pembaruan total `README.md` dengan panduan antarmuka terperinci (FAB, Kuis & Evaluasi, Auto-Pilot, Forum Drafter) dan instruksi instalasi `chrome://extensions/` pointing ke folder `dist/`.

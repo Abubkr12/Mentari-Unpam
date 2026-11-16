@@ -681,6 +681,9 @@
         outline: none;
         transition: border-color 0.2s;
         font-family: monospace;
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        pointer-events: auto !important;
       }
       .input-field:focus {
         border-color: #d4af37;
@@ -815,11 +818,41 @@
       this.shadow.appendChild(style);
       this.shadow.appendChild(overlay);
       document.body.appendChild(this.host);
+      const isolatedEvents = [
+        "focusin",
+        "focusout",
+        "keydown",
+        "keypress",
+        "keyup",
+        "paste",
+        "copy",
+        "cut",
+        "mousedown",
+        "pointerdown",
+        "input",
+        "beforeinput"
+      ];
+      isolatedEvents.forEach((evt) => {
+        this.host.addEventListener(evt, (e) => e.stopPropagation(), false);
+      });
+      if (!this._windowFocusGuard) {
+        this._windowFocusGuard = (e) => {
+          if (this.isOpen && (e.target === this.host || this.host?.contains(e.target))) {
+            e.stopImmediatePropagation();
+          }
+        };
+        window.addEventListener("focusin", this._windowFocusGuard, true);
+        window.addEventListener("focus", this._windowFocusGuard, true);
+      }
       const inputKey = this.shadow.getElementById("input-api-key");
       const btnAddKey = this.shadow.getElementById("btn-add-key");
       const btnCancel = this.shadow.getElementById("btn-cancel");
       const btnClose = this.shadow.getElementById("btn-close");
       const btnToggleVis = this.shadow.getElementById("btn-toggle-vis");
+      inputKey.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        inputKey.focus();
+      });
       inputKey.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") {
@@ -829,6 +862,7 @@
       inputKey.addEventListener("keypress", (e) => e.stopPropagation());
       inputKey.addEventListener("keyup", (e) => e.stopPropagation());
       inputKey.addEventListener("paste", (e) => e.stopPropagation());
+      inputKey.addEventListener("focusin", (e) => e.stopPropagation());
       btnToggleVis.addEventListener("click", () => {
         inputKey.type = inputKey.type === "password" ? "text" : "password";
       });
@@ -965,13 +999,13 @@
     }
     async openModal() {
       this._buildModalDOM();
+      this.isOpen = true;
       if (this.host) {
         this.host.style.display = "block";
       }
       await this._loadAndRenderKeys();
       const overlay = this.shadow?.querySelector(".overlay");
       if (overlay) overlay.classList.add("open");
-      this.isOpen = true;
       const inputKey = this.shadow?.getElementById("input-api-key");
       setTimeout(() => inputKey?.focus(), 150);
     }
