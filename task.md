@@ -1,9 +1,19 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Rebranding ikon orisinal (UNPAM x Mentari), tema adaptif otomatis OS/browser, sambutan pemasangan awal (once-only), serta pengemasan & penerbitan GitHub Release `v2.1.1` telah tuntas.
+- Tidak ada task aktif saat ini. Penyederhanaan ikon UI, pembaruan daftar model Gemini Free Tier aktif (`gemini-4-hydrogen` dkk), dan pengemasan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Penyederhanaan Ikon UI & Pembaruan Daftar Model Free Tier Aktif (`v2.1.2`):
+  1. **Ikon Simpel & Minimalis (`src/assets/icon.svg`, `src/utils/theme.js`, `content.js`, `token.js`, `apiKeyManager.js`)**:
+     - Menyederhanakan ikon UI di navbar, floating launcher, dan header modal menjadi ikon api/mentari monokrom 1 warna yang menyatu rapi dengan UI Mentari.
+     - Menyederhanakan ikon utama ekstensi menjadi emblem 2 warna bersih (Navy UNPAM + Api/Mentari Amber) bebas kesan warna-warni ramai.
+  2. **Audit & Pembaruan Model Gemini Free Tier Resmi (`service-worker.js`, `token.js`, `quiz.js`, `gemini.js`, `storage.js`)**:
+     - Memverifikasi langsung dokumentasi resmi Google AI Studio (`aistudio.google.com/docs/models` & `pricing`):
+       - **Aktif & Free of charge**: `gemini-4-hydrogen` (terbaru, default baru), `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3-flash-preview`.
+       - **Paid Only (dihilangkan dari pilihan Free Tier)**: `gemini-4-carbon`, `gemini-4-argon`, `gemini-3.1-pro-preview`.
+       - **Deprecated / Alias Lama**: `gemini-2.5-flash` & `gemini-2.5-pro` resmi deprecated (otomatis di-reroute Google mulai 1 Des 2026); `3.5-flash`/`3.7-flash` dihapus dari dropdown dan dipertahankan di `resolveUpstreamModel` sebagai migrasi transparan.
+     - Menyesuaikan `thinkingConfig` pada `service-worker.js`: `thinkingLevel: 'low'` khusus untuk `gemini-4-hydrogen` (karena `minimal` ditolak API pada seri 4), serta menyaring `part.thought` agar hanya teks jawaban final yang dikembalikan ke modul kuis.
 - [x] Rebranding Ikon Orisinal, Tema Adaptif, Sambutan Onboarding & Rilis GitHub `v2.1.1`:
   1. **Ikon Orisinal UNPAM x Mentari (`src/assets/icon.svg`, `icon-16.png`, `icon-48.png`, `icon-128.png`, `icon.png`)**:
      - Merancang emblem vektor orisinal memadukan perisai/buku akademis UNPAM (deep navy `#0F172A`–`#1E3A8A` + aksen emas `#F59E0B`) dengan matahari terbit Mentari (`#F97316`–`#FBBF24`), menggantikan seluruh logo author lama di `manifest.json`, `content.js`, `token.js`, `presensi.js`, `popup.html`, `README.md`, dan URL update checker di `service-worker.js`.

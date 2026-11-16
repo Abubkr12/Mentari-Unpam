@@ -1,24 +1,21 @@
 // src/background/service-worker.js
 var GEMINI_MODELS_DEFAULT = [
-  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Rekomendasi Utama (Fast & Accurate)" },
-  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", desc: "Sangat Cepat & Efisien" },
-  { id: "gemini-3-flash", name: "Gemini 3 Flash", desc: "Generasi Baru (Next-Gen Intelligence)" },
-  { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite", desc: "High Quota (RPD 500)" },
-  { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash Lite", desc: "High Quota (RPD 500)" },
-  { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", desc: "Performa Tinggi" },
-  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash", desc: "Kemampuan Analisa Luas" },
-  { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash", desc: "Penalaran Lanjut" },
-  { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", desc: "Flagship Speed & Depth" }
+  { id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen", desc: "Rekomendasi Utama (Terbaru & Free Tier)" },
+  { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", desc: "Flagship Gen-3 (Free Tier)" },
+  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash", desc: "Seimbang & Cepat (Free Tier)" },
+  { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite", desc: "Kuota Tinggi & Cepat (Free Tier)" },
+  { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite", desc: "Ringan & Efisien (Free Tier)" },
+  { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview", desc: "Preview Cepat (Free Tier)" }
 ];
+var ACTIVE_FREE_MODEL_IDS = GEMINI_MODELS_DEFAULT.map((m) => m.id);
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("[Service Worker] Mentari Mod Modern Edition terpasang:", details.reason);
   const current = await chrome.storage.local.get(["gemini_model", "available_models"]);
-  if (!current.gemini_model) {
-    await chrome.storage.local.set({
-      gemini_model: "gemini-2.5-flash",
-      available_models: GEMINI_MODELS_DEFAULT
-    });
-  }
+  const nextModel = ACTIVE_FREE_MODEL_IDS.includes(current.gemini_model) ? current.gemini_model : "gemini-4-hydrogen";
+  await chrome.storage.local.set({
+    gemini_model: nextModel,
+    available_models: GEMINI_MODELS_DEFAULT
+  });
 });
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const { action } = request;
@@ -44,9 +41,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     case "getAvailableModels":
       chrome.storage.local.get(["available_models", "gemini_model"], (data) => {
+        const storedModels = Array.isArray(data.available_models) ? data.available_models : [];
+        const hasValidList = storedModels.some((m) => m.id === "gemini-4-hydrogen");
+        const resolvedModel = ACTIVE_FREE_MODEL_IDS.includes(data.gemini_model) ? data.gemini_model : "gemini-4-hydrogen";
         sendResponse({
-          models: data.available_models || GEMINI_MODELS_DEFAULT,
-          activeModel: data.gemini_model || "gemini-2.5-flash"
+          models: hasValidList ? storedModels : GEMINI_MODELS_DEFAULT,
+          activeModel: resolvedModel
         });
       });
       return true;
@@ -140,28 +140,37 @@ async function handleGetApiKeys() {
     activeKey: store.geminiApiKey || keys[0] || ""
   };
 }
+function extractResponseText(resJson) {
+  const parts = resJson?.candidates?.[0]?.content?.parts || [];
+  const answerParts = parts.filter((p) => !p.thought && typeof p.text === "string");
+  if (answerParts.length > 0) {
+    return answerParts.map((p) => p.text).join("");
+  }
+  return parts[0]?.text || "";
+}
 function resolveUpstreamModel(modelId) {
-  if (!modelId) return "gemini-3.5-flash-lite";
-  const directModels = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
+  if (!modelId) return "gemini-4-hydrogen";
+  const activeFreeModels = [
+    "gemini-4-hydrogen",
     "gemini-3.8-flash",
     "gemini-3.6-flash",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash"
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview"
   ];
-  if (directModels.includes(modelId)) {
+  if (activeFreeModels.includes(modelId)) {
     return modelId;
   }
+  if (modelId === "gemini-2.5-flash") return "gemini-3.8-flash";
+  if (modelId === "gemini-2.5-flash-lite") return "gemini-3.5-flash-lite";
   if (modelId === "gemini-3-flash") return "gemini-3-flash-preview";
   if (modelId === "gemini-3.5-flash") return "gemini-3.6-flash";
   if (modelId === "gemini-3.7-flash") return "gemini-3.8-flash";
-  return modelId;
+  return "gemini-4-hydrogen";
 }
 async function handleGenerateContent({ prompt, systemInstruction = "", model = null }) {
   const store = await chrome.storage.local.get(["geminiApiKey", "geminiApiKeys", "gemini_model"]);
-  const activeModel = model || store.gemini_model || "gemini-2.5-flash";
+  const activeModel = model || store.gemini_model || "gemini-4-hydrogen";
   const targetEngineModel = resolveUpstreamModel(activeModel);
   let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
   if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
@@ -189,7 +198,11 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
       maxOutputTokens: 2048
     }
   };
-  if (targetEngineModel.startsWith("gemini-3")) {
+  if (targetEngineModel.startsWith("gemini-4")) {
+    bodyPayload.generationConfig.thinkingConfig = {
+      thinkingLevel: "low"
+    };
+  } else if (targetEngineModel.startsWith("gemini-3")) {
     bodyPayload.generationConfig.thinkingConfig = {
       thinkingLevel: "minimal"
     };
@@ -204,7 +217,7 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
     const currentKey = keyPool[i];
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetEngineModel}:generateContent?key=${currentKey}`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1e4);
+    const timer = setTimeout(() => controller.abort(), 12e3);
     try {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -215,8 +228,7 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
       clearTimeout(timer);
       if (response.ok) {
         const resJson = await response.json();
-        const candidate = resJson.candidates?.[0];
-        const textOut = candidate?.content?.parts?.[0]?.text || "";
+        const textOut = extractResponseText(resJson);
         if (currentKey !== store.geminiApiKey) {
           console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
           await chrome.storage.local.set({ geminiApiKey: currentKey });
@@ -248,41 +260,45 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
     } catch (netErr) {
       clearTimeout(timer);
       const isAbort = netErr.name === "AbortError";
-      lastError = isAbort ? `Timeout 10s: Model ${activeModel} tidak merespon dalam 10 detik` : netErr.message;
+      lastError = isAbort ? `Timeout 12s: Model ${activeModel} tidak merespon dalam 12 detik` : netErr.message;
       console.warn(`[Service Worker] Percobaan API Key ke-${i + 1} gagal (${lastError}).`);
       if (i < keyPool.length - 1) continue;
     }
   }
-  if (targetEngineModel !== "gemini-2.5-flash") {
-    console.log(`[Service Worker] Mengaktifkan fallback darurat ke gemini-2.5-flash...`);
-    const fbPayload = {
-      contents: bodyPayload.contents,
-      generationConfig: { temperature: 0.1, topP: 0.95, maxOutputTokens: 256 }
-    };
-    if (systemInstruction) fbPayload.systemInstruction = bodyPayload.systemInstruction;
-    for (const fbKey of keyPool) {
-      const fbCtrl = new AbortController();
-      const fbTimer = setTimeout(() => fbCtrl.abort(), 8e3);
-      try {
-        const fbRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${fbKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(fbPayload),
-          signal: fbCtrl.signal
-        });
-        clearTimeout(fbTimer);
-        if (fbRes.ok) {
-          const fbJson = await fbRes.json();
-          const fbText = fbJson.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          return {
-            success: true,
-            text: fbText,
-            model: `${activeModel} -> Gemini 2.5 Flash (Fallback Kuota/Kecepatan)`
-          };
-        }
-      } catch (fbErr) {
-        clearTimeout(fbTimer);
+  const fallbackEngine = targetEngineModel === "gemini-3.8-flash" ? "gemini-3.5-flash-lite" : "gemini-3.8-flash";
+  console.log(`[Service Worker] Mengaktifkan fallback darurat ke ${fallbackEngine}...`);
+  const fbPayload = {
+    contents: bodyPayload.contents,
+    generationConfig: {
+      temperature: 0.1,
+      topP: 0.95,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingLevel: "minimal" }
+    }
+  };
+  if (systemInstruction) fbPayload.systemInstruction = bodyPayload.systemInstruction;
+  for (const fbKey of keyPool) {
+    const fbCtrl = new AbortController();
+    const fbTimer = setTimeout(() => fbCtrl.abort(), 9e3);
+    try {
+      const fbRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallbackEngine}:generateContent?key=${fbKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fbPayload),
+        signal: fbCtrl.signal
+      });
+      clearTimeout(fbTimer);
+      if (fbRes.ok) {
+        const fbJson = await fbRes.json();
+        const fbText = extractResponseText(fbJson);
+        return {
+          success: true,
+          text: fbText,
+          model: `${activeModel} -> ${fallbackEngine} (Fallback)`
+        };
       }
+    } catch {
+      clearTimeout(fbTimer);
     }
   }
   return {

@@ -6,7 +6,7 @@
 
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
-import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
+import { ThemeHelper, getBrandSvgMarkup, getBrandBadgeMarkup } from '../utils/theme.js';
 
 class ApiKeyManager {
   constructor() {
@@ -597,7 +597,7 @@ class ApiKeyManager {
       <div class="modal">
         <div class="header">
           <div class="header-title" id="modal-header-title">
-            ${getBrandSvgMarkup(22, true)}
+            <span style="color:#f59e0b;display:inline-flex;align-items:center;">${getBrandSvgMarkup(20)}</span>
             <span id="header-title-text">Koneksi Google Gemini AI</span>
           </div>
           <button class="close-btn" id="btn-close" aria-label="Tutup">
@@ -611,7 +611,7 @@ class ApiKeyManager {
         <div class="view-section" id="view-welcome">
           <div class="welcome-body">
             <div class="welcome-hero">
-              <div class="welcome-emblem">${getBrandSvgMarkup(52, true)}</div>
+              <div class="welcome-emblem">${getBrandBadgeMarkup(52)}</div>
               <div>
                 <h2 class="welcome-headline">Selamat Datang di Mentari Mod</h2>
                 <p class="welcome-sub">Asisten perkuliahan UNPAM v2.1 untuk memantau forum, prasyarat kuis, serta otomatisasi evaluasi dengan Gemini AI.</p>

@@ -11,16 +11,14 @@ import { MarkdownGenerator } from '../utils/md-generator.js';
 import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 
 const ALL_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Akurasi 100% - Rekomendasi)' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (Cepat)' },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash (Next-Gen)' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite (RPD 500)' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite (RPD 500)' },
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (Power)' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Deep)' },
-  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash (Reasoning)' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Flagship)' }
+  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash (Flagship Gen-3)' },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Seimbang)' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Kuota Tinggi)' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite (Ringan & Cepat)' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview (Free Tier)' }
 ];
+const DEFAULT_FREE_MODEL = 'gemini-4-hydrogen';
 
 class MentariDashboard {
   constructor() {
@@ -1309,7 +1307,7 @@ class MentariDashboard {
       <div class="modal">
         <div class="header" id="dashboard-modal-header">
           <div class="brand">
-            ${getBrandSvgMarkup(22, true)}
+            <span style="color:#ff7b00;display:inline-flex;align-items:center;">${getBrandSvgMarkup(20)}</span>
             Mentari Mod
             <span class="brand-badge">Modern Edition</span>
           </div>
@@ -1476,8 +1474,8 @@ class MentariDashboard {
       if (gemini_model && validModelIds.includes(gemini_model)) {
         selectModel.value = gemini_model;
       } else {
-        selectModel.value = 'gemini-2.5-flash';
-        Storage.set({ gemini_model: 'gemini-2.5-flash' });
+        selectModel.value = DEFAULT_FREE_MODEL;
+        Storage.set({ gemini_model: DEFAULT_FREE_MODEL });
       }
     });
 
@@ -2359,7 +2357,7 @@ class MentariDashboard {
    * Poles dan perjelas struktur teks pertanyaan forum menggunakan Gemini AI
    * Mematuhi aturan mutlak: ZERO HALLUCINATION (dilarang mengubah/menambah/mengurangi kata-kata dan isi tugas)
    */
-  async _polishQuestionWithGemini(rawText, model = 'gemini-2.5-flash') {
+  async _polishQuestionWithGemini(rawText, model = DEFAULT_FREE_MODEL) {
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length < 15) {
       return rawText;
     }
@@ -2374,7 +2372,7 @@ class MentariDashboard {
           action: 'generateGeminiContent',
           prompt,
           systemInstruction,
-          model: model || 'gemini-2.5-flash'
+          model: model || DEFAULT_FREE_MODEL
         }, resolve);
       });
 
@@ -2394,7 +2392,7 @@ class MentariDashboard {
   /**
    * Tampilkan Modal Konfigurasi Ekspor Rekap Tugas (DOCX & Markdown)
    */
-  _showDocxExportModal({ pendingCount, studentName, studentNim, initialFormat = 'docx', initialMode = 'standard', initialModel = 'gemini-2.5-flash', onConfirm }) {
+  _showDocxExportModal({ pendingCount, studentName, studentNim, initialFormat = 'docx', initialMode = 'standard', initialModel = DEFAULT_FREE_MODEL, onConfirm }) {
     if (!this.shadow) return;
 
     // Hapus modal lama jika ada
@@ -3134,7 +3132,7 @@ class MentariDashboard {
     // 3. Baca preferensi mode ekspor & model AI yang tersimpan
     const { docx_export_mode, gemini_model, forum_recap_format } = await Storage.get({
       docx_export_mode: 'standard',
-      gemini_model: 'gemini-2.5-flash',
+      gemini_model: DEFAULT_FREE_MODEL,
       forum_recap_format: 'docx'
     });
 
@@ -3145,7 +3143,7 @@ class MentariDashboard {
       studentNim: this._studentNim,
       initialFormat: forum_recap_format || 'docx',
       initialMode: docx_export_mode || 'standard',
-      initialModel: gemini_model || 'gemini-2.5-flash',
+      initialModel: gemini_model || DEFAULT_FREE_MODEL,
       onConfirm: async ({ format, mode, model, action }) => {
         await Storage.set({ docx_export_mode: mode, gemini_model: model, forum_recap_format: format });
         await this._executeExportForumRecap({
@@ -3961,8 +3959,8 @@ class MentariDashboard {
 
     // Ambil preferensi model Gemini aktif dari storage
     const validModelIds = ALL_MODELS.map(m => m.id);
-    const { gemini_model } = await Storage.get('gemini_model', { gemini_model: 'gemini-2.5-flash' });
-    const currentModel = (gemini_model && validModelIds.includes(gemini_model)) ? gemini_model : 'gemini-2.5-flash';
+    const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_FREE_MODEL });
+    const currentModel = (gemini_model && validModelIds.includes(gemini_model)) ? gemini_model : DEFAULT_FREE_MODEL;
     const storeKues = await Storage.get('mentari_kuesioner_preference');
     let selectedKuesPref = (storeKues?.mentari_kuesioner_preference === 'tidak') ? 'tidak' : 'iya';
 

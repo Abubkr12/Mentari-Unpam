@@ -92,7 +92,7 @@ class MentariContentEntry {
     btn.setAttribute('aria-label', 'Dashboard Mentari Mod');
     btn.style.cssText = `
       margin-right: 8px;
-      padding: 6px;
+      padding: 8px;
       background-color: transparent;
       border: 0;
       border-radius: 50%;
@@ -100,13 +100,14 @@ class MentariContentEntry {
       align-items: center;
       justify-content: center;
       outline: 0;
+      color: #ff7b00;
       cursor: pointer;
       position: relative;
       transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), transform 150ms ease;
     `;
 
     btn.innerHTML = `
-      ${getBrandSvgMarkup(24, true)}
+      ${getBrandSvgMarkup(22)}
       <span class="MuiTouchRipple-root"></span>
     `;
 
@@ -157,9 +158,10 @@ class MentariContentEntry {
         width: 48px;
         height: 48px;
         border-radius: 50%;
-        background: transparent;
-        border: none;
-        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
+        background: linear-gradient(135deg, #ff7b00, #ea580c);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        box-shadow: 0 8px 22px rgba(234, 88, 12, 0.38);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -171,7 +173,7 @@ class MentariContentEntry {
       }
       .launcher-btn:hover {
         transform: scale(1.07);
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.38);
+        box-shadow: 0 10px 26px rgba(234, 88, 12, 0.5);
       }
       .launcher-btn:active {
         transform: scale(0.96);
@@ -218,7 +220,7 @@ class MentariContentEntry {
     const btn = document.createElement('button');
     btn.className = 'launcher-btn';
     btn.setAttribute('aria-label', 'Dashboard Mentari Mod');
-    btn.innerHTML = getBrandSvgMarkup(46, true);
+    btn.innerHTML = getBrandSvgMarkup(24);
 
     const tooltip = document.createElement('div');
     tooltip.className = 'tooltip';

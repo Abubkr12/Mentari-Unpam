@@ -1,10 +1,10 @@
 <div align="center">
   <img src="./src/assets/icon.png" width="128" alt="Mentari Mod Modern Edition Logo">
   
-  # MENTARI MOD — Modern Edition v2.1.1
+  # MENTARI MOD — Modern Edition v2.1.2
   ### *Asisten Pembelajaran Daring Cerdas & Terpadu LMS Universitas Pamulang*
   
-  [![Version](https://img.shields.io/badge/version-2.1.1-blue?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)
+  [![Version](https://img.shields.io/badge/version-2.1.2-blue?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)
   [![Manifest](https://img.shields.io/badge/Manifest-V3-amber?style=for-the-badge)](https://developer.chrome.com/docs/extensions/mv3/)
   [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
@@ -71,7 +71,7 @@ Fitur otomatisasi sekuensial cerdas untuk menyelesaikan evaluasi tanpa hambatan 
 ## Panduan Instalasi (Step-by-Step)
 
 ### Opsi A: Dari Paket Rilis Resmi (`.zip`) — Direkomendasikan
-1. Buka halaman [Releases](https://github.com/Abubkr12/Mentari-Unpam/releases/latest) dan unduh file **`Mentari-Unpam-v2.1.1-extension.zip`**.
+1. Buka halaman [Releases](https://github.com/Abubkr12/Mentari-Unpam/releases/latest) dan unduh file **`Mentari-Unpam-v2.1.2-extension.zip`**.
 2. Ekstrak file `.zip` tersebut ke sebuah folder permanen di komputer Anda (misal `C:\Extensions\Mentari-Unpam`).
 3. Buka browser Chromium (Chrome/Edge/Brave) lalu ketik `chrome://extensions/` di address bar.
 4. Nyalakan toggle **"Developer mode"** (Mode pengembang) di pojok kanan atas.

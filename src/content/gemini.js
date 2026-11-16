@@ -8,15 +8,12 @@ import { Toast } from '../utils/toast.js';
 import { ThemeHelper } from '../utils/theme.js';
 
 const ALL_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen (Free)' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
   { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' }
 ];
 
 class GeminiChatbot {
@@ -356,8 +353,8 @@ class GeminiChatbot {
       if (gemini_model && validModelIds.includes(gemini_model)) {
         modelSelect.value = gemini_model;
       } else {
-        modelSelect.value = 'gemini-2.5-flash';
-        Storage.set({ gemini_model: 'gemini-2.5-flash' });
+        modelSelect.value = 'gemini-4-hydrogen';
+        Storage.set({ gemini_model: 'gemini-4-hydrogen' });
       }
     });
 

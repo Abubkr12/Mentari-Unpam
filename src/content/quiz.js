@@ -11,19 +11,16 @@ import { Humanizer } from '../utils/humanizer.js';
 import { Toast } from '../utils/toast.js';
 
 const ALL_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Akurasi 100% - Rekomendasi)' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite' },
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' },
+  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
   { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' }
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' }
 ];
 
 const VALID_MODEL_IDS = ALL_MODELS.map(m => m.id);
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-4-hydrogen';
 
 class QuizAssistant {
   constructor() {

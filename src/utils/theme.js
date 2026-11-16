@@ -73,43 +73,25 @@ export const ThemeHelper = {
   }
 };
 
-export function getBrandSvgMarkup(size = 24) {
+export function getBrandSvgMarkup(size = 22) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${size}" height="${size}" fill="currentColor" aria-hidden="true">
+    <path d="M68 24C68 24 72 39 72 49C72 56.5 67 62 59.5 62C52 62 46.5 56 46.5 48.5L46.7 46.5C38.5 55.5 34 67.5 34 79.5C34 95.5 47.4 106 64 106C80.6 106 94 95.5 94 79.5C94 59 83.5 38.5 68 24ZM63 94C55.8 94 50 88.6 50 81.8C50 75.5 54.4 71 61.5 69.5C68.6 68 75.5 64.5 79.5 59.2C81.2 64.2 82 69.5 82 75C82 85.5 73.5 94 63 94Z"/>
+  </svg>`;
+}
+
+export function getBrandBadgeMarkup(size = 52) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="${size}" height="${size}" fill="none" aria-hidden="true">
     <defs>
-      <linearGradient id="mm-red-${size}" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#DC2626"/>
-        <stop offset="100%" stop-color="#B91C1C"/>
+      <linearGradient id="mm-badge-bg-${size}" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#1E3A8A"/>
+        <stop offset="100%" stop-color="#0F172A"/>
       </linearGradient>
-      <linearGradient id="mm-orange-${size}" x1="64" y1="14" x2="64" y2="68" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#FB923C"/>
-        <stop offset="100%" stop-color="#EA580C"/>
+      <linearGradient id="mm-badge-fg-${size}" x1="64" y1="24" x2="64" y2="104" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#FBBF24"/>
+        <stop offset="100%" stop-color="#F97316"/>
       </linearGradient>
     </defs>
-    <circle cx="64" cy="64" r="61" fill="url(#mm-red-${size})"/>
-    <circle cx="64" cy="64" r="54.5" fill="#FACC15"/>
-    <circle cx="64" cy="64" r="50" fill="#FFFDF2"/>
-    <path d="M64 15L73.5 50.5L111 59L73.5 67.5L64 111L54.5 67.5L17 59L54.5 50.5Z" fill="#263386"/>
-    <g fill="url(#mm-orange-${size})">
-      <path d="M18.03 49.23 A47 47 0 0 1 25.98 31.37 L44.18 44.60 A24.5 24.5 0 0 0 40.04 53.91 Z"/>
-      <path d="M30.77 25.77 A47 47 0 0 1 47.93 14.83 L55.62 35.98 A24.5 24.5 0 0 0 46.68 41.68 Z"/>
-      <path d="M80.07 14.83 A47 47 0 0 1 97.23 25.77 L81.32 41.68 A24.5 24.5 0 0 0 72.38 35.98 Z"/>
-      <path d="M102.02 31.37 A47 47 0 0 1 109.97 49.23 L87.96 53.91 A24.5 24.5 0 0 0 83.82 44.60 Z"/>
-    </g>
-    <path d="M27 84.5C38 77.5 51.5 79 64 87V102C51.5 94.5 38.5 93 29 99L27 84.5Z" fill="#1E2978"/>
-    <path d="M101 84.5C90 77.5 76.5 79 64 87V102C76.5 94.5 89.5 93 99 99L101 84.5Z" fill="#4756B3"/>
-    <circle cx="64" cy="59" r="21" fill="#FFFFFF" stroke="#DC2626" stroke-width="3.2"/>
-    <circle cx="64" cy="59" r="16" fill="#FACC15"/>
-    <g fill="#15803D">
-      <path d="M62.5 57.5C58 53 54 48 53.5 46.5C56 46 60.5 50.5 62.5 57.5Z"/>
-      <path d="M65.5 57.5C70 53 74 48 74.5 46.5C72 46 67.5 50.5 65.5 57.5Z"/>
-      <path d="M62.5 60.5C58 65 54 70 53.5 71.5C56 72 60.5 67.5 62.5 60.5Z"/>
-      <path d="M65.5 60.5C70 65 74 70 74.5 71.5C72 72 67.5 67.5 65.5 60.5Z"/>
-    </g>
-    <g fill="#FFFFFF">
-      <path d="M64 44.5C67 47.5 67 51.5 64 54.5C61 51.5 61 47.5 64 44.5Z"/>
-      <path d="M64 73.5C61 70.5 61 66.5 64 63.5C67 66.5 67 70.5 64 73.5Z"/>
-      <path d="M49.5 59C52.5 56 56.5 56 59.5 59C56.5 62 52.5 62 49.5 59Z"/>
-      <path d="M78.5 59C75.5 62 71.5 62 68.5 59C71.5 56 75.5 56 78.5 59Z"/>
-    </g>
+    <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#mm-badge-bg-${size})"/>
+    <path d="M68 24C68 24 72 39 72 49C72 56.5 67 62 59.5 62C52 62 46.5 56 46.5 48.5L46.7 46.5C38.5 55.5 34 67.5 34 79.5C34 95.5 47.4 106 64 106C80.6 106 94 95.5 94 79.5C94 59 83.5 38.5 68 24ZM63 94C55.8 94 50 88.6 50 81.8C50 75.5 54.4 71 61.5 69.5C68.6 68 75.5 64.5 79.5 59.2C81.2 64.2 82 69.5 82 75C82 85.5 73.5 94 63 94Z" fill="url(#mm-badge-fg-${size})"/>
   </svg>`;
 }
