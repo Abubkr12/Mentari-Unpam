@@ -4,6 +4,9 @@
 - Tidak ada task aktif saat ini. Penyederhanaan ikon UI, pembaruan daftar model Gemini Free Tier aktif (`gemini-4-hydrogen` dkk), dan pengemasan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Perbaikan `TypeError: Failed to execute 'contains' on 'Node'` pada `_windowFocusGuard` (`apiKeyManager.js` & `token.js`):
+  1. **Akar Masalah**: Event `focus` pada `window` menghasilkan `e.target === window` (bukan `Node`), sehingga pemanggilan `this.host?.contains(e.target)` melempar `TypeError` saat tab/jendela browser berpindah fokus.
+  2. **Resolusi**: Menambahkan penjagaan tipe `target instanceof Node` sebelum memanggil `.contains(target)` pada `_windowFocusGuard` di `src/content/apiKeyManager.js` dan `src/content/token.js`.
 - [x] Penyederhanaan Ikon UI & Pembaruan Daftar Model Free Tier Aktif (`v2.1.2`):
   1. **Ikon Simpel & Minimalis (`src/assets/icon.svg`, `src/utils/theme.js`, `content.js`, `token.js`, `apiKeyManager.js`)**:
      - Menyederhanakan ikon UI di navbar, floating launcher, dan header modal menjadi ikon api/mentari monokrom 1 warna yang menyatu rapi dengan UI Mentari.

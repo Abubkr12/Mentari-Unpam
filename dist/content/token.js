@@ -5783,7 +5783,9 @@ ${items}
       });
       if (!this._windowFocusGuard) {
         this._windowFocusGuard = (e) => {
-          if (this.isOpen && (e.target === this.host || this.host?.contains(e.target))) {
+          if (!this.isOpen) return;
+          const target = e.target;
+          if (target === this.host || target instanceof Node && this.host?.contains(target)) {
             e.stopImmediatePropagation();
           }
         };
