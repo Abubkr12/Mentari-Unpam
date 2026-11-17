@@ -6971,11 +6971,19 @@ ${rawText}`;
     /**
      * Tampilkan Modal Konfigurasi Ekspor Rekap Tugas (DOCX & Markdown)
      */
-    _showDocxExportModal({ pendingCount, studentName, studentNim, initialFormat = "docx", initialMode = "standard", initialModel = DEFAULT_FREE_MODEL, onConfirm }) {
+    _showDocxExportModal({ pendingForums = [], pendingCount, studentName, studentNim, initialFormat = "docx", initialMode = "standard", initialModel = DEFAULT_FREE_MODEL, onConfirm }) {
       if (!this.shadow) return;
       const existing = this.shadow.getElementById("mentari-docx-export-overlay");
       if (existing) existing.remove();
       const isLight = this.shadow.querySelector(".modal")?.classList.contains("theme-light") || false;
+      const escapeHtml = (str) => String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const safeForums = Array.isArray(pendingForums) ? pendingForums : [];
+      const totalPending = safeForums.length || Number(pendingCount) || 0;
+      const orderedEntries = safeForums.map((forum, idx) => ({
+        key: String(forum.forumId || `${forum.courseCode || "mk"}_${forum.meetingNum ?? ""}_${idx}`),
+        forum,
+        checked: true
+      }));
       let selectedFormat = initialFormat;
       let selectedMode = initialMode;
       let selectedModel = initialModel;
@@ -7039,6 +7047,33 @@ ${rawText}`;
           border-color: #e2e8f0;
           color: #0f172a;
           box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
+        }
+        .docx-modal *::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .docx-modal *::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .docx-modal *::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.18);
+          border-radius: 9999px;
+        }
+        .docx-modal *::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.32);
+        }
+        .docx-modal * {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        }
+        .docx-modal.theme-light *::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+        }
+        .docx-modal.theme-light *::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        .docx-modal.theme-light * {
+          scrollbar-color: #cbd5e1 transparent;
         }
         .docx-header {
           padding: 16px 22px;
@@ -7490,8 +7525,290 @@ ${rawText}`;
           border-color: #1e3a8a;
           color: #ffffff;
         }
-        .docx-modal.theme-light .docx-btn-confirm:hover {
+        .docx-modal.theme-light .docx-btn-confirm:hover:not(:disabled) {
           background: #1e40af;
+        }
+        .docx-btn-confirm:disabled,
+        .docx-btn-copy:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          transform: none !important;
+          box-shadow: none !important;
+        }
+        .docx-mode-tag.tag-token {
+          background: rgba(59, 130, 246, 0.15);
+          color: #60a5fa;
+          border-color: rgba(59, 130, 246, 0.35);
+        }
+        .docx-modal.theme-light .docx-mode-tag.tag-token {
+          background: #eff6ff;
+          color: #1e40af;
+          border-color: #bfdbfe;
+        }
+        .docx-mode-tag.tag-ai {
+          background: rgba(245, 158, 11, 0.16);
+          color: #fbbf24;
+          border-color: rgba(245, 158, 11, 0.35);
+        }
+        .docx-modal.theme-light .docx-mode-tag.tag-ai {
+          background: #fffbeb;
+          color: #92400e;
+          border-color: #fcd34d;
+        }
+        .docx-count-badge.is-empty {
+          background: rgba(239, 68, 68, 0.14);
+          color: #f87171;
+          border-color: rgba(239, 68, 68, 0.35);
+        }
+        .docx-modal.theme-light .docx-count-badge.is-empty {
+          background: #fef2f2;
+          color: #dc2626;
+          border-color: #fecaca;
+        }
+
+        /* \u2500\u2500\u2500 Forum Selector & Priority Picker \u2500\u2500\u2500 */
+        .docx-picker-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .docx-picker-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .docx-picker-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .docx-mini-btn {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #cbd5e1;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 4px 9px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+        .docx-mini-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+        .docx-modal.theme-light .docx-mini-btn {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          color: #334155;
+        }
+        .docx-modal.theme-light .docx-mini-btn:hover {
+          background: #eff6ff;
+          border-color: #93c5fd;
+          color: #1e3a8a;
+        }
+        .docx-course-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .docx-course-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 9px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.03);
+          color: #94a3b8;
+          transition: all 0.16s ease;
+          max-width: 100%;
+        }
+        .docx-course-chip span.chip-name {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 190px;
+        }
+        .docx-course-chip.active {
+          background: rgba(245, 158, 11, 0.14);
+          border-color: rgba(245, 158, 11, 0.45);
+          color: #fbbf24;
+        }
+        .docx-course-chip.partial {
+          border-style: dashed;
+          border-color: rgba(245, 158, 11, 0.4);
+          color: #e2e8f0;
+        }
+        .docx-modal.theme-light .docx-course-chip {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+          color: #64748b;
+        }
+        .docx-modal.theme-light .docx-course-chip.active {
+          background: #eff6ff;
+          border-color: #1e3a8a;
+          color: #1e3a8a;
+        }
+        .docx-modal.theme-light .docx-course-chip.partial {
+          border-style: dashed;
+          border-color: #1e3a8a;
+          color: #1e3a8a;
+        }
+        .docx-forum-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          max-height: 176px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+        .docx-forum-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 9px 11px;
+          border-radius: 10px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.025);
+          transition: all 0.16s ease;
+        }
+        .docx-forum-row.is-checked {
+          border-color: rgba(245, 158, 11, 0.38);
+          background: rgba(245, 158, 11, 0.06);
+        }
+        .docx-forum-row.is-unchecked {
+          opacity: 0.58;
+        }
+        .docx-modal.theme-light .docx-forum-row {
+          background: #ffffff;
+          border-color: #e2e8f0;
+        }
+        .docx-modal.theme-light .docx-forum-row.is-checked {
+          background: #eff6ff;
+          border-color: #93c5fd;
+        }
+        .docx-forum-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          flex: 1;
+          cursor: pointer;
+        }
+        .docx-forum-check {
+          width: 16px;
+          height: 16px;
+          accent-color: #f59e0b;
+          cursor: pointer;
+          flex-shrink: 0;
+          border-radius: 4px;
+        }
+        .docx-modal.theme-light .docx-forum-check {
+          accent-color: #1e3a8a;
+        }
+        .docx-forum-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+          flex: 1;
+        }
+        .docx-forum-course-name {
+          font-size: 12px;
+          font-weight: 700;
+          color: #f1f5f9;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .docx-modal.theme-light .docx-forum-course-name {
+          color: #0f172a;
+        }
+        .docx-forum-meta {
+          font-size: 11px;
+          color: #94a3b8;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .docx-modal.theme-light .docx-forum-meta {
+          color: #64748b;
+        }
+        .docx-forum-right {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          flex-shrink: 0;
+        }
+        .docx-prio-badge {
+          font-size: 10.5px;
+          font-weight: 700;
+          min-width: 24px;
+          text-align: center;
+          padding: 2px 6px;
+          border-radius: 5px;
+          background: rgba(245, 158, 11, 0.16);
+          color: #fbbf24;
+        }
+        .docx-prio-badge.is-off {
+          background: rgba(148, 163, 184, 0.12);
+          color: #64748b;
+        }
+        .docx-modal.theme-light .docx-prio-badge {
+          background: #dbeafe;
+          color: #1e3a8a;
+        }
+        .docx-modal.theme-light .docx-prio-badge.is-off {
+          background: #f1f5f9;
+          color: #94a3b8;
+        }
+        .docx-order-btn {
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.04);
+          color: #cbd5e1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.14s ease;
+        }
+        .docx-order-btn:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.12);
+          color: #ffffff;
+        }
+        .docx-order-btn:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
+        }
+        .docx-modal.theme-light .docx-order-btn {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          color: #475569;
+        }
+        .docx-modal.theme-light .docx-order-btn:hover:not(:disabled) {
+          background: #eff6ff;
+          border-color: #1e3a8a;
+          color: #1e3a8a;
+        }
+        .docx-picker-warning {
+          font-size: 11px;
+          color: #f87171;
+          font-weight: 600;
+          padding: 2px 2px 0;
+          display: none;
+        }
+        .docx-modal.theme-light .docx-picker-warning {
+          color: #dc2626;
         }
       </style>
 
@@ -7523,12 +7840,27 @@ ${rawText}`;
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
               <div>
-                <div class="docx-student-name">${studentName || "Mahasiswa UNPAM"}</div>
-                <div class="docx-student-nim">NIM: ${studentNim || "-"}</div>
+                <div class="docx-student-name">${escapeHtml(studentName || "Mahasiswa UNPAM")}</div>
+                <div class="docx-student-nim">NIM: ${escapeHtml(studentNim || "-")}</div>
               </div>
             </div>
-            <div class="docx-count-badge">${pendingCount} Tugas Menunggu</div>
+            <div class="docx-count-badge" id="docx-selected-badge">${totalPending} / ${totalPending} Dipilih</div>
           </div>
+
+          ${orderedEntries.length > 0 ? `
+          <div class="docx-picker-section">
+            <div class="docx-picker-head">
+              <div class="docx-section-label">Pilih &amp; Prioritaskan Forum (${totalPending} Tersedia):</div>
+              <div class="docx-picker-actions">
+                <button type="button" class="docx-mini-btn" id="docx-btn-select-all">Pilih Semua</button>
+                <button type="button" class="docx-mini-btn" id="docx-btn-clear-all">Kosongkan</button>
+              </div>
+            </div>
+            <div class="docx-course-chips" id="docx-course-chips" style="display: none;"></div>
+            <div class="docx-forum-list" id="docx-forum-list"></div>
+            <div class="docx-picker-warning" id="docx-picker-warning">Pilih minimal 1 forum diskusi yang ingin direkap.</div>
+          </div>
+          ` : ""}
 
           <div class="docx-section-label">Pilih Format File:</div>
           <div class="docx-format-grid" id="docx-format-container">
@@ -7557,7 +7889,7 @@ ${rawText}`;
                   <line x1="9" y1="15" x2="15" y2="15"></line>
                 </svg>
                 <span class="docx-format-title">Markdown (.md)</span>
-                <span class="docx-mode-tag" style="background:rgba(59,130,246,0.15); color:#60a5fa; border-color:rgba(59,130,246,0.3);">Hemat Token AI</span>
+                <span class="docx-mode-tag tag-token">Hemat Token AI</span>
               </div>
               <div class="docx-format-desc">
                 Format teks murni GFM: Pangkas 50%+ token input AI, tanpa XML overhead, siap disalin langsung ke ChatGPT / Claude / Gemini.
@@ -7591,7 +7923,7 @@ ${rawText}`;
               <div class="docx-mode-info">
                 <div class="docx-mode-title-row">
                   <span class="docx-mode-title">Mode Poles AI Gemini (Perjelas Tata Letak)</span>
-                  <span class="docx-mode-tag" style="background: rgba(212,175,55,0.15); color: #fbbf24; border-color: rgba(212,175,55,0.3);">AI Formatter</span>
+                  <span class="docx-mode-tag tag-ai">AI Formatter</span>
                 </div>
                 <div class="docx-mode-desc">
                   AI Gemini merapikan kembali struktur heading (A, B, C), daftar pertanyaan bernomor, dan tabel jika penulisan dosen di forum berantakan. Zero Hallucination: 100% kata-kata asli dosen dipertahankan.
@@ -7653,6 +7985,130 @@ ${rawText}`;
       const cardAi = overlay.querySelector("#mode-card-ai");
       const pickerWrap = overlay.querySelector("#docx-model-picker-wrap");
       const selectModel = overlay.querySelector("#docx-select-model");
+      const selectedBadgeEl = overlay.querySelector("#docx-selected-badge");
+      const forumListEl = overlay.querySelector("#docx-forum-list");
+      const courseChipsEl = overlay.querySelector("#docx-course-chips");
+      const warningEl = overlay.querySelector("#docx-picker-warning");
+      const btnSelectAll = overlay.querySelector("#docx-btn-select-all");
+      const btnClearAll = overlay.querySelector("#docx-btn-clear-all");
+      const getSelectedForums = () => orderedEntries.filter((e) => e.checked).map((e) => e.forum);
+      const renderForumPicker = () => {
+        if (!orderedEntries.length) return;
+        const selectedCount = orderedEntries.filter((e) => e.checked).length;
+        if (selectedBadgeEl) {
+          selectedBadgeEl.textContent = `${selectedCount} / ${orderedEntries.length} Dipilih`;
+          selectedBadgeEl.classList.toggle("is-empty", selectedCount === 0);
+        }
+        if (warningEl) {
+          warningEl.style.display = selectedCount === 0 ? "block" : "none";
+        }
+        if (btnConfirm) btnConfirm.disabled = selectedCount === 0;
+        if (btnCopy) btnCopy.disabled = selectedCount === 0;
+        if (courseChipsEl) {
+          const courseGroups = /* @__PURE__ */ new Map();
+          orderedEntries.forEach((entry) => {
+            const cKey = entry.forum.courseCode || entry.forum.courseTitle || "UNKNOWN";
+            if (!courseGroups.has(cKey)) {
+              courseGroups.set(cKey, {
+                code: cKey,
+                title: entry.forum.courseTitle || cKey,
+                total: 0,
+                checked: 0
+              });
+            }
+            const grp = courseGroups.get(cKey);
+            grp.total += 1;
+            if (entry.checked) grp.checked += 1;
+          });
+          if (courseGroups.size > 1) {
+            courseChipsEl.style.display = "flex";
+            courseChipsEl.innerHTML = "";
+            courseGroups.forEach((grp) => {
+              const chipBtn = document.createElement("button");
+              chipBtn.type = "button";
+              const stateClass = grp.checked === grp.total ? "active" : grp.checked > 0 ? "partial" : "";
+              chipBtn.className = `docx-course-chip ${stateClass}`;
+              chipBtn.title = `Klik untuk mengaktifkan / menonaktifkan semua forum ${grp.title}`;
+              chipBtn.innerHTML = `<span class="chip-name">${escapeHtml(grp.title)}</span><span>(${grp.checked}/${grp.total})</span>`;
+              chipBtn.addEventListener("click", () => {
+                const nextState = grp.checked < grp.total;
+                orderedEntries.forEach((entry) => {
+                  const cKey = entry.forum.courseCode || entry.forum.courseTitle || "UNKNOWN";
+                  if (cKey === grp.code) entry.checked = nextState;
+                });
+                renderForumPicker();
+              });
+              courseChipsEl.appendChild(chipBtn);
+            });
+          } else {
+            courseChipsEl.style.display = "none";
+          }
+        }
+        if (!forumListEl) return;
+        forumListEl.innerHTML = "";
+        let priorityCounter = 0;
+        orderedEntries.forEach((entry, idx) => {
+          if (entry.checked) priorityCounter += 1;
+          const f = entry.forum;
+          const meetingLabel = f.meetingNum !== null && f.meetingNum !== void 0 ? `Pertemuan ${f.meetingNum}` : f.sectionName || "Pertemuan";
+          const topicsCount = Array.isArray(f.topics) && f.topics.length > 0 ? f.topics.length : 1;
+          const row = document.createElement("div");
+          row.className = `docx-forum-row ${entry.checked ? "is-checked" : "is-unchecked"}`;
+          row.innerHTML = `
+          <label class="docx-forum-left">
+            <input type="checkbox" class="docx-forum-check" ${entry.checked ? "checked" : ""} aria-label="Pilih ${escapeHtml(f.courseTitle)} ${escapeHtml(meetingLabel)}">
+            <div class="docx-forum-text">
+              <div class="docx-forum-course-name" title="${escapeHtml(f.courseTitle)}">${escapeHtml(f.courseTitle || "Mata Kuliah")}</div>
+              <div class="docx-forum-meta" title="${escapeHtml(f.forumName)}">${escapeHtml(meetingLabel)} &middot; ${escapeHtml(f.forumName || "Forum Diskusi")} (${topicsCount} topik)</div>
+            </div>
+          </label>
+          <div class="docx-forum-right">
+            <span class="docx-prio-badge ${entry.checked ? "" : "is-off"}" title="${entry.checked ? "Urutan prioritas di dokumen" : "Tidak diikutsertakan"}">${entry.checked ? `#${priorityCounter}` : "\u2014"}</span>
+            <button type="button" class="docx-order-btn" data-dir="up" title="Naikkan prioritas" aria-label="Naikkan prioritas" ${idx === 0 ? "disabled" : ""}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button type="button" class="docx-order-btn" data-dir="down" title="Turunkan prioritas" aria-label="Turunkan prioritas" ${idx === orderedEntries.length - 1 ? "disabled" : ""}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+        `;
+          const checkbox = row.querySelector(".docx-forum-check");
+          checkbox.addEventListener("change", () => {
+            entry.checked = checkbox.checked;
+            renderForumPicker();
+          });
+          row.querySelector('[data-dir="up"]')?.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (idx <= 0) return;
+            const tmp = orderedEntries[idx - 1];
+            orderedEntries[idx - 1] = orderedEntries[idx];
+            orderedEntries[idx] = tmp;
+            renderForumPicker();
+          });
+          row.querySelector('[data-dir="down"]')?.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (idx >= orderedEntries.length - 1) return;
+            const tmp = orderedEntries[idx + 1];
+            orderedEntries[idx + 1] = orderedEntries[idx];
+            orderedEntries[idx] = tmp;
+            renderForumPicker();
+          });
+          forumListEl.appendChild(row);
+        });
+      };
+      renderForumPicker();
+      btnSelectAll?.addEventListener("click", () => {
+        orderedEntries.forEach((e) => {
+          e.checked = true;
+        });
+        renderForumPicker();
+      });
+      btnClearAll?.addEventListener("click", () => {
+        orderedEntries.forEach((e) => {
+          e.checked = false;
+        });
+        renderForumPicker();
+      });
       this._makeElementDraggable(modalCard, modalHeader);
       const closeModal = () => {
         overlay.classList.add("closing");
@@ -7704,26 +8160,36 @@ ${rawText}`;
         });
       }
       btnCopy?.addEventListener("click", () => {
+        const selectedForums = getSelectedForums();
+        if (selectedForums.length === 0) return;
         const mode = selectedMode;
         const model = selectModel ? selectModel.value : selectedModel;
         closeModal();
         if (typeof onConfirm === "function") {
-          onConfirm({ format: "md", mode, model, action: "copy" });
+          onConfirm({ selectedForums, format: "md", mode, model, action: "copy" });
         }
       });
       btnConfirm.addEventListener("click", () => {
+        const selectedForums = getSelectedForums();
+        if (selectedForums.length === 0) return;
         const format = selectedFormat;
         const mode = selectedMode;
         const model = selectModel ? selectModel.value : selectedModel;
         closeModal();
         if (typeof onConfirm === "function") {
-          onConfirm({ format, mode, model, action: "download" });
+          onConfirm({ selectedForums, format, mode, model, action: "download" });
         }
       });
     }
     async _handleExportForumRecap(btn, icon, textEl) {
       if (this._isExportingDocx) return;
-      const pendingForums = (this.activeForums || []).filter((f) => !f.completion && !f.answered);
+      const pendingForums = (this.activeForums || []).filter((f) => !f.completion && !f.answered).slice().sort((a, b) => {
+        const courseCmp = (a.courseTitle || "").localeCompare(b.courseTitle || "", "id");
+        if (courseCmp !== 0) return courseCmp;
+        const mA = a.meetingNum !== null && a.meetingNum !== void 0 ? a.meetingNum : 999;
+        const mB = b.meetingNum !== null && b.meetingNum !== void 0 ? b.meetingNum : 999;
+        return mA - mB;
+      });
       if (!pendingForums || pendingForums.length === 0) {
         Toast.info("Luar biasa! Tidak ada tugas forum diskusi yang pending (semua sudah selesai).");
         return;
@@ -7735,16 +8201,19 @@ ${rawText}`;
         forum_recap_format: "docx"
       });
       this._showDocxExportModal({
+        pendingForums,
         pendingCount: pendingForums.length,
         studentName: this._studentName,
         studentNim: this._studentNim,
         initialFormat: forum_recap_format || "docx",
         initialMode: docx_export_mode || "standard",
         initialModel: gemini_model || DEFAULT_FREE_MODEL,
-        onConfirm: async ({ format, mode, model, action }) => {
+        onConfirm: async ({ selectedForums, format, mode, model, action }) => {
+          const chosenForums = Array.isArray(selectedForums) && selectedForums.length > 0 ? selectedForums : pendingForums;
           await Storage.set({ docx_export_mode: mode, gemini_model: model, forum_recap_format: format });
           await this._executeExportForumRecap({
-            pendingForums,
+            pendingForums: chosenForums,
+            preserveOrder: true,
             format,
             action,
             polishWithAi: mode === "ai",
@@ -7756,7 +8225,7 @@ ${rawText}`;
         }
       });
     }
-    async _executeExportForumRecap({ pendingForums, format = "docx", action = "download", polishWithAi, chosenModel, btn, icon, textEl }) {
+    async _executeExportForumRecap({ pendingForums, preserveOrder = false, format = "docx", action = "download", polishWithAi, chosenModel, btn, icon, textEl }) {
       if (this._isExportingDocx) return;
       this._isExportingDocx = true;
       const originalText = textEl ? textEl.textContent : "Rekap Tugas";
@@ -7899,11 +8368,13 @@ ${rawText}`;
           }
         }
         const coursesPayload = Array.from(courseMap.values()).map((c) => {
-          c.meetings.sort((a, b) => {
-            const mA = a.meetingNum !== null ? a.meetingNum : 999;
-            const mB = b.meetingNum !== null ? b.meetingNum : 999;
-            return mA - mB;
-          });
+          if (!preserveOrder) {
+            c.meetings.sort((a, b) => {
+              const mA = a.meetingNum !== null ? a.meetingNum : 999;
+              const mB = b.meetingNum !== null ? b.meetingNum : 999;
+              return mA - mB;
+            });
+          }
           return c;
         });
         const dateString = DocxGenerator.getIndonesianDayAndDate(/* @__PURE__ */ new Date());

@@ -1,9 +1,15 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Aktivasi instan pasca-login SPA Next.js, penyegaran antarmuka terpadu (`/antislop-ui`), transisi blur backdrop jernih, dan rilis pembaruan `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Fitur seleksi & prioritas forum di modal Rekap Tugas (`token.js`), perbaikan kontras badge + scrollbar Light Mode modal ekspor, serta pembaruan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Seleksi & Pengaturan Prioritas Forum Sebelum Ekspor Rekap Tugas (`src/content/token.js`):
+  1. **Daftar Pilih & Prioritas Forum (`_showDocxExportModal`)**:
+     - Menambahkan daftar interaktif forum pending dengan checkbox per item (default terpilih semua agar alur 1-klik tetap cepat), tombol cepat `Pilih Semua` / `Kosongkan`, chip toggle per mata kuliah (muncul otomatis jika >1 MK), badge nomor prioritas (`#1`, `#2`, dst.), serta tombol naik/turun (`↑`/`↓`) untuk mengatur urutan prioritas dokumen.
+     - Menambahkan live counter (`X / Y Dipilih`), validasi menonaktifkan tombol ekspor/salin saat `0` dipilih tanpa native `alert()`, serta perbaikan scrollbar Light Mode (`.docx-modal.theme-light`) dan kontras badge `Hemat Token AI` / `AI Formatter`.
+  2. **Preservasi Urutan Prioritas Ekspor (`_handleExportForumRecap`, `_executeExportForumRecap`)**:
+     - Menyaring hanya forum yang dicentang dan mempertahankan urutan mata kuliah serta pertemuan sesuai prioritas pengguna saat menyusun `.docx`, `.md`, maupun salin clipboard prompt AI.
 - [x] Aktivasi Instan Pasca-Login Tanpa Refresh & Penyatuan UI/Animasi `/antislop-ui` (`build.js`, `main-sniffer.js`, `content.js`, `home.js`, `gemini.js`, `apiKeyManager.js`, `token.js`, `presensi.js`):
   1. **Fix SPA Navigation `/login` -> `/` Tanpa Refresh**:
      - Menghapus `exclude_matches: ['https://mentari.unpam.ac.id/login']` di `build.js` agar `content.js`, `token.js`, `gemini.js`, dan `home.js` siap di seluruh rute Mentari namun hanya aktif di luar `/login`.
