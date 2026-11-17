@@ -715,17 +715,82 @@
   var MentariContentEntry = class {
     constructor() {
       this._isChecking = false;
+      this._lastPathname = typeof window !== "undefined" ? window.location.pathname : "";
+      this._routeTimers = [];
       this._init();
+    }
+    _isLoginRoute() {
+      return typeof window !== "undefined" && window.location.pathname.startsWith("/login");
     }
     async _init() {
       console.log("[Mentari Mod Modern Edition] Menginisialisasi Content Entry...");
       this._injectMainSnifferFallback();
       this._injectFonts();
+      this._syncRouteUI(!this._isLoginRoute());
+      this._initPersistentObserver();
+      window.addEventListener("mentari-route-change", (e) => {
+        if (e?.detail?.source === "observer") return;
+        this._handleRouteChange("event");
+      });
+      this._setupGeminiChatCoordination();
+      if (!this._isLoginRoute()) {
+        this._checkAutoPilotNavigation();
+      }
+    }
+    _clearRouteTimers() {
+      this._routeTimers.forEach((id) => clearTimeout(id));
+      this._routeTimers = [];
+    }
+    _unmountUI() {
+      document.getElementById("mentari-header-toggle")?.remove();
+      document.getElementById("mentari-floating-launcher-host")?.remove();
+    }
+    _syncRouteUI(shouldRunAutoPilot = false) {
+      if (this._isLoginRoute()) {
+        this._unmountUI();
+        return;
+      }
       this._setupHeaderToggle();
       this._setupFloatingLauncher();
-      this._initPersistentObserver();
-      this._setupGeminiChatCoordination();
-      this._checkAutoPilotNavigation();
+      if (shouldRunAutoPilot) {
+        this._checkAutoPilotNavigation();
+      }
+    }
+    _handleRouteChange(origin = "event") {
+      const currentPath = window.location.pathname;
+      const prevPath = this._lastPathname;
+      const changed = currentPath !== prevPath;
+      if (!changed && origin === "event") return;
+      this._lastPathname = currentPath;
+      const isLogin = currentPath.startsWith("/login");
+      const wasLogin = prevPath.startsWith("/login");
+      if (changed && origin === "observer") {
+        try {
+          window.dispatchEvent(new CustomEvent("mentari-route-change", {
+            detail: { href: window.location.href, pathname: currentPath, source: "observer" }
+          }));
+        } catch (e) {
+        }
+      }
+      this._clearRouteTimers();
+      if (isLogin) {
+        this._unmountUI();
+        return;
+      }
+      if (wasLogin || changed) {
+        window.dispatchEvent(new CustomEvent("mentari-request-token-sync"));
+        this._syncRouteUI(true);
+        this._routeTimers.push(
+          setTimeout(() => this._syncRouteUI(false), 200),
+          setTimeout(() => this._syncRouteUI(false), 600),
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("mentari-request-token-sync"));
+            this._syncRouteUI(false);
+          }, 1200)
+        );
+      } else {
+        this._syncRouteUI(false);
+      }
     }
     _injectMainSnifferFallback() {
       if (document.getElementById("mentari-main-sniffer")) return;
@@ -937,8 +1002,14 @@
         if (this._isChecking) return;
         this._isChecking = true;
         requestAnimationFrame(() => {
-          this._setupHeaderToggle();
-          this._setupFloatingLauncher();
+          if (window.location.pathname !== this._lastPathname) {
+            this._handleRouteChange("observer");
+          } else if (!this._isLoginRoute()) {
+            this._setupHeaderToggle();
+            this._setupFloatingLauncher();
+          } else {
+            this._unmountUI();
+          }
           this._isChecking = false;
         });
       };

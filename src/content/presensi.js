@@ -12,20 +12,31 @@
 import { Storage } from '../utils/storage.js';
 import { UnpamAuth } from '../utils/unpam-auth.js';
 import { Toast } from '../utils/toast.js';
-import { getBrandSvgMarkup } from '../utils/theme.js';
+import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 
 class PresensiTracker {
   constructor() {
     this.host = null;
     this.shadow = null;
+    this.dockShadow = null;
     this.coursesData = [];
     this.mentariCache = null;
     this.studentPhotoUrl = null;
+    this.currentTheme = ThemeHelper.detectSystemTheme();
     this._init();
   }
 
-  _init() {
+  async _init() {
     console.log('[Mentari Mod] Presensi Tracker & Unified Dock aktif di MyUnpam.');
+
+    try {
+      this.currentTheme = await ThemeHelper.getEffectiveTheme();
+      this._applyTheme();
+      ThemeHelper.watchTheme((newTheme) => {
+        this.currentTheme = newTheme;
+        this._applyTheme();
+      });
+    } catch {}
 
     // Pasang sniffer auth
     UnpamAuth.installLiveSniffer();
@@ -43,6 +54,17 @@ class PresensiTracker {
 
     // Coba scan foto profil mahasiswa secara preemptive dari DOM MyUnpam
     this._tryExtractStudentPhoto();
+  }
+
+  _applyTheme() {
+    const isLight = this.currentTheme === 'light';
+    if (this.dockShadow) {
+      this.dockShadow.querySelector('.dock-container')?.classList.toggle('theme-light', isLight);
+    }
+    if (this.shadow) {
+      this.shadow.querySelector('.overlay')?.classList.toggle('theme-light', isLight);
+      this.shadow.querySelector('.modal')?.classList.toggle('theme-light', isLight);
+    }
   }
 
   _injectMainSniffer() {
@@ -133,36 +155,55 @@ class PresensiTracker {
     host.style.zIndex = '2147483640';
 
     const shadow = host.attachShadow({ mode: 'closed' });
+    this.dockShadow = shadow;
 
     const style = document.createElement('style');
     style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
       .dock-container {
         display: inline-flex;
         align-items: center;
         gap: 8px;
         padding: 6px 8px;
-        background: rgba(13, 17, 28, 0.92);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(212, 175, 55, 0.28);
+        background: rgba(20, 21, 25, 0.94);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 9999px;
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 1px rgba(255, 255, 255, 0.15);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
         user-select: none;
-        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease;
       }
       .dock-container:hover {
         transform: translateY(-2px);
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 12px rgba(212, 175, 55, 0.3);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+      }
+      .dock-container.theme-light {
+        background: rgba(255, 255, 255, 0.96);
+        border-color: #cbd5e1;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+      }
+      .dock-container.theme-light:hover {
+        box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
       }
       .dock-brand {
         display: flex;
         align-items: center;
         gap: 6px;
         padding: 4px 10px 4px 8px;
-        background: rgba(212, 175, 55, 0.12);
-        border: 1px solid rgba(212, 175, 55, 0.25);
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.28);
         border-radius: 9999px;
+      }
+      .dock-container.theme-light .dock-brand {
+        background: #eff6ff;
+        border-color: #bfdbfe;
       }
       .dock-brand-icon {
         color: #f59e0b;
@@ -173,14 +214,18 @@ class PresensiTracker {
         font-size: 11px;
         font-weight: 800;
         letter-spacing: 0.5px;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #f59e0b;
+      }
+      .dock-container.theme-light .dock-brand-text {
+        color: #1e3a8a;
       }
       .dock-divider {
         width: 1px;
         height: 18px;
         background: rgba(255, 255, 255, 0.12);
+      }
+      .dock-container.theme-light .dock-divider {
+        background: #e2e8f0;
       }
       .dock-btn {
         border: none;
@@ -196,28 +241,38 @@ class PresensiTracker {
         white-space: nowrap;
       }
       .dock-btn-presensi {
-        background: rgba(99, 102, 241, 0.18);
-        border: 1px solid rgba(99, 102, 241, 0.35);
+        background: rgba(59, 130, 246, 0.18);
+        border: 1px solid rgba(59, 130, 246, 0.35);
         color: #e0e7ff;
       }
+      .dock-container.theme-light .dock-btn-presensi {
+        background: #eff6ff;
+        border-color: #bfdbfe;
+        color: #1e3a8a;
+      }
       .dock-btn-presensi:hover {
-        background: #4f46e5;
-        border-color: #6366f1;
+        background: #1e3a8a;
+        border-color: #1e40af;
         color: #fff;
         transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.45);
+        box-shadow: 0 4px 14px rgba(30, 58, 138, 0.35);
       }
       .dock-btn-survey {
         background: rgba(16, 185, 129, 0.18);
         border: 1px solid rgba(16, 185, 129, 0.35);
         color: #d1fae5;
       }
+      .dock-container.theme-light .dock-btn-survey {
+        background: #ecfdf5;
+        border-color: #a7f3d0;
+        color: #065f46;
+      }
       .dock-btn-survey:hover {
         background: #059669;
         border-color: #10b981;
         color: #fff;
         transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
       }
       .dock-btn:disabled {
         opacity: 0.6;
@@ -294,6 +349,7 @@ class PresensiTracker {
     if (!this.host) {
       this._createModal();
     }
+    this._applyTheme();
     const overlay = this.shadow.querySelector('.overlay');
     overlay.classList.add('open');
     await this._loadJadwal();
@@ -307,6 +363,12 @@ class PresensiTracker {
     const style = document.createElement('style');
     style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
       
       /* Scrollbar halus modern */
       ::-webkit-scrollbar {
@@ -321,52 +383,65 @@ class PresensiTracker {
         border-radius: 9999px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: rgba(212, 175, 55, 0.4);
+        background: rgba(245, 158, 11, 0.45);
       }
 
       .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(4, 7, 15, 0.82);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background: rgba(15, 23, 42, 0.14);
+        backdrop-filter: blur(0px);
+        -webkit-backdrop-filter: blur(0px);
         z-index: 2147483642;
         display: flex;
         align-items: center;
         justify-content: center;
         opacity: 0;
         visibility: hidden;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.24s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), -webkit-backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.24s ease;
+      }
+      .overlay.theme-light {
+        background: rgba(255, 255, 255, 0.08);
       }
       .overlay.open {
         opacity: 1;
         visibility: visible;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
       .modal {
         width: 860px;
         max-width: 95vw;
         height: 700px;
         max-height: 90vh;
-        background: #0d111c;
-        border: 1px solid rgba(212, 175, 55, 0.28);
-        border-radius: 18px;
-        box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.15);
+        background: #141519;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
         display: flex;
         flex-direction: column;
         overflow: hidden;
         color: #f1f5f9;
         position: relative;
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+        transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease;
+      }
+      .overlay.open .modal {
+        opacity: 1;
+        transform: translateY(0) scale(1);
       }
       .header {
         padding: 16px 22px;
-        background: rgba(15, 23, 42, 0.85);
+        background: #18191e;
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        cursor: move;
+        cursor: grab;
         user-select: none;
       }
+      .header:active { cursor: grabbing; }
       .title-group {
         display: flex;
         align-items: center;
@@ -871,11 +946,11 @@ class PresensiTracker {
         animation: spin 0.8s linear infinite;
       }
       .btn-scan {
-        background: linear-gradient(135deg, #f59e0b, #d97706);
-        color: #fff;
+        background: #f59e0b;
+        color: #0f172a;
         border: none;
         padding: 9px 18px;
-        border-radius: 8px;
+        border-radius: 10px;
         font-weight: 700;
         font-size: 12px;
         cursor: pointer;
@@ -883,11 +958,112 @@ class PresensiTracker {
         align-items: center;
         gap: 6px;
         margin-top: 8px;
-        transition: opacity 0.2s;
+        transition: background-color 0.2s ease, transform 0.15s ease;
       }
       .btn-scan:hover {
-        opacity: 0.9;
+        background: #fbbf24;
+        transform: translateY(-1px);
       }
+
+      /* ─── Light Theme Overrides ─── */
+      .modal.theme-light {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
+        color: #0f172a;
+      }
+      .modal.theme-light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+      .modal.theme-light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .modal.theme-light .header {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+      }
+      .modal.theme-light .title-icon-box {
+        background: #eff6ff;
+        border-color: #bfdbfe;
+        color: #1e3a8a;
+      }
+      .modal.theme-light .title-text { color: #0f172a; }
+      .modal.theme-light .title-badge {
+        background: #ecfdf5;
+        border-color: #a7f3d0;
+        color: #059669;
+      }
+      .modal.theme-light .btn-refresh {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #334155;
+      }
+      .modal.theme-light .btn-refresh:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+        border-color: #1e3a8a;
+      }
+      .modal.theme-light .close-btn { color: #64748b; }
+      .modal.theme-light .close-btn:hover { color: #0f172a; background: #e2e8f0; }
+      .modal.theme-light .profile-hero {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+      }
+      .modal.theme-light .student-name { color: #0f172a; }
+      .modal.theme-light .meta-pill {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        color: #475569;
+      }
+      .modal.theme-light .meta-pill b { color: #0f172a; }
+      .modal.theme-light .att-box {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .att-box.primary {
+        border-color: #a7f3d0;
+        background: #f0fdf4;
+      }
+      .modal.theme-light .att-box.secondary {
+        border-color: #bfdbfe;
+        background: #eff6ff;
+      }
+      .modal.theme-light .att-box-title,
+      .modal.theme-light .att-counts,
+      .modal.theme-light .att-note-sub { color: #64748b; }
+      .modal.theme-light .att-counts b { color: #0f172a; }
+      .modal.theme-light .att-progress-track { background: #e2e8f0; }
+      .modal.theme-light .course-card {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .course-card:hover {
+        border-color: #93c5fd;
+        background: #f8fafc;
+      }
+      .modal.theme-light .course-card.is-open {
+        border-color: #1e3a8a;
+        background: #ffffff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      }
+      .modal.theme-light .course-name { color: #0f172a; }
+      .modal.theme-light .stat-pill.sks { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+      .modal.theme-light .stat-pill.hadir { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+      .modal.theme-light .stat-pill.alpa { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+      .modal.theme-light .stat-pill.berjalan { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+      .modal.theme-light .stat-pill.total { background: #eff6ff; color: #1e3a8a; border-color: #bfdbfe; }
+      .modal.theme-light .meeting-details {
+        border-top-color: #e2e8f0;
+        background: #f8fafc;
+      }
+      .modal.theme-light .meeting-pill {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .meeting-pill.hadir { background: #ecfdf5; border-color: #a7f3d0; color: #059669; }
+      .modal.theme-light .meeting-pill.alpa { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+      .modal.theme-light .meeting-pill.pending { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; }
+      .modal.theme-light .btn-scan {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .modal.theme-light .btn-scan:hover { background: #1e40af; }
     `;
 
     const overlay = document.createElement('div');
@@ -939,7 +1115,13 @@ class PresensiTracker {
     this.shadow.appendChild(overlay);
     document.body.appendChild(this.host);
 
-    const close = () => overlay.classList.remove('open');
+    const close = () => {
+      overlay.classList.remove('open');
+      const dlg = this.shadow.getElementById('presensi-modal-dialog');
+      if (dlg && !dlg.style.left) {
+        dlg.style.transform = '';
+      }
+    };
     this.shadow.getElementById('btn-close').addEventListener('click', close);
     
     // Refresh button

@@ -111,24 +111,27 @@ class ApiKeyManager {
       .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(9, 10, 14, 0.72);
-        backdrop-filter: blur(6px);
+        background: rgba(15, 23, 42, 0.14);
+        backdrop-filter: blur(0px);
+        -webkit-backdrop-filter: blur(0px);
         z-index: 2147483647 !important;
         display: flex;
         align-items: center;
         justify-content: center;
         opacity: 0;
         visibility: hidden;
-        transition: opacity 0.22s ease, visibility 0.22s ease;
+        transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.24s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), -webkit-backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.24s ease;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         padding: 16px;
       }
       .overlay.theme-light {
-        background: rgba(15, 23, 42, 0.42);
+        background: rgba(255, 255, 255, 0.08);
       }
       .overlay.open {
         opacity: 1;
         visibility: visible;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
 
       .modal {
@@ -137,15 +140,19 @@ class ApiKeyManager {
         background: #141519;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 14px;
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
         overflow: hidden;
         color: #f1f5f9;
         max-height: 90vh;
         display: flex;
         flex-direction: column;
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+        transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
       }
       .overlay.open .modal {
-        animation: modalReveal 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        opacity: 1;
+        transform: translateY(0) scale(1);
       }
 
       /* Light Theme Surface */
@@ -1095,17 +1102,22 @@ class ApiKeyManager {
     await this._switchView(view);
 
     const overlay = this.shadow?.querySelector('.overlay');
-    if (overlay) overlay.classList.add('open');
+    if (overlay) {
+      void overlay.offsetWidth;
+      overlay.classList.add('open');
+    }
   }
 
   closeModal() {
     if (!this.shadow) return;
+    this.isOpen = false;
     const overlay = this.shadow.querySelector('.overlay');
     if (overlay) overlay.classList.remove('open');
-    if (this.host) {
-      this.host.style.display = 'none';
-    }
-    this.isOpen = false;
+    setTimeout(() => {
+      if (!this.isOpen && this.host) {
+        this.host.style.display = 'none';
+      }
+    }, 260);
   }
 }
 

@@ -192,4 +192,36 @@
       initialStorageScan();
     }
   });
+
+  // 4. Pantau perpindahan halaman SPA Next.js (/login -> /, dll)
+  let lastObservedHref = typeof window !== 'undefined' ? window.location.href : '';
+  function notifyRouteChange() {
+    try {
+      const currentHref = window.location.href;
+      if (currentHref === lastObservedHref) return;
+      lastObservedHref = currentHref;
+      initialStorageScan();
+      window.dispatchEvent(new CustomEvent('mentari-route-change', {
+        detail: {
+          href: currentHref,
+          pathname: window.location.pathname
+        }
+      }));
+    } catch (e) {}
+  }
+
+  if (typeof window !== 'undefined' && window.history) {
+    ['pushState', 'replaceState'].forEach((method) => {
+      const orig = window.history[method];
+      if (typeof orig === 'function') {
+        window.history[method] = function () {
+          const result = orig.apply(this, arguments);
+          notifyRouteChange();
+          return result;
+        };
+      }
+    });
+    window.addEventListener('popstate', notifyRouteChange);
+    window.addEventListener('hashchange', notifyRouteChange);
+  }
 })();

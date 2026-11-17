@@ -47,9 +47,6 @@
       "matches": [
         "https://mentari.unpam.ac.id/*"
       ],
-      "exclude_matches": [
-        "https://mentari.unpam.ac.id/login"
-      ],
       "js": [
         "dist/content/gemini.js",
         "dist/content/token.js",
@@ -58,7 +55,7 @@
     },
     {
       "matches": [
-        "https://mentari.unpam.ac.id/login"
+        "https://mentari.unpam.ac.id/*"
       ],
       "js": [
         "dist/content/home.js"

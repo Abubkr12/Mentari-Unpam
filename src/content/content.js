@@ -11,7 +11,13 @@ import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
 class MentariContentEntry {
   constructor() {
     this._isChecking = false;
+    this._lastPathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    this._routeTimers = [];
     this._init();
+  }
+
+  _isLoginRoute() {
+    return typeof window !== 'undefined' && window.location.pathname.startsWith('/login');
   }
 
   async _init() {
@@ -23,18 +29,89 @@ class MentariContentEntry {
     // Pasang font Material Symbols secara aman
     this._injectFonts();
 
-    // Eksekusi injeksi UI pertama kali
-    this._setupHeaderToggle();
-    this._setupFloatingLauncher();
+    // Sinkronisasi UI sesuai rute aktif (dormant di /login, aktif di dashboard/halaman lain)
+    this._syncRouteUI(!this._isLoginRoute());
 
     // Pasang pengawas DOM persisten untuk SPA Navigation Next.js
     this._initPersistentObserver();
 
+    // Dengarkan perpindahan rute SPA dari Main World Sniffer
+    window.addEventListener('mentari-route-change', (e) => {
+      if (e?.detail?.source === 'observer') return;
+      this._handleRouteChange('event');
+    });
+
     // Dengarkan event koordinasi dengan Gemini Chat
     this._setupGeminiChatCoordination();
 
-    // Kawal navigasi single-tab Auto-Pilot jika SPA LMS meredirect ke luar /exam/
-    this._checkAutoPilotNavigation();
+    // Kawal navigasi single-tab Auto-Pilot jika bukan halaman login
+    if (!this._isLoginRoute()) {
+      this._checkAutoPilotNavigation();
+    }
+  }
+
+  _clearRouteTimers() {
+    this._routeTimers.forEach(id => clearTimeout(id));
+    this._routeTimers = [];
+  }
+
+  _unmountUI() {
+    document.getElementById('mentari-header-toggle')?.remove();
+    document.getElementById('mentari-floating-launcher-host')?.remove();
+  }
+
+  _syncRouteUI(shouldRunAutoPilot = false) {
+    if (this._isLoginRoute()) {
+      this._unmountUI();
+      return;
+    }
+    this._setupHeaderToggle();
+    this._setupFloatingLauncher();
+    if (shouldRunAutoPilot) {
+      this._checkAutoPilotNavigation();
+    }
+  }
+
+  _handleRouteChange(origin = 'event') {
+    const currentPath = window.location.pathname;
+    const prevPath = this._lastPathname;
+    const changed = currentPath !== prevPath;
+    if (!changed && origin === 'event') return;
+
+    this._lastPathname = currentPath;
+    const isLogin = currentPath.startsWith('/login');
+    const wasLogin = prevPath.startsWith('/login');
+
+    if (changed && origin === 'observer') {
+      try {
+        window.dispatchEvent(new CustomEvent('mentari-route-change', {
+          detail: { href: window.location.href, pathname: currentPath, source: 'observer' }
+        }));
+      } catch (e) {}
+    }
+
+    this._clearRouteTimers();
+
+    if (isLogin) {
+      this._unmountUI();
+      return;
+    }
+
+    // Baru masuk dari /login -> sync token sniffer & pasang tombol segera + tunggu hidrasi Next.js
+    if (wasLogin || changed) {
+      window.dispatchEvent(new CustomEvent('mentari-request-token-sync'));
+      this._syncRouteUI(true);
+      this._routeTimers.push(
+        setTimeout(() => this._syncRouteUI(false), 200),
+        setTimeout(() => this._syncRouteUI(false), 600),
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('mentari-request-token-sync'));
+          this._syncRouteUI(false);
+        }, 1200)
+      );
+    } else {
+      this._syncRouteUI(false);
+    }
   }
 
   _injectMainSnifferFallback() {
@@ -269,8 +346,14 @@ class MentariContentEntry {
       if (this._isChecking) return;
       this._isChecking = true;
       requestAnimationFrame(() => {
-        this._setupHeaderToggle();
-        this._setupFloatingLauncher();
+        if (window.location.pathname !== this._lastPathname) {
+          this._handleRouteChange('observer');
+        } else if (!this._isLoginRoute()) {
+          this._setupHeaderToggle();
+          this._setupFloatingLauncher();
+        } else {
+          this._unmountUI();
+        }
         this._isChecking = false;
       });
     };

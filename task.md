@@ -1,9 +1,17 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Penyederhanaan ikon UI, pembaruan daftar model Gemini Free Tier aktif (`gemini-4-hydrogen` dkk), dan pengemasan rilis `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Aktivasi instan pasca-login SPA Next.js, penyegaran antarmuka terpadu (`/antislop-ui`), transisi blur backdrop jernih, dan rilis pembaruan `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Aktivasi Instan Pasca-Login Tanpa Refresh & Penyatuan UI/Animasi `/antislop-ui` (`build.js`, `main-sniffer.js`, `content.js`, `home.js`, `gemini.js`, `apiKeyManager.js`, `token.js`, `presensi.js`):
+  1. **Fix SPA Navigation `/login` -> `/` Tanpa Refresh**:
+     - Menghapus `exclude_matches: ['https://mentari.unpam.ac.id/login']` di `build.js` agar `content.js`, `token.js`, `gemini.js`, dan `home.js` siap di seluruh rute Mentari namun hanya aktif di luar `/login`.
+     - Menambahkan intersepsi `history.pushState`/`replaceState`/`popstate`/`hashchange` pada `main-sniffer.js` untuk menyiarkan event `mentari-route-change`, dipadukan pengawas pathname persisten di `content.js` yang langsung memasang ikon navbar, floating launcher, Gemini chat, dan memicu `mentari-request-token-sync` saat keluar dari `/login`.
+     - Menambahkan auto-cleanup `#mentari-home-theme` di `home.js` saat meninggalkan `/login`.
+  2. **Overlay Blur Jernih (Tanpa Dimming Gelap) & Konsistensi UI/Motion `/antislop-ui`**:
+     - Menghapus latar belakang scrim gelap (`rgba(0,0,0,0.75)`/`0.82`) pada `.overlay`, `.docx-modal-overlay`, dan `.ap-overlay` di `apiKeyManager.js`, `token.js`, serta `presensi.js`; menggantinya dengan frosted glass blur jernih yang beranimasi halus (`backdrop-filter: blur(0px -> 8px)` + spring modal reveal & exit, serta respect `prefers-reduced-motion`).
+     - Menyatukan tema Terang & Gelap di Dashboard (`token.js`), sub-modal `Docx Export` & `Auto-Pilot`, `Gemini Chat` (`gemini.js`), dan `Presensi Tracker` (`presensi.js`) memakai sistem warna terpadu (`#ffffff`/`#f8fafc` + Navy `#1E3A8A` di Mode Terang, `#141519` + Amber `#F59E0B` di Mode Gelap) serta animasi tab switch, accordion, dan dropdown status model (`tabFadeSlide`, `panelReveal`).
 - [x] Pemilihan Model Default di Setup Key & Dropdown Status API/Model Real-Time (`models.js`, `service-worker.js`, `apiKeyManager.js`, `token.js`):
   1. **Single Source of Truth Model (`src/utils/models.js`)**: Mengonsolidasikan daftar 6 model Free Tier aktif (`gemini-4-hydrogen` default) dan memusatkan seluruh impor di `service-worker.js`, `token.js`, `quiz.js`, `gemini.js`, `apiKeyManager.js`, dan `storage.js`.
   2. **Alur Setup API Key & Model Default (`apiKeyManager.js`, `service-worker.js`)**:

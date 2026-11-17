@@ -63,6 +63,18 @@ class MentariDashboard {
     window.addEventListener('mentari-token-captured', () => {
       this._prefetchData();
     });
+
+    // Sinkronisasi ketika berpindah rute SPA Next.js (/login -> dashboard, dll)
+    window.addEventListener('mentari-route-change', () => {
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/login')) {
+        if (this.isOpen) this.closeModal();
+        return;
+      }
+      try {
+        window.dispatchEvent(new CustomEvent('mentari-request-token-sync'));
+      } catch {}
+      this._prefetchData();
+    });
   }
 
   async toggleModal() {
@@ -96,7 +108,11 @@ class MentariDashboard {
   closeModal() {
     if (!this.shadow) return;
     const overlay = this.shadow.querySelector('.overlay');
+    const modalEl = this.shadow.querySelector('.modal');
     if (overlay) overlay.classList.remove('open');
+    if (modalEl && !modalEl.style.left) {
+      modalEl.style.transform = '';
+    }
     this.isOpen = false;
   }
 
@@ -160,37 +176,66 @@ class MentariDashboard {
         background: #f3cf55;
       }
 
+      @keyframes tabFadeSlide {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes panelReveal {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
       .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.75);
-        backdrop-filter: blur(10px);
+        background: rgba(15, 23, 42, 0.14);
+        backdrop-filter: blur(0px);
+        -webkit-backdrop-filter: blur(0px);
         z-index: 2147483642;
         display: flex;
         align-items: center;
         justify-content: center;
         opacity: 0;
         visibility: hidden;
-        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.24s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), -webkit-backdrop-filter 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.24s ease;
+      }
+      .overlay.theme-light {
+        background: rgba(255, 255, 255, 0.08);
       }
       .overlay.open {
         opacity: 1;
         visibility: visible;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
       .modal {
         width: 760px;
         max-width: 94vw;
         height: 600px;
         max-height: 88vh;
-        background: #141418;
-        border: 1px solid rgba(212, 175, 55, 0.35);
-        border-radius: 18px;
-        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+        background: #141519;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        color: #e5e5e5;
+        color: #f1f5f9;
         position: relative;
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+        transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease;
+      }
+      .overlay.open .modal {
+        opacity: 1;
+        transform: translateY(0) scale(1);
       }
       .header {
         padding: 16px 22px;
@@ -286,9 +331,9 @@ class MentariDashboard {
         background: rgba(255, 255, 255, 0.03);
       }
       .tab-btn.active {
-        color: #d4af37;
-        border-bottom-color: #d4af37;
-        background: rgba(212, 175, 55, 0.06);
+        color: #f59e0b;
+        border-bottom-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.08);
       }
       .tab-content {
         flex-grow: 1;
@@ -296,7 +341,10 @@ class MentariDashboard {
         overflow-y: auto;
         display: none;
       }
-      .tab-content.active { display: block; }
+      .tab-content.active {
+        display: block;
+        animation: tabFadeSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      }
 
       /* Filter Pills */
       .filter-pills {
@@ -484,6 +532,7 @@ class MentariDashboard {
       }
       .forum-accordion-content.open {
         display: block;
+        animation: panelReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       }
       .forum-item {
         background: rgba(255, 255, 255, 0.03);
@@ -830,6 +879,7 @@ class MentariDashboard {
       }
       .eval-accordion-content.open {
         display: block;
+        animation: panelReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       }
       .eval-section-label {
         font-size: 11px;
@@ -1032,24 +1082,25 @@ class MentariDashboard {
         border-color: #cbd5e1;
         box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
         color: #1e293b;
-        scrollbar-color: rgba(217, 119, 6, 0.35) transparent;
+        scrollbar-color: #cbd5e1 transparent;
       }
       .modal.theme-light ::-webkit-scrollbar-thumb {
-        background: rgba(217, 119, 6, 0.35);
+        background: #cbd5e1;
       }
       .modal.theme-light ::-webkit-scrollbar-thumb:hover {
-        background: rgba(217, 119, 6, 0.65);
+        background: #94a3b8;
       }
       .modal.theme-light .header {
-        background: #ffffff;
+        background: #f8fafc;
         border-bottom-color: #e2e8f0;
       }
       .modal.theme-light .brand {
         color: #0f172a;
       }
       .modal.theme-light .brand-badge {
-        background: rgba(217, 119, 6, 0.15);
-        color: #b45309;
+        background: #eff6ff;
+        color: #1e3a8a;
+        border: 1px solid #bfdbfe;
       }
       .modal.theme-light .close-btn,
       .modal.theme-light .theme-toggle-btn {
@@ -1072,9 +1123,9 @@ class MentariDashboard {
         background: rgba(0, 0, 0, 0.04);
       }
       .modal.theme-light .tab-btn.active {
-        color: #b45309;
-        border-bottom-color: #d97706;
-        background: rgba(217, 119, 6, 0.08);
+        color: #1e3a8a;
+        border-bottom-color: #1e3a8a;
+        background: #eff6ff;
       }
       .modal.theme-light .filter-pill {
         background: #f1f5f9;
@@ -1086,16 +1137,16 @@ class MentariDashboard {
         color: #1e293b;
       }
       .modal.theme-light .filter-pill.active {
-        background: rgba(217, 119, 6, 0.15);
-        border-color: rgba(217, 119, 6, 0.6);
-        color: #b45309;
+        background: #eff6ff;
+        border-color: #1e3a8a;
+        color: #1e3a8a;
       }
       .modal.theme-light .filter-pill .pill-count {
         background: rgba(0, 0, 0, 0.08);
       }
       .modal.theme-light .filter-pill.active .pill-count {
-        background: rgba(217, 119, 6, 0.25);
-        color: #78350f;
+        background: #dbeafe;
+        color: #1e3a8a;
       }
       .modal.theme-light .forum-search-input,
       .modal.theme-light .eval-search-input,
@@ -1165,7 +1216,7 @@ class MentariDashboard {
       }
       .modal.theme-light .forum-card:hover {
         background: #f8fafc;
-        border-color: rgba(212, 175, 55, 0.45);
+        border-color: #93c5fd;
       }
       .modal.theme-light .forum-title {
         color: #1e293b !important;
@@ -1328,7 +1379,10 @@ class MentariDashboard {
         flex-direction: column;
         gap: 10px;
       }
-      .model-status-dropdown.open .model-status-panel { display: flex; }
+      .model-status-dropdown.open .model-status-panel {
+        display: flex;
+        animation: panelReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      }
 
       .model-status-toolbar {
         display: flex;
@@ -1395,6 +1449,61 @@ class MentariDashboard {
       .modal.theme-light .ms-badge.limited { background: #fffbeb; color: #b45309; }
       .modal.theme-light .ms-badge.exhausted { background: #fef2f2; color: #dc2626; }
       .modal.theme-light .ms-badge.unconfigured { background: #f1f5f9; color: #64748b; }
+
+      /* Unified /antislop-ui Light Mode Navy Accents & Polish */
+      .modal.theme-light {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
+        color: #0f172a;
+      }
+      .modal.theme-light .tabs-bar {
+        background: #f8fafc;
+        border-bottom-color: #e2e8f0;
+      }
+      .modal.theme-light .forum-search-input:focus,
+      .modal.theme-light .eval-search-input:focus,
+      .modal.theme-light .eval-type-select:focus,
+      .modal.theme-light .select-field:focus {
+        border-color: #1e3a8a;
+        box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.14);
+      }
+      .modal.theme-light .forum-course-card:hover,
+      .modal.theme-light .eval-course-card:hover {
+        border-color: #cbd5e1;
+      }
+      .modal.theme-light .forum-accordion-chevron.open,
+      .modal.theme-light .eval-accordion-chevron.open,
+      .modal.theme-light .eval-stat-value,
+      .modal.theme-light .eval-section-label {
+        color: #1e3a8a;
+      }
+      .modal.theme-light .forum-btn-action,
+      .modal.theme-light .eval-btn-action {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #bfdbfe;
+      }
+      .modal.theme-light .forum-btn-action:hover,
+      .modal.theme-light .eval-btn-action:hover {
+        background: #1e3a8a;
+        color: #ffffff;
+        border-color: #1e3a8a;
+      }
+      .modal.theme-light .btn-primary,
+      .modal.theme-light .btn-open-forum {
+        background: #1e3a8a;
+        color: #ffffff;
+        border-color: #1e3a8a;
+      }
+      .modal.theme-light .btn-primary:hover,
+      .modal.theme-light .btn-open-forum:hover {
+        background: #1e40af;
+      }
+      .modal.theme-light .eval-summary {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+      }
     `;
 
     const overlay = document.createElement('div');
@@ -1779,13 +1888,13 @@ class MentariDashboard {
   _applyTheme(theme) {
     this.currentTheme = theme === 'light' ? 'light' : 'dark';
     if (!this.shadow) return;
+    const overlayEl = this.shadow.querySelector('.overlay');
     const modalEl = this.shadow.querySelector('.modal');
+    if (overlayEl) {
+      overlayEl.classList.toggle('theme-light', this.currentTheme === 'light');
+    }
     if (modalEl) {
-      if (this.currentTheme === 'light') {
-        modalEl.classList.add('theme-light');
-      } else {
-        modalEl.classList.remove('theme-light');
-      }
+      modalEl.classList.toggle('theme-light', this.currentTheme === 'light');
     }
     const selectTheme = this.shadow.getElementById('select-dashboard-theme');
     if (selectTheme && selectTheme.value !== this.currentTheme) {
@@ -2630,49 +2739,69 @@ class MentariDashboard {
 
     const overlay = document.createElement('div');
     overlay.id = 'mentari-docx-export-overlay';
-    overlay.className = 'docx-modal-overlay';
+    overlay.className = `docx-modal-overlay ${isLight ? 'theme-light' : ''}`;
 
     overlay.innerHTML = `
       <style>
         .docx-modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.82);
-          backdrop-filter: blur(14px);
+          background: rgba(15, 23, 42, 0.14);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           z-index: 2147483646;
           display: flex;
           align-items: center;
           justify-content: center;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          animation: docxFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: docxBlurIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transition: opacity 0.2s ease, backdrop-filter 0.22s ease, -webkit-backdrop-filter 0.22s ease;
         }
-        @keyframes docxFadeIn {
-          from { opacity: 0; transform: scale(0.96); }
-          to { opacity: 1; transform: scale(1); }
+        .docx-modal-overlay.theme-light {
+          background: rgba(255, 255, 255, 0.08);
+        }
+        .docx-modal-overlay.closing {
+          opacity: 0;
+          backdrop-filter: blur(0px);
+          -webkit-backdrop-filter: blur(0px);
+        }
+        @keyframes docxBlurIn {
+          from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+          to { opacity: 1; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+        }
+        @keyframes docxCardIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .docx-modal {
           width: 590px;
           max-width: 92vw;
           max-height: 90vh;
-          background: #131317;
-          border: 1px solid rgba(212, 175, 55, 0.4);
-          border-radius: 16px;
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(212, 175, 55, 0.12);
+          background: #141519;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 14px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          color: #f1f1f1;
+          color: #f1f5f9;
           position: relative;
+          animation: docxCardIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transition: opacity 0.18s ease, transform 0.2s ease;
+        }
+        .docx-modal-overlay.closing .docx-modal {
+          opacity: 0;
+          transform: translateY(8px) scale(0.97);
         }
         .docx-modal.theme-light {
           background: #ffffff;
-          border-color: rgba(212, 175, 55, 0.5);
-          color: #1e293b;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+          border-color: #e2e8f0;
+          color: #0f172a;
+          box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
         }
         .docx-header {
           padding: 16px 22px;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+          background: #18191e;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
           display: flex;
           align-items: center;
@@ -2693,10 +2822,14 @@ class MentariDashboard {
           gap: 10px;
           font-size: 15px;
           font-weight: 700;
-          color: #fbbf24;
+          color: #f8fafc;
         }
+        .docx-header-title svg { color: #f59e0b; }
         .docx-modal.theme-light .docx-header-title {
-          color: #b45309;
+          color: #0f172a;
+        }
+        .docx-modal.theme-light .docx-header-title svg {
+          color: #1e3a8a;
         }
         .docx-close-btn {
           background: rgba(255, 255, 255, 0.05);
@@ -3077,9 +3210,9 @@ class MentariDashboard {
           background: #dbeafe;
         }
         .docx-btn-confirm {
-          background: linear-gradient(135deg, #d4af37 0%, #b89728 100%);
-          border: 1px solid rgba(212, 175, 55, 0.6);
-          color: #000;
+          background: #f59e0b;
+          border: 1px solid #f59e0b;
+          color: #0f172a;
           border-radius: 8px;
           padding: 8px 18px;
           font-size: 12px;
@@ -3088,12 +3221,36 @@ class MentariDashboard {
           display: flex;
           align-items: center;
           gap: 8px;
-          transition: all 0.2s;
-          box-shadow: 0 4px 14px rgba(212, 175, 55, 0.25);
+          transition: all 0.2s ease;
         }
         .docx-btn-confirm:hover {
+          background: #fbbf24;
           transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(212, 175, 55, 0.4);
+        }
+        .docx-modal.theme-light .docx-student-icon { color: #1e3a8a; }
+        .docx-modal.theme-light .docx-count-badge {
+          background: #eff6ff;
+          color: #1e3a8a;
+          border-color: #bfdbfe;
+        }
+        .docx-modal.theme-light .docx-format-card.selected,
+        .docx-modal.theme-light .docx-mode-card.selected {
+          border-color: #1e3a8a;
+          background: #eff6ff;
+          box-shadow: 0 0 0 1px rgba(30, 58, 138, 0.12);
+        }
+        .docx-modal.theme-light .docx-mode-card.selected .docx-radio-indicator {
+          border-color: #1e3a8a;
+        }
+        .docx-modal.theme-light .docx-radio-dot { background: #1e3a8a; }
+        .docx-modal.theme-light .docx-model-picker-label { color: #1e3a8a; }
+        .docx-modal.theme-light .docx-btn-confirm {
+          background: #1e3a8a;
+          border-color: #1e3a8a;
+          color: #ffffff;
+        }
+        .docx-modal.theme-light .docx-btn-confirm:hover {
+          background: #1e40af;
         }
       </style>
 
@@ -3263,8 +3420,8 @@ class MentariDashboard {
     this._makeElementDraggable(modalCard, modalHeader);
 
     const closeModal = () => {
-      overlay.style.animation = 'docxFadeIn 0.15s ease reverse forwards';
-      setTimeout(() => overlay.remove(), 160);
+      overlay.classList.add('closing');
+      setTimeout(() => overlay.remove(), 210);
     };
 
     btnClose.addEventListener('click', closeModal);
@@ -4220,25 +4377,39 @@ class MentariDashboard {
 
     const overlay = document.createElement('div');
     overlay.id = 'mentari-autopilot-modal-overlay';
-    overlay.className = 'ap-overlay';
+    overlay.className = `ap-overlay ${this.currentTheme === 'light' ? 'theme-light' : ''}`;
 
     overlay.innerHTML = `
       <style>
         .ap-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.82);
-          backdrop-filter: blur(14px);
+          background: rgba(15, 23, 42, 0.14);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           z-index: 2147483645;
           display: flex;
           align-items: center;
           justify-content: center;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          animation: apFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: apBlurIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transition: opacity 0.2s ease, backdrop-filter 0.22s ease, -webkit-backdrop-filter 0.22s ease;
         }
-        @keyframes apFadeIn {
-          from { opacity: 0; transform: scale(0.96); }
-          to { opacity: 1; transform: scale(1); }
+        .ap-overlay.theme-light {
+          background: rgba(255, 255, 255, 0.08);
+        }
+        .ap-overlay.closing {
+          opacity: 0;
+          backdrop-filter: blur(0px);
+          -webkit-backdrop-filter: blur(0px);
+        }
+        @keyframes apBlurIn {
+          from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+          to { opacity: 1; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+        }
+        @keyframes apCardIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .ap-modal *::-webkit-scrollbar {
           width: 6px;
@@ -4248,11 +4419,11 @@ class MentariDashboard {
           background: transparent;
         }
         .ap-modal *::-webkit-scrollbar-thumb {
-          background: rgba(212, 175, 55, 0.28);
+          background: rgba(255, 255, 255, 0.18);
           border-radius: 4px;
         }
         .ap-modal *::-webkit-scrollbar-thumb:hover {
-          background: rgba(212, 175, 55, 0.55);
+          background: rgba(255, 255, 255, 0.32);
         }
         .ap-modal *::-webkit-scrollbar-button {
           display: none !important;
@@ -4261,25 +4432,31 @@ class MentariDashboard {
         }
         .ap-modal * {
           scrollbar-width: thin;
-          scrollbar-color: rgba(212, 175, 55, 0.3) transparent;
+          scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
         }
         .ap-modal {
           width: 650px;
           max-width: 94vw;
           max-height: 90vh;
-          background: #131317;
-          border: 1px solid rgba(212, 175, 55, 0.4);
-          border-radius: 18px;
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(212, 175, 55, 0.12);
+          background: #141519;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 14px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          color: #f1f1f1;
+          color: #f1f5f9;
           position: relative;
+          animation: apCardIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          transition: opacity 0.18s ease, transform 0.2s ease;
+        }
+        .ap-overlay.closing .ap-modal {
+          opacity: 0;
+          transform: translateY(8px) scale(0.97);
         }
         .ap-header {
-          padding: 18px 24px;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+          padding: 16px 22px;
+          background: #18191e;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
           display: flex;
           align-items: center;
@@ -4296,12 +4473,10 @@ class MentariDashboard {
           gap: 10px;
           font-size: 15px;
           font-weight: 700;
-          color: #fbbf24;
-          letter-spacing: 0.3px;
+          color: #f8fafc;
         }
         .ap-header-title svg {
-          color: #d4af37;
-          filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.5));
+          color: #f59e0b;
         }
         .ap-close-btn {
           background: rgba(255, 255, 255, 0.05);
@@ -4770,25 +4945,28 @@ class MentariDashboard {
         /* ─── Auto-Pilot Modal Light Theme Overrides ─── */
         .ap-modal.theme-light {
           background: #ffffff;
-          color: #1e293b;
-          border-color: #cbd5e1;
-          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+          color: #0f172a;
+          border-color: #e2e8f0;
+          box-shadow: 0 24px 56px rgba(15, 23, 42, 0.16);
         }
         .ap-modal.theme-light *::-webkit-scrollbar-thumb {
-          background: rgba(217, 119, 6, 0.35);
+          background: #cbd5e1;
         }
         .ap-modal.theme-light *::-webkit-scrollbar-thumb:hover {
-          background: rgba(217, 119, 6, 0.65);
+          background: #94a3b8;
         }
         .ap-modal.theme-light * {
-          scrollbar-color: rgba(217, 119, 6, 0.35) transparent;
+          scrollbar-color: #cbd5e1 transparent;
         }
         .ap-modal.theme-light .ap-header {
           background: #f8fafc;
           border-bottom-color: #e2e8f0;
         }
         .ap-modal.theme-light .ap-header-title {
-          color: #b45309;
+          color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-header-title svg {
+          color: #1e3a8a;
         }
         .ap-modal.theme-light .ap-close-btn {
           color: #64748b;
@@ -4800,14 +4978,15 @@ class MentariDashboard {
           background: #e2e8f0;
         }
         .ap-modal.theme-light .ap-banner {
-          background: rgba(217, 119, 6, 0.08);
-          border-color: rgba(217, 119, 6, 0.3);
+          background: #eff6ff;
+          border-color: #bfdbfe;
         }
+        .ap-modal.theme-light .ap-banner-icon { color: #1e3a8a; }
         .ap-modal.theme-light .ap-banner-text {
           color: #334155;
         }
         .ap-modal.theme-light .ap-banner-text b {
-          color: #b45309;
+          color: #1e3a8a;
         }
         .ap-modal.theme-light .ap-label {
           color: #475569;
@@ -4828,38 +5007,38 @@ class MentariDashboard {
         }
         .ap-modal.theme-light .ap-mode-card:hover,
         .ap-modal.theme-light .ap-pref-card:hover {
-          border-color: rgba(217, 119, 6, 0.4);
+          border-color: #93c5fd;
           background: #ffffff;
         }
         .ap-modal.theme-light .ap-mode-card.active,
         .ap-modal.theme-light .ap-pref-card.active {
-          background: rgba(217, 119, 6, 0.08);
-          border-color: #d97706;
-          box-shadow: 0 0 14px rgba(217, 119, 6, 0.15);
+          background: #eff6ff;
+          border-color: #1e3a8a;
+          box-shadow: 0 0 0 1px rgba(30, 58, 138, 0.12);
         }
         .ap-modal.theme-light .ap-mode-title {
           color: #0f172a;
         }
         .ap-modal.theme-light .ap-mode-card.active .ap-mode-title,
         .ap-modal.theme-light .ap-pref-card.active .ap-mode-title {
-          color: #b45309;
+          color: #1e3a8a;
         }
         .ap-modal.theme-light .ap-mode-sub {
           color: #64748b;
         }
         .ap-modal.theme-light .ap-slider {
-          background: rgba(0, 0, 0, 0.12);
+          background: #cbd5e1;
         }
         .ap-modal.theme-light .ap-slider::-webkit-slider-thumb {
-          background: #d97706;
-          box-shadow: 0 0 10px rgba(217, 119, 6, 0.5);
+          background: #1e3a8a;
+          box-shadow: 0 0 8px rgba(30, 58, 138, 0.3);
         }
         .ap-modal.theme-light .ap-slider::-moz-range-thumb {
-          background: #d97706;
-          box-shadow: 0 0 10px rgba(217, 119, 6, 0.5);
+          background: #1e3a8a;
+          box-shadow: 0 0 8px rgba(30, 58, 138, 0.3);
         }
         .ap-modal.theme-light .ap-cooldown-badge {
-          background: #d97706;
+          background: #1e3a8a;
           color: #ffffff;
         }
         .ap-modal.theme-light .ap-preset-btn {
@@ -4872,9 +5051,9 @@ class MentariDashboard {
           color: #0f172a;
         }
         .ap-modal.theme-light .ap-preset-btn.active {
-          background: rgba(217, 119, 6, 0.15);
-          border-color: rgba(217, 119, 6, 0.45);
-          color: #b45309;
+          background: #eff6ff;
+          border-color: #1e3a8a;
+          color: #1e3a8a;
         }
         .ap-modal.theme-light .ap-queue-card {
           background: #f8fafc;
@@ -4896,29 +5075,30 @@ class MentariDashboard {
           border-top-color: #e2e8f0;
         }
         .ap-modal.theme-light .ap-active-banner {
-          background: rgba(245, 158, 11, 0.15);
-          border-color: rgba(217, 119, 6, 0.45);
+          background: #eff6ff;
+          border-color: #93c5fd;
         }
+        .ap-modal.theme-light .ap-active-icon { color: #1e3a8a; }
         .ap-modal.theme-light .ap-active-title {
-          color: #b45309;
+          color: #1e3a8a;
         }
         .ap-modal.theme-light .ap-active-desc {
           color: #475569;
         }
         .ap-modal.theme-light .ap-btn-resume {
-          background: #d97706;
+          background: #1e3a8a;
           color: #ffffff;
         }
         .ap-modal.theme-light .ap-btn-resume:hover {
-          background: #b45309;
+          background: #1e40af;
         }
         .ap-modal.theme-light .ap-btn-reset-session {
-          background: rgba(239, 68, 68, 0.1);
+          background: #fef2f2;
           color: #dc2626;
-          border-color: rgba(239, 68, 68, 0.3);
+          border-color: #fecaca;
         }
         .ap-modal.theme-light .ap-btn-reset-session:hover {
-          background: rgba(239, 68, 68, 0.2);
+          background: #fee2e2;
           color: #b91c1c;
         }
         .ap-modal.theme-light .ap-btn-cancel {
@@ -4928,6 +5108,15 @@ class MentariDashboard {
         .ap-modal.theme-light .ap-btn-cancel:hover {
           background: #e2e8f0;
           color: #0f172a;
+        }
+        .ap-modal.theme-light .ap-btn-start {
+          background: #1e3a8a;
+          color: #ffffff;
+          box-shadow: 0 4px 14px rgba(30, 58, 138, 0.25);
+        }
+        .ap-modal.theme-light .ap-btn-start:hover {
+          background: #1e40af;
+          box-shadow: 0 6px 18px rgba(30, 58, 138, 0.35);
         }
       </style>
 
@@ -5096,7 +5285,10 @@ class MentariDashboard {
       this._makeElementDraggable(apModal, apHeader);
     }
 
-    const close = () => overlay.remove();
+    const close = () => {
+      overlay.classList.add('closing');
+      setTimeout(() => overlay.remove(), 210);
+    };
     overlay.querySelector('#btn-close-ap-modal').addEventListener('click', close);
     overlay.querySelector('#btn-cancel-ap').addEventListener('click', close);
     overlay.addEventListener('click', (e) => {

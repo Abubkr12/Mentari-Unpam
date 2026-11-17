@@ -101,7 +101,6 @@ async function build() {
       },
       {
         matches: ['https://mentari.unpam.ac.id/*'],
-        exclude_matches: ['https://mentari.unpam.ac.id/login'],
         js: [
           'content/gemini.js',
           'content/token.js',
@@ -109,7 +108,7 @@ async function build() {
         ]
       },
       {
-        matches: ['https://mentari.unpam.ac.id/login'],
+        matches: ['https://mentari.unpam.ac.id/*'],
         js: ['content/home.js']
       },
       {

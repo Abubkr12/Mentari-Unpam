@@ -7,6 +7,7 @@ import { ThemeHelper } from '../utils/theme.js';
 
 class HomeTheme {
   constructor() {
+    this.currentTheme = 'light';
     this._init();
   }
 
@@ -17,17 +18,31 @@ class HomeTheme {
     ThemeHelper.watchTheme((newTheme) => {
       this._applyStyles(newTheme);
     });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mentari-route-change', () => {
+        this._applyStyles(this.currentTheme);
+      });
+    }
   }
 
   _applyStyles(theme = 'light') {
+    this.currentTheme = theme === 'light' ? 'light' : 'dark';
+    const isLoginRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/login');
     let style = document.getElementById('mentari-home-theme');
+
+    if (!isLoginRoute) {
+      if (style) style.remove();
+      return;
+    }
+
     if (!style) {
       style = document.createElement('style');
       style.id = 'mentari-home-theme';
       document.head.appendChild(style);
     }
 
-    const isLight = theme === 'light';
+    const isLight = this.currentTheme === 'light';
 
     if (isLight) {
       style.textContent = `
