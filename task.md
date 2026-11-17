@@ -1,9 +1,16 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Perbaikan timeout & fallback AI di kuis/posttest (`service-worker.js`, `quiz.js`), fitur seleksi & prioritas forum di Rekap Tugas (`token.js`), serta rilis `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Verifikasi & koreksi jawaban terisi dari soal #1 pada modul kuis/posttest (`quiz.js`), perbaikan timeout & fallback AI (`service-worker.js`), fitur seleksi & prioritas forum Rekap Tugas (`token.js`), dan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Verifikasi & Koreksi Jawaban Kuis Terisi dari Soal #1 Pasca-Error / Pause (`src/content/quiz.js`):
+  1. **Analisis Kebutuhan**:
+     - Saat kuis sempat gagal/fallback atau dijeda (misal soal 1–3 sudah hijau tapi validitas belum pasti), melanjutkan langsung ke soal 4 berisiko mengirim jawaban fallback Opsi A yang salah.
+  2. **Implementasi Hemat Kuota & Akurat**:
+     - Menambahkan pelacakan `mentari_quiz_needs_verify_<examId>` di `sessionStorage` setiap kali `_forceSelectFirstOption` atau error verifikasi terjadi agar mode verifikasi aktif otomatis saat dilanjutkan.
+     - Memperbarui `runAutoLoop` dan `processCurrentQuestion(..., { verifyExisting })` (`_applyOrVerifyOption`) agar saat mode verifikasi aktif, pengerjaan kembali ke soal #1, memeriksa setiap soal terisi via AI (lewati cepat tanpa klik ulang jika sudah benar, langsung koreksi jika salah, dan **tidak** menimpa opsi terisi dengan Opsi A bila cek gagal), lalu melanjutkan ke soal yang belum terjawab hingga 100% terverifikasi sebelum submit.
+     - Menambahkan tombol **`Cek & Koreksi (1 → N)`** di HUD Auto-Pilot (saat dijeda) maupun panel kuis manual, serta sinkronisasi dropdown model HUD melalui `chrome.storage.onChanged`.
 - [x] Perbaikan Timeout Kuis/Posttest & Kegagalan Fallback `gemini-3.8-flash` (`src/background/service-worker.js`, `src/content/quiz.js`):
   1. **Akar Masalah Terungkap**:
      - Model lama `gemini-3.5-flash-lite` mengalami lonjakan latensi > 12 detik pada Free Tier sehingga terpotong `AbortController` `12000ms` di `service-worker.js`.

@@ -1347,11 +1347,52 @@
               if (selectModel && selectModel.value !== newModel) {
                 selectModel.value = newModel;
               }
+              const hudSelect = this.hudShadow?.getElementById("hud-select-model");
+              if (hudSelect && hudSelect.value !== newModel) {
+                hudSelect.value = newModel;
+              }
             }
           }
         });
       }
       await this._checkAndInitAutoPilot();
+    }
+    _getExamSessionKey() {
+      try {
+        const m = window.location.pathname.match(/\/exam\/([^/?]+)/);
+        return (m?.[1] || document.title || "quiz").trim();
+      } catch {
+        return "quiz";
+      }
+    }
+    _hasExamNeedsVerification() {
+      try {
+        return sessionStorage.getItem(`mentari_quiz_needs_verify_${this._getExamSessionKey()}`) === "1";
+      } catch {
+        return false;
+      }
+    }
+    _markExamNeedsVerification(flag = true) {
+      try {
+        const key = `mentari_quiz_needs_verify_${this._getExamSessionKey()}`;
+        if (flag) {
+          sessionStorage.setItem(key, "1");
+        } else {
+          sessionStorage.removeItem(key);
+        }
+      } catch {
+      }
+    }
+    async _waitForQuestionNumberChange(prevNum, maxWaitMs = 2500) {
+      const start = Date.now();
+      while (Date.now() - start < maxWaitMs) {
+        await Humanizer.delay(150);
+        const curNum = this._extractActiveQuestionNumberFromDOM();
+        if (curNum !== null && curNum !== prevNum) {
+          return curNum;
+        }
+      }
+      return null;
     }
     _injectFloatingControl() {
       if (document.getElementById("mentari-quiz-control-host")) return;
@@ -1500,6 +1541,10 @@
         <button class="btn-single" id="btn-single" type="button">Jawab Ini</button>
         <button class="btn-action" id="btn-auto" type="button">Auto Semua</button>
       </div>
+      <button class="btn-single" id="btn-verify-all" type="button" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;" title="Periksa semua soal yang sudah terjawab mulai dari nomor 1 dan perbaiki jika salah">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Cek &amp; Koreksi (1 \u2192 N)
+      </button>
     `;
       this.shadow.appendChild(style);
       this.shadow.appendChild(card);
@@ -1508,6 +1553,7 @@
       const selectModel = this.shadow.getElementById("quiz-select-model");
       const btnSingle = this.shadow.getElementById("btn-single");
       const btnAuto = this.shadow.getElementById("btn-auto");
+      const btnVerifyAll = this.shadow.getElementById("btn-verify-all");
       const statusText = this.shadow.getElementById("status-text");
       if (selectModel) {
         selectModel.value = this.activeModel;
@@ -1546,10 +1592,11 @@
           btnSingle.disabled = false;
         }
       });
-      btnAuto.addEventListener("click", async () => {
+      const startAutoRun = async (verifyExisting = false) => {
         if (this.isRunning) {
           this.isRunning = false;
           btnAuto.textContent = "Auto Semua";
+          if (btnVerifyAll) btnVerifyAll.disabled = false;
           statusText.textContent = "Otomatisasi dihentikan.";
           Toast.info("Otomatisasi kuis dihentikan pengguna.");
           return;
@@ -1568,17 +1615,21 @@
         }
         this.isRunning = true;
         btnAuto.textContent = "Hentikan";
-        statusText.textContent = "Menjalankan kuis secara bertahap...";
-        Toast.info("Mode auto-quiz aktif dengan jeda humanized anti-deteksi.");
+        if (btnVerifyAll) btnVerifyAll.disabled = true;
+        statusText.textContent = verifyExisting ? "Memeriksa jawaban terisi dari soal #1 via AI..." : "Menjalankan kuis secara bertahap...";
+        Toast.info(verifyExisting ? "Mode Cek & Koreksi aktif: menyisir soal dari nomor 1." : "Mode auto-quiz aktif dengan jeda humanized anti-deteksi.");
         try {
-          await this.runAutoLoop(statusText);
+          await this.runAutoLoop(statusText, false, { verifyExisting });
         } catch (e) {
           Toast.error(e.message);
         } finally {
           this.isRunning = false;
           btnAuto.textContent = "Auto Semua";
+          if (btnVerifyAll) btnVerifyAll.disabled = false;
         }
-      });
+      };
+      btnAuto.addEventListener("click", () => startAutoRun(false));
+      btnVerifyAll?.addEventListener("click", () => startAutoRun(true));
     }
     /**
      * Ekstrak informasi judul kuis, pertemuan, dan tipe evaluasi dari DOM Mentari
@@ -2071,9 +2122,9 @@
       return null;
     }
     /**
-     * Eksekusi loop menjawab seluruh soal dengan jeda natural manusia
+     * Eksekusi loop menjawab & memverifikasi seluruh soal dengan jeda natural manusia
      */
-    async runAutoLoop(statusEl, isAutoPilot = false) {
+    async runAutoLoop(statusEl, isAutoPilot = false, { verifyExisting = false } = {}) {
       const initialComp = this._checkIfExamAlreadyCompleted();
       if (initialComp.isCompleted) {
         if (statusEl) statusEl.textContent = `${initialComp.title || "Kuis"} sudah selesai dikerjakan (${initialComp.reason}).`;
@@ -2099,8 +2150,23 @@
           qContainer = await this._waitForQuestionContainer(15e3);
         }
       }
+      const verifyMode = Boolean(verifyExisting || this._hasExamNeedsVerification());
+      const verifiedNums = /* @__PURE__ */ new Set();
+      let hadVerifyFailure = false;
+      const initialNav = this._getExamNavigationStatus();
+      if (verifyMode && initialNav?.questions?.length > 0) {
+        const firstAnswered = initialNav.questions.find((q) => q.isAnswered) || initialNav.questions[0];
+        const curActiveNum = this._extractActiveQuestionNumberFromDOM();
+        if (firstAnswered && !firstAnswered.isCurrent && firstAnswered.btn) {
+          if (statusEl) statusEl.textContent = `Membuka Soal ${firstAnswered.num} untuk memeriksa jawaban...`;
+          await Humanizer.naturalClick(firstAnswered.btn);
+          await this._waitForQuestionNumberChange(curActiveNum, 2500);
+          await Humanizer.delay(250);
+        }
+      }
       let loopIterations = 0;
-      const maxSafetyIterations = 60;
+      const totalQEstimate = initialNav?.questions?.length || 20;
+      const maxSafetyIterations = Math.max(60, totalQEstimate * 3);
       this._currentSessionQuestions = [];
       while (this.isRunning && loopIterations < maxSafetyIterations) {
         loopIterations++;
@@ -2115,6 +2181,7 @@
         if (stepComp.isCompleted) {
           console.log("[Auto-Pilot] Kuis selesai terdeteksi di tengah loop. Menghentikan.");
           if (statusEl) statusEl.textContent = `${stepComp.title || "Kuis"} telah selesai dikerjakan.`;
+          this._markExamNeedsVerification(false);
           this.isRunning = false;
           return { isFinished: true, submitted: true, reason: stepComp.reason };
         }
@@ -2128,10 +2195,12 @@
           curQContainer = await this._waitForQuestionContainer(5e3);
         }
         const currentQNav = navStatusCurrent?.questions?.find((q) => q.isCurrent);
+        const curQNum = this._extractActiveQuestionNumberFromDOM() || currentQNav?.num || loopIterations;
         const isCurrentVerifiedGreen = currentQNav ? currentQNav.isAnswered : false;
         const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
         const anyUnansweredRemaining = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.some((q) => q.isUnanswered || !q.isAnswered);
-        if (isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
+        const nextUnverifiedRemaining = verifyMode && navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => (!verifiedNums.has(q.num) || !q.isAnswered) && !q.isCurrent) : null;
+        if (!verifyMode && isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
           const nextUnanswered = navStatusCurrent.questions.find((q) => (q.isUnanswered || !q.isAnswered) && !q.isCurrent);
           if (nextUnanswered && nextUnanswered.btn) {
             console.log(`[Auto-Pilot] Soal saat ini sudah hijau. Melompat langsung ke Soal ${nextUnanswered.num} yang masih putih.`);
@@ -2141,22 +2210,58 @@
             await Humanizer.delay(600);
             continue;
           }
+        } else if (verifyMode && alreadyCheckedRadio && verifiedNums.has(curQNum) && nextUnverifiedRemaining?.btn) {
+          if (statusEl) statusEl.textContent = `Soal ${curQNum} sudah diperiksa. Menuju Soal ${nextUnverifiedRemaining.num}...`;
+          await Humanizer.randomDelay(250, 450);
+          await Humanizer.naturalClick(nextUnverifiedRemaining.btn);
+          await this._waitForQuestionNumberChange(curQNum, 2500);
+          await Humanizer.delay(250);
+          continue;
         }
         if (!alreadyCheckedRadio) {
-          if (statusEl) statusEl.textContent = "Menganalisis soal via AI...";
-          let success = false;
+          if (statusEl) statusEl.textContent = `Menganalisis Soal ${curQNum} via AI...`;
           try {
-            success = await this.processCurrentQuestion(true);
+            await this.processCurrentQuestion(true);
+            verifiedNums.add(curQNum);
           } catch (err) {
             console.warn("[Mentari AI] Gagal memproses soal (percobaan 1):", err);
             await Humanizer.delay(600);
             try {
-              success = await this.processCurrentQuestion(true);
+              await this.processCurrentQuestion(true);
+              verifiedNums.add(curQNum);
             } catch (retryErr) {
               console.error("[Mentari AI] Percobaan 2 gagal. Mengaktifkan self-recovery:", retryErr);
+              this._markExamNeedsVerification(true);
+              hadVerifyFailure = true;
               if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}. Memilih opsi pemulihan...`;
-              success = await this._forceSelectFirstOption(curQContainer);
+              await this._forceSelectFirstOption(curQContainer);
+              verifiedNums.add(curQNum);
             }
+          }
+        } else if (verifyMode && !verifiedNums.has(curQNum)) {
+          if (statusEl) statusEl.textContent = `Memeriksa jawaban Soal ${curQNum} via AI...`;
+          let verifyResult = null;
+          try {
+            verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
+            verifiedNums.add(curQNum);
+          } catch (verErr) {
+            console.warn(`[Mentari AI] Gagal verifikasi Soal ${curQNum} (percobaan 1):`, verErr);
+            await Humanizer.delay(600);
+            try {
+              verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
+              verifiedNums.add(curQNum);
+            } catch (verRetryErr) {
+              console.error(`[Mentari AI] Verifikasi Soal ${curQNum} gagal, mempertahankan opsi terpilih:`, verRetryErr);
+              this._markExamNeedsVerification(true);
+              hadVerifyFailure = true;
+              verifiedNums.add(curQNum);
+              if (statusEl) statusEl.textContent = `Soal ${curQNum}: Gagal verifikasi (${verRetryErr.message}), mempertahankan opsi ada.`;
+            }
+          }
+          if (verifyResult?.status === "corrected" && statusEl) {
+            statusEl.textContent = `Soal ${curQNum} dikoreksi: [${verifyResult.from}] -> [${verifyResult.to}]`;
+          } else if (verifyResult?.status === "confirmed" && statusEl) {
+            statusEl.textContent = `Soal ${curQNum} sudah benar, lanjut...`;
           }
         } else {
           console.log("[Auto-Pilot] Soal saat ini sudah memiliki opsi terpilih.");
@@ -2166,6 +2271,7 @@
           if (curQInfo?.questionText && selectedOpt) {
             this._recordCurrentQuestionAnswer(curQInfo.questionText, selectedOpt.text, selectedOpt.letter);
           }
+          verifiedNums.add(curQNum);
         }
         const navStatusAfterAnswer = this._getExamNavigationStatus();
         if (navStatusAfterAnswer) {
@@ -2185,16 +2291,7 @@
           if (statusEl) statusEl.textContent = "Menuju soal berikutnya...";
           await Humanizer.randomDelay(200, 400);
           await Humanizer.naturalClick(nextBtn);
-          let transitioned = false;
-          const waitDomStart = Date.now();
-          while (Date.now() - waitDomStart < 2500) {
-            await Humanizer.delay(150);
-            const curQNum = this._extractActiveQuestionNumberFromDOM();
-            if (curQNum !== null && prevQNum !== null && curQNum !== prevQNum) {
-              transitioned = true;
-              break;
-            }
-          }
+          await this._waitForQuestionNumberChange(prevQNum, 2500);
           await Humanizer.delay(200);
           continue;
         }
@@ -2210,7 +2307,7 @@
             console.warn(`[Hard Veto Kotak Hijau] Masih ada ${unansweredList.length} soal abu-abu. Submisi DIBLOKIR. Mengarahkan ke soal yang belum terjawab...`, unansweredList);
             const targetQ = unansweredList.find((q) => !q.isCurrent) || unansweredList[0];
             if (targetQ && targetQ.btn) {
-              if (statusEl) statusEl.textContent = `Hard Veto: Soal ${targetQ.num} belum terjawab (kotak abu-abu). Membuka Soal ${targetQ.num}...`;
+              if (statusEl) statusEl.textContent = `Hard Veto: Soal ${targetQ.num} belum terjawab. Membuka Soal ${targetQ.num}...`;
               Toast.info(`Mengarahkan ke Soal ${targetQ.num} yang masih abu-abu...`);
               await Humanizer.randomDelay(300, 600);
               await Humanizer.naturalClick(targetQ.btn);
@@ -2219,6 +2316,17 @@
               await Humanizer.delay(600);
             }
             continue;
+          }
+          if (verifyMode) {
+            const unverifiedQ = navStatus.questions.find((q) => !verifiedNums.has(q.num));
+            if (unverifiedQ && unverifiedQ.btn) {
+              if (statusEl) statusEl.textContent = `Memeriksa Soal ${unverifiedQ.num} sebelum selesai...`;
+              await Humanizer.randomDelay(300, 500);
+              await Humanizer.naturalClick(unverifiedQ.btn);
+              await this._waitForQuestionNumberChange(prevQNum, 2500);
+              await Humanizer.delay(300);
+              continue;
+            }
           }
         }
         const finishKeywords = [
@@ -2258,6 +2366,18 @@
               await Humanizer.delay(600);
               continue;
             }
+            if (verifyMode) {
+              const finalUnverified = finalNav.questions.find((q) => !verifiedNums.has(q.num));
+              if (finalUnverified && finalUnverified.btn) {
+                if (statusEl) statusEl.textContent = `Veto Verifikasi: Memeriksa Soal ${finalUnverified.num}...`;
+                await Humanizer.naturalClick(finalUnverified.btn);
+                await Humanizer.delay(600);
+                continue;
+              }
+            }
+          }
+          if (!hadVerifyFailure) {
+            this._markExamNeedsVerification(false);
           }
           if (statusEl) statusEl.textContent = "Semua kotak soal terverifikasi 100% hijau! Menyelesaikan kuis...";
           Toast.success("Semua kotak nomor soal terverifikasi hijau (terjawab)!");
@@ -2582,6 +2702,16 @@
         background: rgba(255, 255, 255, 0.15);
         color: #fff;
       }
+      .hud-btn-verify {
+        background: rgba(245, 158, 11, 0.16);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        width: 100%;
+      }
+      .hud-btn-verify:hover {
+        background: rgba(245, 158, 11, 0.28);
+        color: #fde68a;
+      }
       .hud-btn-cancel {
         background: rgba(239, 68, 68, 0.12);
         color: #f87171;
@@ -2674,6 +2804,11 @@
         Mempersiapkan kuis...
       </div>
 
+      <button class="hud-btn hud-btn-verify" id="hud-btn-verify" type="button" style="display: ${this.isPaused ? "flex" : "none"};" title="Periksa ulang semua jawaban yang sudah terisi mulai dari soal #1 dan perbaiki jika salah">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Cek &amp; Koreksi (1 &rarr; N)
+      </button>
+
       <div class="hud-actions">
         <button class="hud-btn hud-btn-pause" id="hud-btn-pause">
           ${this.isPaused ? "Lanjutkan" : "Jeda"}
@@ -2690,6 +2825,7 @@
       const statusEl = this.hudShadow.getElementById("hud-status-text");
       const badgeEl = this.hudShadow.getElementById("hud-badge");
       const btnPause = this.hudShadow.getElementById("hud-btn-pause");
+      const btnVerify = this.hudShadow.getElementById("hud-btn-verify");
       const btnCancel = this.hudShadow.getElementById("hud-btn-cancel");
       const progressBar = this.hudShadow.getElementById("hud-progress-fill");
       const hudModelSelect = this.hudShadow.getElementById("hud-select-model");
@@ -2714,23 +2850,34 @@
           }
         });
       }
-      btnPause.addEventListener("click", async () => {
-        this.isPaused = !this.isPaused;
-        badgeEl.className = `hud-badge ${this.isPaused ? "paused" : "running"}`;
-        badgeEl.textContent = this.isPaused ? "Dijeda" : "Berjalan";
-        btnPause.textContent = this.isPaused ? "Lanjutkan" : "Jeda";
-        statusEl.textContent = this.isPaused ? "Auto-Pilot dijeda sementara." : "Melanjutkan pengerjaan kuis...";
-        if (this.isPaused) {
-          await AutoPilotState.pause("Dijeda oleh pengguna");
-        } else {
-          await AutoPilotState.resume();
-        }
-        if (!this.isPaused && !this.isRunning) {
+      const resumeExecution = async (verifyExisting = false) => {
+        this.isPaused = false;
+        badgeEl.className = "hud-badge running";
+        badgeEl.textContent = "Berjalan";
+        btnPause.textContent = "Jeda";
+        if (btnVerify) btnVerify.style.display = "none";
+        statusEl.textContent = verifyExisting ? "Memeriksa jawaban terisi dari soal #1..." : "Melanjutkan pengerjaan kuis...";
+        await AutoPilotState.resume();
+        if (!this.isRunning) {
           this.isRunning = true;
           this.isAutoPilot = true;
           const curStore = await AutoPilotState.get();
           const curItem = curStore?.queue?.[curStore?.currentIndex];
-          this._executeAutoPilotQuiz(curStore, curItem, statusEl, badgeEl, btnPause, progressBar);
+          this._executeAutoPilotQuiz(curStore, curItem, statusEl, badgeEl, btnPause, progressBar, { verifyExisting });
+        }
+      };
+      btnVerify?.addEventListener("click", () => resumeExecution(true));
+      btnPause.addEventListener("click", async () => {
+        if (!this.isPaused) {
+          this.isPaused = true;
+          badgeEl.className = "hud-badge paused";
+          badgeEl.textContent = "Dijeda";
+          btnPause.textContent = "Lanjutkan";
+          if (btnVerify) btnVerify.style.display = "flex";
+          statusEl.textContent = "Auto-Pilot dijeda sementara.";
+          await AutoPilotState.pause("Dijeda oleh pengguna");
+        } else {
+          await resumeExecution(false);
         }
       });
       btnCancel.addEventListener("click", async () => {
@@ -2745,7 +2892,7 @@
       });
       return { statusEl, badgeEl, btnPause, progressBar };
     }
-    async _executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar) {
+    async _executeAutoPilotQuiz(state, currentItem, statusEl, badgeEl, btnPause, progressBar, { verifyExisting = false } = {}) {
       statusEl.textContent = "Memeriksa kesiapan halaman kuis...";
       const domInfo = this._extractExamTitleAndTypeFromDOM();
       console.log("[Auto-Pilot] Validasi DOM kuis:", domInfo);
@@ -2765,11 +2912,11 @@
         await this._advanceToNextQuiz(state, statusEl, isFastSkip);
         return;
       }
-      statusEl.textContent = "Menjawab seluruh soal otomatis via AI...";
+      statusEl.textContent = verifyExisting ? "Memeriksa & mengoreksi jawaban dari soal #1 via AI..." : "Menjawab seluruh soal otomatis via AI...";
       this.isRunning = true;
       let loopResult = { isFinished: false, submitted: false };
       try {
-        loopResult = await this.runAutoLoop(statusEl, true);
+        loopResult = await this.runAutoLoop(statusEl, true, { verifyExisting });
       } catch (e) {
         console.error("[Auto-Pilot] Error saat menjawab kuis:", e);
         statusEl.textContent = `Peringatan: ${e.message}`;
@@ -2796,6 +2943,10 @@
         }
         if (btnPause) {
           btnPause.textContent = "Lanjutkan";
+        }
+        const btnVerifyHud = this.hudShadow?.getElementById("hud-btn-verify");
+        if (btnVerifyHud) {
+          btnVerifyHud.style.display = "flex";
         }
       }
     }
@@ -2948,8 +3099,10 @@
     }
     /**
      * Mekanisme Self-Recovery: Force-click pada opsi A (atau opsi pertama) menggunakan native setter
+     * Menandai sesi kuis ini perlu verifikasi ulang agar tidak mengirim jawaban tebakan saat pulih.
      */
     async _forceSelectFirstOption(container = null) {
+      this._markExamNeedsVerification(true);
       const qContainer = container || this._findQuestionContainer();
       if (!qContainer) return false;
       const { options } = this._parseQuestionAndOptions(qContainer);
@@ -2967,9 +3120,32 @@
       return false;
     }
     /**
+     * Terapkan jawaban atau verifikasi kecocokan opsi yang sudah terpilih
+     */
+    async _applyOrVerifyOption(questionText, options, targetIndex, { verifyExisting = false, sourceLabel = "Gemini" } = {}) {
+      const targetOption = options[targetIndex];
+      if (!targetOption) return null;
+      const currentIdx = options.findIndex((o) => o.element?.checked);
+      const targetLetter = targetOption.letter || String(targetIndex + 1);
+      if (verifyExisting && currentIdx === targetIndex) {
+        this._recordCurrentQuestionAnswer(questionText, targetOption.text, targetOption.letter);
+        Toast.info(`Verifikasi OK: [${targetLetter}] sudah benar`);
+        return { status: "confirmed", index: targetIndex };
+      }
+      const prevLetter = currentIdx !== -1 ? options[currentIdx].letter || String(currentIdx + 1) : null;
+      await this._selectOptionElement(targetOption);
+      this._recordCurrentQuestionAnswer(questionText, targetOption.text, targetOption.letter);
+      if (verifyExisting && currentIdx !== -1 && currentIdx !== targetIndex) {
+        Toast.warning(`Koreksi jawaban: [${prevLetter}] -> [${targetLetter}] (${sourceLabel})`);
+        return { status: "corrected", index: targetIndex, from: prevLetter, to: targetLetter };
+      }
+      Toast.info(`Menjawab [${targetLetter}] via ${sourceLabel}`);
+      return { status: "answered", index: targetIndex };
+    }
+    /**
      * Memproses satu soal kuis yang sedang terbuka di layar
      */
-    async processCurrentQuestion(isAuto = false) {
+    async processCurrentQuestion(isAuto = false, { verifyExisting = false } = {}) {
       const compCheck = this._checkIfExamAlreadyCompleted();
       if (compCheck.isCompleted) {
         throw new Error(`Kuis ${compCheck.title || ""} sudah selesai dikerjakan.`);
@@ -2990,18 +3166,18 @@
         return parent.classList.contains("correct") || parent.classList.contains("is-correct") || parent.classList.contains("jawaban-benar") || parent.getAttribute("data-correct") === "true" || html.includes("green") || text.includes("(benar)") || text.includes("(kunci)");
       });
       if (revealedIndex !== -1) {
-        await this._selectOptionElement(options[revealedIndex]);
-        this._recordCurrentQuestionAnswer(questionText, options[revealedIndex].text, options[revealedIndex].letter);
-        Toast.success(`Kunci jawaban terdeteksi! Memilih [${options[revealedIndex].letter || revealedIndex + 1}]`);
-        return true;
+        return this._applyOrVerifyOption(questionText, options, revealedIndex, {
+          verifyExisting,
+          sourceLabel: "Kunci DOM"
+        });
       }
       const memoryMatchIdx = await this._lookupSmartQuestionMemory(questionText, options);
       if (memoryMatchIdx !== null && memoryMatchIdx >= 0 && memoryMatchIdx < options.length) {
-        await this._selectOptionElement(options[memoryMatchIdx]);
-        this._recordCurrentQuestionAnswer(questionText, options[memoryMatchIdx].text, options[memoryMatchIdx].letter);
         console.log(`[Smart Memory] Jawaban otomatis dari memori skor 100: [${options[memoryMatchIdx].letter}] ${options[memoryMatchIdx].text}`);
-        Toast.success(`Smart Memory (Score 100): Memilih [${options[memoryMatchIdx].letter || memoryMatchIdx + 1}]`);
-        return true;
+        return this._applyOrVerifyOption(questionText, options, memoryMatchIdx, {
+          verifyExisting,
+          sourceLabel: "Smart Memory 100"
+        });
       }
       if (isAuto) {
         await Humanizer.randomDelay(350, 600);
@@ -3036,10 +3212,10 @@
       if (bestOptionIndex === -1) {
         throw new Error("Tidak dapat mencocokkan respon AI dengan opsi kuis.");
       }
-      await this._selectOptionElement(options[bestOptionIndex]);
-      this._recordCurrentQuestionAnswer(questionText, options[bestOptionIndex].text, options[bestOptionIndex].letter);
-      Toast.info(`Menjawab [${options[bestOptionIndex].letter || bestOptionIndex + 1}] via ${response.model || "Gemini"}`);
-      return true;
+      return this._applyOrVerifyOption(questionText, options, bestOptionIndex, {
+        verifyExisting,
+        sourceLabel: response.model || "Gemini"
+      });
     }
     _findQuestionContainer() {
       const radio = document.querySelector('input[type="radio"], .MuiRadio-root');
