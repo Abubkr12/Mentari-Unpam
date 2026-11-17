@@ -107,7 +107,7 @@ class MentariContentEntry {
     `;
 
     btn.innerHTML = `
-      ${getBrandSvgMarkup(22)}
+      ${getBrandSvgMarkup(20)}
       <span class="MuiTouchRipple-root"></span>
     `;
 
@@ -220,7 +220,7 @@ class MentariContentEntry {
     const btn = document.createElement('button');
     btn.className = 'launcher-btn';
     btn.setAttribute('aria-label', 'Dashboard Mentari Mod');
-    btn.innerHTML = getBrandSvgMarkup(24);
+    btn.innerHTML = getBrandSvgMarkup(22);
 
     const tooltip = document.createElement('div');
     tooltip.className = 'tooltip';
