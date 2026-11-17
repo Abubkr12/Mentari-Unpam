@@ -3012,12 +3012,22 @@
       const selectModel = this.shadow?.getElementById("quiz-select-model");
       const chosenModel = hudModelSelect && hudModelSelect.value && VALID_MODEL_IDS.includes(hudModelSelect.value) ? hudModelSelect.value : selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
       const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          action: "generateGeminiContent",
-          prompt,
-          systemInstruction,
-          model: chosenModel
-        }, resolve);
+        try {
+          chrome.runtime.sendMessage({
+            action: "generateGeminiContent",
+            prompt,
+            systemInstruction,
+            model: chosenModel
+          }, (res) => {
+            if (chrome.runtime?.lastError) {
+              resolve({ success: false, error: chrome.runtime.lastError.message });
+              return;
+            }
+            resolve(res);
+          });
+        } catch (e) {
+          resolve({ success: false, error: e.message });
+        }
       });
       if (!response || !response.success) {
         throw new Error(response?.error || "Gagal memanggil Gemini AI.");

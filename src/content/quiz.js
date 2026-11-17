@@ -2061,12 +2061,22 @@ class QuizAssistant {
 
     // Panggil Service Worker
     const response = await new Promise((resolve) => {
-      chrome.runtime.sendMessage({
-        action: 'generateGeminiContent',
-        prompt,
-        systemInstruction,
-        model: chosenModel
-      }, resolve);
+      try {
+        chrome.runtime.sendMessage({
+          action: 'generateGeminiContent',
+          prompt,
+          systemInstruction,
+          model: chosenModel
+        }, (res) => {
+          if (chrome.runtime?.lastError) {
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          resolve(res);
+        });
+      } catch (e) {
+        resolve({ success: false, error: e.message });
+      }
     });
 
     if (!response || !response.success) {

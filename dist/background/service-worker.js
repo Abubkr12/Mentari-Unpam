@@ -353,9 +353,109 @@ function resolveUpstreamModel(modelId) {
   if (modelId === "gemini-3.7-flash") return "gemini-3.8-flash";
   return "gemini-4-hydrogen";
 }
+function getThinkingConfigForModel(modelId) {
+  if (!modelId) return null;
+  if (modelId.startsWith("gemini-4") || modelId === "gemini-3.8-flash") {
+    return { thinkingLevel: "low" };
+  }
+  if (modelId.startsWith("gemini-3")) {
+    return { thinkingLevel: "minimal" };
+  }
+  return null;
+}
+function buildGeneratePayload({ prompt, systemInstruction, modelId, includeThinking = true }) {
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.1,
+      topP: 0.95,
+      maxOutputTokens: 2048
+    }
+  };
+  if (includeThinking) {
+    const thinkingCfg = getThinkingConfigForModel(modelId);
+    if (thinkingCfg) {
+      payload.generationConfig.thinkingConfig = thinkingCfg;
+    }
+  }
+  if (systemInstruction) {
+    payload.systemInstruction = {
+      parts: [{ text: systemInstruction }]
+    };
+  }
+  return payload;
+}
+async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, keyPool, primaryKey, timeoutMs = 18e3 }) {
+  let lastError = "";
+  let includeThinking = true;
+  for (let i = 0; i < keyPool.length; i++) {
+    const currentKey = keyPool[i];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${currentKey}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildGeneratePayload({ prompt, systemInstruction, modelId, includeThinking })),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (response.ok) {
+        const resJson = await response.json();
+        const textOut = extractResponseText(resJson);
+        await recordModelSuccess(modelId, resJson.usageMetadata);
+        if (currentKey !== primaryKey) {
+          console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
+          await chrome.storage.local.set({ geminiApiKey: currentKey });
+        }
+        return {
+          ok: true,
+          text: textOut,
+          keyIndex: i + 1
+        };
+      }
+      const errData = await response.json().catch(() => ({}));
+      const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
+      if (response.status === 400 && includeThinking && /thinking/i.test(errMsg)) {
+        console.warn(`[Service Worker] ${modelId} menolak thinkingConfig (${errMsg}). Mencoba ulang tanpa thinkingConfig...`);
+        includeThinking = false;
+        i--;
+        continue;
+      }
+      await recordModelError(modelId, response.status, errData);
+      lastError = errMsg;
+      if (response.status === 404 || response.status === 400) {
+        console.warn(`[Service Worker] Model ${modelId} gagal (${response.status}: ${errMsg}). Lanjut ke model fallback.`);
+        break;
+      }
+      const isQuotaOrLimit = response.status === 429 || response.status === 403 || errMsg.toLowerCase().includes("quota") || errMsg.toLowerCase().includes("rate limit") || errMsg.toLowerCase().includes("resource has been exhausted");
+      if (isQuotaOrLimit && i < keyPool.length - 1) {
+        console.warn(`[Service Worker] API Key ke-${i + 1} terkena limit (${errMsg}). Beralih otomatis ke API Key cadangan berikutnya...`);
+        lastError = `API Key #${i + 1} kena limit: ${errMsg}`;
+        continue;
+      }
+      if (!isQuotaOrLimit) break;
+    } catch (netErr) {
+      clearTimeout(timer);
+      const isAbort = netErr.name === "AbortError";
+      lastError = isAbort ? `Timeout ${Math.round(timeoutMs / 1e3)}s: Model ${modelId} tidak merespon dalam ${Math.round(timeoutMs / 1e3)} detik` : netErr.message;
+      await recordModelError(modelId, isAbort ? 408 : 0, { error: { message: lastError } });
+      console.warn(`[Service Worker] Percobaan ${modelId} (Key #${i + 1}) gagal: ${lastError}`);
+      if (!isAbort && i < keyPool.length - 1) continue;
+      if (isAbort) break;
+    }
+  }
+  return { ok: false, lastError };
+}
 async function handleGenerateContent({ prompt, systemInstruction = "", model = null }) {
   const store = await chrome.storage.local.get(["geminiApiKey", "geminiApiKeys", "gemini_model"]);
-  const activeModel = model || store.gemini_model || "gemini-4-hydrogen";
+  const activeModel = model || store.gemini_model || DEFAULT_FREE_MODEL;
   const targetEngineModel = resolveUpstreamModel(activeModel);
   let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
   if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
@@ -370,131 +470,52 @@ async function handleGenerateContent({ prompt, systemInstruction = "", model = n
       error: "Belum ada API Key Gemini yang disetel. Buka pengaturan untuk memasukkan API Key."
     };
   }
-  const bodyPayload = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: prompt }]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      topP: 0.95,
-      maxOutputTokens: 2048
-    }
-  };
-  if (targetEngineModel.startsWith("gemini-4")) {
-    bodyPayload.generationConfig.thinkingConfig = {
-      thinkingLevel: "low"
-    };
-  } else if (targetEngineModel.startsWith("gemini-3")) {
-    bodyPayload.generationConfig.thinkingConfig = {
-      thinkingLevel: "minimal"
+  const primaryAttempt = await invokeModelAcrossKeys({
+    modelId: targetEngineModel,
+    prompt,
+    systemInstruction,
+    keyPool,
+    primaryKey: store.geminiApiKey,
+    timeoutMs: 18e3
+  });
+  if (primaryAttempt.ok) {
+    return {
+      success: true,
+      text: primaryAttempt.text,
+      model: activeModel,
+      engine: targetEngineModel,
+      keyIndex: primaryAttempt.keyIndex,
+      totalKeys: keyPool.length
     };
   }
-  if (systemInstruction) {
-    bodyPayload.systemInstruction = {
-      parts: [{ text: systemInstruction }]
-    };
-  }
-  let lastError = null;
-  for (let i = 0; i < keyPool.length; i++) {
-    const currentKey = keyPool[i];
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetEngineModel}:generateContent?key=${currentKey}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12e3);
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-      if (response.ok) {
-        const resJson = await response.json();
-        const textOut = extractResponseText(resJson);
-        await recordModelSuccess(targetEngineModel, resJson.usageMetadata);
-        if (currentKey !== store.geminiApiKey) {
-          console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
-          await chrome.storage.local.set({ geminiApiKey: currentKey });
-        }
-        return {
-          success: true,
-          text: textOut,
-          model: activeModel,
-          engine: targetEngineModel,
-          keyIndex: i + 1,
-          totalKeys: keyPool.length
-        };
-      }
-      const errData = await response.json().catch(() => ({}));
-      const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
-      await recordModelError(targetEngineModel, response.status, errData);
-      if (response.status === 404) {
-        console.warn(`[Service Worker] Model ${targetEngineModel} tidak ditemukan di Google API (404). Memutus perulangan key.`);
-        lastError = errMsg;
-        break;
-      }
-      const isQuotaOrLimit = response.status === 429 || response.status === 403 || errMsg.toLowerCase().includes("quota") || errMsg.toLowerCase().includes("rate limit") || errMsg.toLowerCase().includes("resource has been exhausted");
-      if (isQuotaOrLimit && i < keyPool.length - 1) {
-        console.warn(`[Service Worker] API Key ke-${i + 1} terkena limit (${errMsg}). Beralih otomatis ke API Key cadangan berikutnya...`);
-        lastError = `API Key #${i + 1} kena limit: ${errMsg}`;
-        continue;
-      } else {
-        lastError = errMsg;
-      }
-    } catch (netErr) {
-      clearTimeout(timer);
-      const isAbort = netErr.name === "AbortError";
-      lastError = isAbort ? `Timeout 12s: Model ${activeModel} tidak merespon dalam 12 detik` : netErr.message;
-      console.warn(`[Service Worker] Percobaan API Key ke-${i + 1} gagal (${lastError}).`);
-      if (i < keyPool.length - 1) continue;
+  const fallbackCandidates = ["gemini-4-hydrogen", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash"].filter((m) => m !== targetEngineModel).slice(0, 2);
+  let fallbackLastError = "";
+  for (const fbEngine of fallbackCandidates) {
+    console.log(`[Service Worker] Mengaktifkan fallback ke ${fbEngine} setelah ${targetEngineModel} gagal (${primaryAttempt.lastError})...`);
+    const fbAttempt = await invokeModelAcrossKeys({
+      modelId: fbEngine,
+      prompt,
+      systemInstruction,
+      keyPool,
+      primaryKey: store.geminiApiKey,
+      timeoutMs: 12e3
+    });
+    if (fbAttempt.ok) {
+      return {
+        success: true,
+        text: fbAttempt.text,
+        model: `${activeModel} -> ${fbEngine} (Fallback)`,
+        engine: fbEngine,
+        keyIndex: fbAttempt.keyIndex,
+        totalKeys: keyPool.length
+      };
     }
+    fallbackLastError = `${fbEngine}: ${fbAttempt.lastError}`;
   }
-  const fallbackEngine = targetEngineModel === "gemini-3.8-flash" ? "gemini-3.5-flash-lite" : "gemini-3.8-flash";
-  console.log(`[Service Worker] Mengaktifkan fallback darurat ke ${fallbackEngine}...`);
-  const fbPayload = {
-    contents: bodyPayload.contents,
-    generationConfig: {
-      temperature: 0.1,
-      topP: 0.95,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingLevel: "minimal" }
-    }
-  };
-  if (systemInstruction) fbPayload.systemInstruction = bodyPayload.systemInstruction;
-  for (const fbKey of keyPool) {
-    const fbCtrl = new AbortController();
-    const fbTimer = setTimeout(() => fbCtrl.abort(), 9e3);
-    try {
-      const fbRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallbackEngine}:generateContent?key=${fbKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fbPayload),
-        signal: fbCtrl.signal
-      });
-      clearTimeout(fbTimer);
-      if (fbRes.ok) {
-        const fbJson = await fbRes.json();
-        const fbText = extractResponseText(fbJson);
-        await recordModelSuccess(fallbackEngine, fbJson.usageMetadata);
-        return {
-          success: true,
-          text: fbText,
-          model: `${activeModel} -> ${fallbackEngine} (Fallback)`
-        };
-      } else {
-        const fbErrData = await fbRes.json().catch(() => ({}));
-        await recordModelError(fallbackEngine, fbRes.status, fbErrData);
-      }
-    } catch {
-      clearTimeout(fbTimer);
-    }
-  }
+  const combinedErr = fallbackLastError ? `${primaryAttempt.lastError} | Fallback gagal (${fallbackLastError})` : primaryAttempt.lastError || "Limit kuota habis.";
   return {
     success: false,
-    error: `Semua API Key (${keyPool.length} key) gagal: ${lastError || "Limit kuota habis."}`
+    error: `Semua API Key (${keyPool.length} key) gagal: ${combinedErr}`
   };
 }
 async function handleCheckUpdate() {

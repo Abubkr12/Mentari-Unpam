@@ -1,9 +1,16 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Fitur seleksi & prioritas forum di modal Rekap Tugas (`token.js`), perbaikan kontras badge + scrollbar Light Mode modal ekspor, serta pembaruan rilis `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Perbaikan timeout & fallback AI di kuis/posttest (`service-worker.js`, `quiz.js`), fitur seleksi & prioritas forum di Rekap Tugas (`token.js`), serta rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Perbaikan Timeout Kuis/Posttest & Kegagalan Fallback `gemini-3.8-flash` (`src/background/service-worker.js`, `src/content/quiz.js`):
+  1. **Akar Masalah Terungkap**:
+     - Model lama `gemini-3.5-flash-lite` mengalami lonjakan latensi > 12 detik pada Free Tier sehingga terpotong `AbortController` `12000ms` di `service-worker.js`.
+     - Saat fallback darurat ke `gemini-3.8-flash` dipicu, payload mengirim `thinkingLevel: 'minimal'` — padahal `gemini-3.8-flash` (serta `gemini-4-hydrogen`) menolak `'minimal'` dan mewajibkan minimum `'low'`. Error fallback juga tertimpa pesan timeout utama sehingga penyebab gagalnya tersembunyi.
+  2. **Resolusi**:
+     - Menambahkan `getThinkingConfigForModel()` (`low` untuk `gemini-4*` & `gemini-3.8-flash`, `minimal` untuk seri 3 lainnya) + mekanisme auto-heal retry tanpa `thinkingConfig` bila ada penolakan HTTP 400 upstream.
+     - Menaikkan timeout model utama ke `18000ms` (18s) dengan fallback berantai ke model Free Tier sehat lain (`gemini-4-hydrogen`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-3.6-flash`), mencatat timeout di telemetri, dan menjaga `chrome.runtime.lastError` di `quiz.js`.
 - [x] Seleksi & Pengaturan Prioritas Forum Sebelum Ekspor Rekap Tugas (`src/content/token.js`):
   1. **Daftar Pilih & Prioritas Forum (`_showDocxExportModal`)**:
      - Menambahkan daftar interaktif forum pending dengan checkbox per item (default terpilih semua agar alur 1-klik tetap cepat), tombol cepat `Pilih Semua` / `Kosongkan`, chip toggle per mata kuliah (muncul otomatis jika >1 MK), badge nomor prioritas (`#1`, `#2`, dst.), serta tombol naik/turun (`↑`/`↓`) untuk mengatur urutan prioritas dokumen.
