@@ -2403,6 +2403,48 @@
     }
   });
 
+  // src/utils/models.js
+  var DEFAULT_FREE_MODEL = "gemini-4-hydrogen";
+  var ACTIVE_FREE_MODELS = [
+    {
+      id: "gemini-4-hydrogen",
+      name: "Gemini 4 Hydrogen",
+      label: "Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)",
+      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi"
+    },
+    {
+      id: "gemini-3.8-flash",
+      name: "Gemini 3.8 Flash",
+      label: "Gemini 3.8 Flash (Flagship Gen-3)",
+      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks"
+    },
+    {
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
+      label: "Gemini 3.6 Flash (Seimbang)",
+      desc: "Seimbang antara kecepatan respon dan pemahaman teks"
+    },
+    {
+      id: "gemini-3.5-flash-lite",
+      name: "Gemini 3.5 Flash-Lite",
+      label: "Gemini 3.5 Flash-Lite (Kuota Tinggi)",
+      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi"
+    },
+    {
+      id: "gemini-3.1-flash-lite",
+      name: "Gemini 3.1 Flash-Lite",
+      label: "Gemini 3.1 Flash-Lite (Ringan & Cepat)",
+      desc: "Latensi rendah dan hemat token di Free Tier"
+    },
+    {
+      id: "gemini-3-flash-preview",
+      name: "Gemini 3 Flash Preview",
+      label: "Gemini 3 Flash Preview (Free Tier)",
+      desc: "Varian preview cepat yang tersedia gratis di AI Studio"
+    }
+  ];
+  var VALID_FREE_MODEL_IDS = ACTIVE_FREE_MODELS.map((m) => m.id);
+
   // src/utils/storage.js
   var Storage = {
     /**
@@ -2585,14 +2627,7 @@
           "mentari_auto_finish_quiz",
           "access"
         ];
-        const validModels = [
-          "gemini-4-hydrogen",
-          "gemini-3.8-flash",
-          "gemini-3.6-flash",
-          "gemini-3.5-flash-lite",
-          "gemini-3.1-flash-lite",
-          "gemini-3-flash-preview"
-        ];
+        const validModels = VALID_FREE_MODEL_IDS;
         const toMigrate = {};
         let hasData = false;
         const existing = await this.get(["gemini_model", "geminiApiKey"]);
@@ -4376,15 +4411,7 @@ ${items}
   };
 
   // src/content/token.js
-  var ALL_MODELS = [
-    { id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)" },
-    { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Flagship Gen-3)" },
-    { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash (Seimbang)" },
-    { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite (Kuota Tinggi)" },
-    { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite (Ringan & Cepat)" },
-    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview (Free Tier)" }
-  ];
-  var DEFAULT_FREE_MODEL = "gemini-4-hydrogen";
+  var ALL_MODELS = ACTIVE_FREE_MODELS.map((m) => ({ id: m.id, name: m.label }));
   var MentariDashboard = class {
     constructor() {
       this.host = null;
@@ -5647,6 +5674,109 @@ ${items}
       .modal.theme-light .loading-text {
         color: #64748b;
       }
+
+      /* Collapsible Model & API Status Dropdown */
+      .model-status-dropdown {
+        background: rgba(255, 255, 255, 0.025);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .model-status-trigger {
+        width: 100%;
+        padding: 12px 14px;
+        background: transparent;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        cursor: pointer;
+        text-align: left;
+        color: #f1f5f9;
+        transition: background-color 0.18s;
+      }
+      .model-status-trigger:hover { background: rgba(255, 255, 255, 0.04); }
+      .model-status-trigger-left { display: flex; flex-direction: column; gap: 2px; }
+      .model-status-title { font-size: 12.5px; font-weight: 600; color: #f8fafc; }
+      .model-status-sub { font-size: 11px; color: #94a3b8; }
+      .model-status-chevron { color: #94a3b8; transition: transform 0.2s ease; flex-shrink: 0; }
+      .model-status-dropdown.open .model-status-chevron { transform: rotate(180deg); }
+
+      .model-status-panel {
+        display: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 12px 14px;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .model-status-dropdown.open .model-status-panel { display: flex; }
+
+      .model-status-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .model-status-note { font-size: 11px; color: #94a3b8; line-height: 1.4; }
+      .model-status-note a { color: #f59e0b; font-weight: 600; text-decoration: none; }
+      .model-status-note a:hover { text-decoration: underline; }
+      .btn-sm { padding: 6px 10px; font-size: 11px; }
+
+      .model-status-list { display: flex; flex-direction: column; gap: 6px; }
+      .model-status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .model-status-row.is-active { border-color: rgba(245, 158, 11, 0.4); }
+      .ms-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .ms-name { font-size: 12px; font-weight: 600; color: #f8fafc; display: flex; align-items: center; gap: 6px; }
+      .ms-id { font-family: monospace; font-size: 10.5px; color: #94a3b8; }
+      .ms-metrics { font-size: 11px; color: #94a3b8; }
+      .ms-badge {
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .ms-badge.ready { background: rgba(16, 185, 129, 0.14); color: #34d399; }
+      .ms-badge.limited { background: rgba(245, 158, 11, 0.16); color: #fbbf24; }
+      .ms-badge.exhausted { background: rgba(239, 68, 68, 0.16); color: #f87171; }
+      .ms-badge.unconfigured { background: rgba(148, 163, 184, 0.14); color: #94a3b8; }
+
+      /* Light theme overrides for model status dropdown */
+      .modal.theme-light .model-status-dropdown {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .model-status-trigger:hover { background: #f8fafc; }
+      .modal.theme-light .model-status-title { color: #0f172a; }
+      .modal.theme-light .model-status-sub,
+      .modal.theme-light .model-status-chevron,
+      .modal.theme-light .model-status-note,
+      .modal.theme-light .ms-id,
+      .modal.theme-light .ms-metrics { color: #64748b; }
+      .modal.theme-light .model-status-note a { color: #1e3a8a; }
+      .modal.theme-light .model-status-panel { border-top-color: #e2e8f0; background: #f8fafc; }
+      .modal.theme-light .model-status-row {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .model-status-row.is-active { border-color: #1e3a8a; }
+      .modal.theme-light .ms-name { color: #0f172a; }
+      .modal.theme-light .ms-badge.ready { background: #ecfdf5; color: #059669; }
+      .modal.theme-light .ms-badge.limited { background: #fffbeb; color: #b45309; }
+      .modal.theme-light .ms-badge.exhausted { background: #fef2f2; color: #dc2626; }
+      .modal.theme-light .ms-badge.unconfigured { background: #f1f5f9; color: #64748b; }
     `;
       const overlay = document.createElement("div");
       overlay.className = "overlay";
@@ -5721,6 +5851,23 @@ ${items}
               <select id="select-active-model" class="select-field">
                 ${ALL_MODELS.map((m) => `<option value="${m.id}">${m.name}</option>`).join("")}
               </select>
+            </div>
+
+            <div class="model-status-dropdown" id="model-status-dropdown">
+              <button class="model-status-trigger" id="btn-toggle-model-status" type="button">
+                <div class="model-status-trigger-left">
+                  <span class="model-status-title">Status API & Pemakaian Model Tersedia</span>
+                  <span class="model-status-sub" id="model-status-summary">Klik untuk lihat detail status 6 model Free Tier</span>
+                </div>
+                <svg class="model-status-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="model-status-panel" id="model-status-panel">
+                <div class="model-status-toolbar">
+                  <span class="model-status-note">Pemakaian lokal dicatat dari ekstensi (reset ~15:00 WIB). <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener noreferrer">Cek Kuota AI Studio</a></span>
+                  <button class="btn-config btn-sm" id="btn-check-models-health" type="button">Cek Koneksi API</button>
+                </div>
+                <div class="model-status-list" id="model-status-list"></div>
+              </div>
             </div>
 
             <div class="settings-item">
@@ -5799,7 +5946,7 @@ ${items}
         const link = e.target.closest("a[href]");
         if (link) {
           const href = link.getAttribute("href");
-          if (href && !href.startsWith("#") && !link.hasAttribute("download")) {
+          if (href && !href.startsWith("#") && !link.hasAttribute("download") && link.target !== "_blank") {
             e.preventDefault();
             close();
             window.location.href = href;
@@ -5815,8 +5962,37 @@ ${items}
           btn.classList.add("active");
           const targetId = btn.getAttribute("data-tab");
           this.shadow.getElementById(targetId)?.classList.add("active");
+          if (targetId === "tab-settings") {
+            this._renderModelStatusPanel();
+          }
         });
       });
+      const statusDropdown = this.shadow.getElementById("model-status-dropdown");
+      const btnToggleModelStatus = this.shadow.getElementById("btn-toggle-model-status");
+      const btnCheckHealth = this.shadow.getElementById("btn-check-models-health");
+      if (btnToggleModelStatus && statusDropdown) {
+        btnToggleModelStatus.addEventListener("click", () => {
+          const opening = !statusDropdown.classList.contains("open");
+          statusDropdown.classList.toggle("open", opening);
+          if (opening) this._renderModelStatusPanel();
+        });
+      }
+      if (btnCheckHealth) {
+        btnCheckHealth.addEventListener("click", () => {
+          btnCheckHealth.disabled = true;
+          btnCheckHealth.textContent = "Memeriksa...";
+          chrome.runtime.sendMessage({ action: "checkModelsHealth" }, (res) => {
+            btnCheckHealth.disabled = false;
+            btnCheckHealth.textContent = "Cek Koneksi API";
+            if (res?.success) {
+              Toast.success("Status endpoint model berhasil disinkronkan dari Google API.");
+              this._renderModelStatusPanel();
+            } else {
+              Toast.warning(res?.error || "Gagal memeriksa koneksi Google API.");
+            }
+          });
+        });
+      }
       const selectModel = this.shadow.getElementById("select-active-model");
       const validModelIds = ALL_MODELS.map((m) => m.id);
       Storage.get("gemini_model").then(({ gemini_model }) => {
@@ -5840,7 +6016,11 @@ ${items}
             const newModel = changes.gemini_model.newValue;
             if (newModel && validModelIds.includes(newModel) && selectModel.value !== newModel) {
               selectModel.value = newModel;
+              this._renderModelStatusPanel();
             }
+          }
+          if (area === "local" && changes.mentari_model_telemetry && this.isOpen) {
+            this._renderModelStatusPanel();
           }
         });
       }
@@ -5880,11 +6060,77 @@ ${items}
         });
       }
       this._applyTheme(this.currentTheme);
+      this._renderModelStatusPanel();
       const modalEl = this.shadow.querySelector(".modal");
       const headerEl = this.shadow.getElementById("dashboard-modal-header");
       if (modalEl && headerEl) {
         this._makeElementDraggable(modalEl, headerEl);
       }
+    }
+    _renderModelStatusPanel() {
+      if (!this.shadow) return;
+      const summaryEl = this.shadow.getElementById("model-status-summary");
+      const listEl = this.shadow.getElementById("model-status-list");
+      if (!listEl) return;
+      chrome.runtime.sendMessage({ action: "getModelTelemetry" }, (res) => {
+        if (!res) return;
+        const { models = ACTIVE_FREE_MODELS, activeModel = DEFAULT_FREE_MODEL, hasKey = false, telemetry } = res;
+        const modelStats = telemetry?.models || {};
+        const activeStats = modelStats[activeModel];
+        if (summaryEl) {
+          if (!hasKey) {
+            summaryEl.textContent = "API Key belum dipasang \u2014 buka Konfigurasi API Key dulu";
+          } else if (activeStats?.status === "daily_exhausted") {
+            summaryEl.textContent = `Model aktif (${activeModel}) kena limit harian \u2014 klik untuk detail`;
+          } else if (activeStats?.status === "rate_limited") {
+            const secLeft = Math.max(1, Math.ceil((activeStats.cooldownUntil - Date.now()) / 1e3));
+            summaryEl.textContent = `Model aktif cooldown ${secLeft}s \u2014 klik untuk detail`;
+          } else {
+            const todayReqs = Object.values(modelStats).reduce((s, m) => s + (m.requestsToday || 0), 0);
+            summaryEl.textContent = `6 Model Free Tier aktif \u2022 ${todayReqs} request lokal hari ini`;
+          }
+        }
+        listEl.innerHTML = "";
+        models.forEach((m) => {
+          const st = modelStats[m.id] || {};
+          const isActive = m.id === activeModel;
+          const rpmNow = Array.isArray(st.recentTimestamps) ? st.recentTimestamps.length : 0;
+          const reqToday = st.requestsToday || 0;
+          const tokToday = st.tokensToday || 0;
+          let badgeClass = "ready";
+          let badgeText = "Siap / Aktif";
+          if (!hasKey) {
+            badgeClass = "unconfigured";
+            badgeText = "Butuh API Key";
+          } else if (st.status === "daily_exhausted") {
+            badgeClass = "exhausted";
+            badgeText = "Limit Harian (429)";
+          } else if (st.status === "rate_limited" && st.cooldownUntil > Date.now()) {
+            const secLeft = Math.max(1, Math.ceil((st.cooldownUntil - Date.now()) / 1e3));
+            badgeClass = "limited";
+            badgeText = `Cooldown ${secLeft}s`;
+          } else if (st.status === "unavailable") {
+            badgeClass = "exhausted";
+            badgeText = "Tidak Tersedia (404)";
+          } else if (st.status === "error") {
+            badgeClass = "limited";
+            badgeText = "Gangguan API";
+          }
+          const row = document.createElement("div");
+          row.className = `model-status-row ${isActive ? "is-active" : ""}`;
+          row.innerHTML = `
+          <div class="ms-left">
+            <div class="ms-name">
+              <span>${m.name}</span>
+              ${isActive ? '<span class="ms-id">(Aktif)</span>' : ""}
+            </div>
+            <div class="ms-metrics">${reqToday} req hari ini \xB7 ${rpmNow} RPM \xB7 ${tokToday.toLocaleString("id-ID")} token</div>
+          </div>
+          <span class="ms-badge ${badgeClass}" title="${st.lastError || ""}">${badgeText}</span>
+        `;
+          listEl.appendChild(row);
+        });
+      });
     }
     _applyTheme(theme) {
       this.currentTheme = theme === "light" ? "light" : "dark";

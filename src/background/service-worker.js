@@ -3,16 +3,10 @@
  * Manifest V3 background hub untuk isolasi API calls, verifikasi API Key, dan auto-update.
  */
 
-const GEMINI_MODELS_DEFAULT = [
-  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen', desc: 'Rekomendasi Utama (Terbaru & Free Tier)' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'Flagship Gen-3 (Free Tier)' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', desc: 'Seimbang & Cepat (Free Tier)' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', desc: 'Kuota Tinggi & Cepat (Free Tier)' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Ringan & Efisien (Free Tier)' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', desc: 'Preview Cepat (Free Tier)' }
-];
+import { ACTIVE_FREE_MODELS, VALID_FREE_MODEL_IDS, DEFAULT_FREE_MODEL } from '../utils/models.js';
 
-const ACTIVE_FREE_MODEL_IDS = GEMINI_MODELS_DEFAULT.map(m => m.id);
+const GEMINI_MODELS_DEFAULT = ACTIVE_FREE_MODELS;
+const ACTIVE_FREE_MODEL_IDS = VALID_FREE_MODEL_IDS;
 
 // Inisialisasi default & migrasi model saat install / update
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -21,7 +15,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   const current = await chrome.storage.local.get(['gemini_model', 'available_models']);
   const nextModel = ACTIVE_FREE_MODEL_IDS.includes(current.gemini_model)
     ? current.gemini_model
-    : 'gemini-4-hydrogen';
+    : DEFAULT_FREE_MODEL;
 
   await chrome.storage.local.set({
     gemini_model: nextModel,
@@ -72,6 +66,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
 
+    case 'getModelTelemetry':
+      handleGetModelTelemetry().then(sendResponse);
+      return true;
+
+    case 'checkModelsHealth':
+      handleCheckModelsHealth().then(sendResponse);
+      return true;
+
     case 'checkExtensionUpdate':
       handleCheckUpdate().then(sendResponse);
       return true;
@@ -115,8 +117,10 @@ async function handleValidateApiKey(apiKey) {
       if (!keys.includes(cleanKey)) {
         keys.push(cleanKey);
       }
+      // Pertahankan API Key utama awal user agar penambahan key baru tidak menimpa setting default
+      const primaryKey = store.geminiApiKey || cleanKey;
       await chrome.storage.local.set({
-        geminiApiKey: cleanKey,
+        geminiApiKey: primaryKey,
         geminiApiKeys: keys
       });
       return { valid: true, message: 'API key valid dan berhasil dikoneksikan ke Google AI Studio!' };
@@ -198,6 +202,169 @@ function extractResponseText(resJson) {
     return answerParts.map(p => p.text).join('');
   }
   return parts[0]?.text || '';
+}
+
+function getPacificDateKey() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function loadAndPruneTelemetry() {
+  const todayPt = getPacificDateKey();
+  const { mentari_model_telemetry } = await chrome.storage.local.get(['mentari_model_telemetry']);
+  const state = (mentari_model_telemetry && mentari_model_telemetry.dayKey === todayPt)
+    ? mentari_model_telemetry
+    : { dayKey: todayPt, models: {}, lastHealthCheckAt: 0 };
+
+  const now = Date.now();
+  const oneMinAgo = now - 60000;
+
+  for (const id of ACTIVE_FREE_MODEL_IDS) {
+    const entry = state.models[id] || {
+      status: 'ready',
+      requestsToday: 0,
+      tokensToday: 0,
+      recentTimestamps: [],
+      cooldownUntil: 0,
+      lastError: '',
+      lastUsedAt: 0,
+      endpointAvailable: null
+    };
+    entry.recentTimestamps = (entry.recentTimestamps || []).filter(ts => ts > oneMinAgo);
+    if (entry.status === 'rate_limited' && entry.cooldownUntil > 0 && now >= entry.cooldownUntil) {
+      entry.status = 'ready';
+      entry.cooldownUntil = 0;
+      entry.lastError = '';
+    }
+    state.models[id] = entry;
+  }
+  return state;
+}
+
+async function recordModelSuccess(modelId, usageMetadata) {
+  try {
+    const state = await loadAndPruneTelemetry();
+    const targetId = ACTIVE_FREE_MODEL_IDS.includes(modelId) ? modelId : resolveUpstreamModel(modelId);
+    const entry = state.models[targetId];
+    if (!entry) return;
+
+    const now = Date.now();
+    entry.status = 'ready';
+    entry.cooldownUntil = 0;
+    entry.lastError = '';
+    entry.lastUsedAt = now;
+    entry.requestsToday = (entry.requestsToday || 0) + 1;
+    entry.tokensToday = (entry.tokensToday || 0) + (usageMetadata?.totalTokenCount || 0);
+    entry.recentTimestamps.push(now);
+    entry.endpointAvailable = true;
+
+    await chrome.storage.local.set({ mentari_model_telemetry: state });
+  } catch {}
+}
+
+async function recordModelError(modelId, httpStatus, errData) {
+  try {
+    const state = await loadAndPruneTelemetry();
+    const targetId = ACTIVE_FREE_MODEL_IDS.includes(modelId) ? modelId : resolveUpstreamModel(modelId);
+    const entry = state.models[targetId];
+    if (!entry) return;
+
+    const now = Date.now();
+    const errMsg = errData?.error?.message || `HTTP ${httpStatus}`;
+    entry.lastUsedAt = now;
+    entry.lastError = errMsg;
+
+    if (httpStatus === 404) {
+      entry.status = 'unavailable';
+      entry.endpointAvailable = false;
+    } else if (httpStatus === 429) {
+      const details = Array.isArray(errData?.error?.details) ? errData.error.details : [];
+      const retryDetail = details.find(d => String(d['@type'] || '').includes('RetryInfo'));
+      const quotaDetail = details.find(d => String(d['@type'] || '').includes('QuotaFailure'));
+      const quotaText = JSON.stringify(quotaDetail || '') + ' ' + errMsg;
+      const isDaily = /perday|daily|rpd/i.test(quotaText);
+
+      if (isDaily) {
+        entry.status = 'daily_exhausted';
+        entry.cooldownUntil = 0;
+      } else {
+        let retryMs = 60000;
+        if (retryDetail?.retryDelay) {
+          const secMatch = String(retryDetail.retryDelay).match(/([\d.]+)s/);
+          if (secMatch) retryMs = Math.max(5000, Math.ceil(parseFloat(secMatch[1]) * 1000));
+        }
+        entry.status = 'rate_limited';
+        entry.cooldownUntil = now + retryMs;
+      }
+    } else {
+      entry.status = 'error';
+    }
+
+    await chrome.storage.local.set({ mentari_model_telemetry: state });
+  } catch {}
+}
+
+async function handleGetModelTelemetry() {
+  const [telemetry, store] = await Promise.all([
+    loadAndPruneTelemetry(),
+    chrome.storage.local.get(['gemini_model', 'geminiApiKey', 'geminiApiKeys'])
+  ]);
+  const activeModel = ACTIVE_FREE_MODEL_IDS.includes(store.gemini_model)
+    ? store.gemini_model
+    : 'gemini-4-hydrogen';
+  const hasKey = Boolean(store.geminiApiKey || (Array.isArray(store.geminiApiKeys) && store.geminiApiKeys.length > 0));
+  return {
+    models: GEMINI_MODELS_DEFAULT,
+    activeModel,
+    hasKey,
+    telemetry
+  };
+}
+
+async function handleCheckModelsHealth() {
+  const { geminiApiKey, geminiApiKeys } = await chrome.storage.local.get(['geminiApiKey', 'geminiApiKeys']);
+  const checkKey = geminiApiKey || (Array.isArray(geminiApiKeys) ? geminiApiKeys[0] : '');
+  if (!checkKey) {
+    return { success: false, error: 'Belum ada API Key tersimpan.' };
+  }
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${checkKey}&pageSize=100`, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    const state = await loadAndPruneTelemetry();
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.error?.message || `HTTP ${res.status}`, telemetry: state };
+    }
+
+    const data = await res.json();
+    const liveIds = new Set((data.models || []).map(m => String(m.name || '').replace(/^models\//, '')));
+    const now = Date.now();
+    state.lastHealthCheckAt = now;
+
+    for (const id of ACTIVE_FREE_MODEL_IDS) {
+      const entry = state.models[id];
+      const available = liveIds.has(id);
+      entry.endpointAvailable = available;
+      if (!available && entry.status === 'ready') {
+        entry.status = 'unavailable';
+        entry.lastError = 'Tidak tercantum di endpoint v1beta proyek ini';
+      } else if (available && entry.status === 'unavailable') {
+        entry.status = 'ready';
+        entry.lastError = '';
+      }
+    }
+
+    await chrome.storage.local.set({ mentari_model_telemetry: state });
+    return { success: true, telemetry: state };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 }
 
 /**
@@ -306,6 +473,7 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
       if (response.ok) {
         const resJson = await response.json();
         const textOut = extractResponseText(resJson);
+        await recordModelSuccess(targetEngineModel, resJson.usageMetadata);
 
         if (currentKey !== store.geminiApiKey) {
           console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
@@ -324,6 +492,8 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
 
       const errData = await response.json().catch(() => ({}));
       const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
+      await recordModelError(targetEngineModel, response.status, errData);
+
       if (response.status === 404) {
         console.warn(`[Service Worker] Model ${targetEngineModel} tidak ditemukan di Google API (404). Memutus perulangan key.`);
         lastError = errMsg;
@@ -379,11 +549,15 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
       if (fbRes.ok) {
         const fbJson = await fbRes.json();
         const fbText = extractResponseText(fbJson);
+        await recordModelSuccess(fallbackEngine, fbJson.usageMetadata);
         return {
           success: true,
           text: fbText,
           model: `${activeModel} -> ${fallbackEngine} (Fallback)`
         };
+      } else {
+        const fbErrData = await fbRes.json().catch(() => ({}));
+        await recordModelError(fallbackEngine, fbRes.status, fbErrData);
       }
     } catch {
       clearTimeout(fbTimer);

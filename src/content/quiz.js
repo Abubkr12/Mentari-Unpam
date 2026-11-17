@@ -9,18 +9,11 @@ import { AutoPilotSync } from '../utils/autopilot-sync.js';
 import { DOM } from '../utils/dom.js';
 import { Humanizer } from '../utils/humanizer.js';
 import { Toast } from '../utils/toast.js';
+import { ACTIVE_FREE_MODELS, VALID_FREE_MODEL_IDS, DEFAULT_FREE_MODEL } from '../utils/models.js';
 
-const ALL_MODELS = [
-  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' }
-];
-
-const VALID_MODEL_IDS = ALL_MODELS.map(m => m.id);
-const DEFAULT_MODEL = 'gemini-4-hydrogen';
+const ALL_MODELS = ACTIVE_FREE_MODELS.map(m => ({ id: m.id, name: m.label }));
+const VALID_MODEL_IDS = VALID_FREE_MODEL_IDS;
+const DEFAULT_MODEL = DEFAULT_FREE_MODEL;
 
 class QuizAssistant {
   constructor() {

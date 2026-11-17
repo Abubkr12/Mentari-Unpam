@@ -6,15 +6,9 @@
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
 import { ThemeHelper } from '../utils/theme.js';
+import { ACTIVE_FREE_MODELS, DEFAULT_FREE_MODEL } from '../utils/models.js';
 
-const ALL_MODELS = [
-  { id: 'gemini-4-hydrogen', name: 'Gemini 4 Hydrogen (Free)' },
-  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite' },
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' }
-];
+const ALL_MODELS = ACTIVE_FREE_MODELS.map(m => ({ id: m.id, name: m.name }));
 
 class GeminiChatbot {
   constructor() {

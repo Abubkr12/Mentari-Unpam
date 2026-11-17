@@ -1,4 +1,46 @@
 (() => {
+  // src/utils/models.js
+  var DEFAULT_FREE_MODEL = "gemini-4-hydrogen";
+  var ACTIVE_FREE_MODELS = [
+    {
+      id: "gemini-4-hydrogen",
+      name: "Gemini 4 Hydrogen",
+      label: "Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)",
+      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi"
+    },
+    {
+      id: "gemini-3.8-flash",
+      name: "Gemini 3.8 Flash",
+      label: "Gemini 3.8 Flash (Flagship Gen-3)",
+      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks"
+    },
+    {
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
+      label: "Gemini 3.6 Flash (Seimbang)",
+      desc: "Seimbang antara kecepatan respon dan pemahaman teks"
+    },
+    {
+      id: "gemini-3.5-flash-lite",
+      name: "Gemini 3.5 Flash-Lite",
+      label: "Gemini 3.5 Flash-Lite (Kuota Tinggi)",
+      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi"
+    },
+    {
+      id: "gemini-3.1-flash-lite",
+      name: "Gemini 3.1 Flash-Lite",
+      label: "Gemini 3.1 Flash-Lite (Ringan & Cepat)",
+      desc: "Latensi rendah dan hemat token di Free Tier"
+    },
+    {
+      id: "gemini-3-flash-preview",
+      name: "Gemini 3 Flash Preview",
+      label: "Gemini 3 Flash Preview (Free Tier)",
+      desc: "Varian preview cepat yang tersedia gratis di AI Studio"
+    }
+  ];
+  var VALID_FREE_MODEL_IDS = ACTIVE_FREE_MODELS.map((m) => m.id);
+
   // src/utils/storage.js
   var Storage = {
     /**
@@ -181,14 +223,7 @@
           "mentari_auto_finish_quiz",
           "access"
         ];
-        const validModels = [
-          "gemini-4-hydrogen",
-          "gemini-3.8-flash",
-          "gemini-3.6-flash",
-          "gemini-3.5-flash-lite",
-          "gemini-3.1-flash-lite",
-          "gemini-3-flash-preview"
-        ];
+        const validModels = VALID_FREE_MODEL_IDS;
         const toMigrate = {};
         let hasData = false;
         const existing = await this.get(["gemini_model", "geminiApiKey"]);
@@ -1113,6 +1148,75 @@
         cursor: not-allowed;
         transform: none;
       }
+
+      .btn-outline {
+        background: rgba(255, 255, 255, 0.06);
+        color: #f8fafc;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+      .btn-outline:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .modal.theme-light .btn-outline {
+        background: #ffffff;
+        color: #1e3a8a;
+        border: 1px solid #cbd5e1;
+      }
+      .modal.theme-light .btn-outline:hover {
+        background: #f1f5f9;
+        border-color: #1e3a8a;
+      }
+
+      .model-setup-box {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 2px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .modal.theme-light .model-setup-box {
+        border-top-color: #e2e8f0;
+      }
+      .select-model-field {
+        width: 100%;
+        background: #1e1f26;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        padding: 9px 12px;
+        color: #ffffff;
+        font-size: 12.5px;
+        font-weight: 500;
+        outline: none;
+        cursor: pointer;
+      }
+      .select-model-field:focus {
+        border-color: #f59e0b;
+      }
+      .select-model-field option {
+        background: #1e1f26;
+        color: #ffffff;
+      }
+      .modal.theme-light .select-model-field {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .modal.theme-light .select-model-field:focus {
+        border-color: #1e3a8a;
+      }
+      .modal.theme-light .select-model-field option {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .model-setup-hint {
+        font-size: 11px;
+        color: #94a3b8;
+        line-height: 1.4;
+      }
+      .modal.theme-light .model-setup-hint {
+        color: #64748b;
+      }
     `;
       const overlay = document.createElement("div");
       overlay.className = "overlay";
@@ -1214,12 +1318,23 @@
                 </svg>
               </button>
             </div>
+
+            <div class="model-setup-box" id="model-setup-box">
+              <div class="section-label">
+                <span>Model AI Default (Free Tier)</span>
+              </div>
+              <select id="select-setup-model" class="select-model-field">
+                ${ACTIVE_FREE_MODELS.map((m) => `<option value="${m.id}">${m.label}</option>`).join("")}
+              </select>
+              <span class="model-setup-hint">Pilihan model tetap mengikuti pengaturan terakhir Anda saat menambah API Key cadangan.</span>
+            </div>
           </div>
 
           <div class="footer">
             <button class="btn btn-cancel" id="btn-cancel" type="button">Tutup</button>
             <div class="footer-right">
               <button class="btn btn-save" id="btn-add-key" type="button">Tambah & Uji Key</button>
+              <button class="btn btn-save" id="btn-finish-setup" type="button" style="display:none;">Simpan & Selesai</button>
             </div>
           </div>
         </div>
@@ -1258,11 +1373,41 @@
       }
       const inputKey = this.shadow.getElementById("input-api-key");
       const btnAddKey = this.shadow.getElementById("btn-add-key");
+      const btnFinishSetup = this.shadow.getElementById("btn-finish-setup");
+      const selectSetupModel = this.shadow.getElementById("select-setup-model");
       const btnCancel = this.shadow.getElementById("btn-cancel");
       const btnClose = this.shadow.getElementById("btn-close");
       const btnToggleVis = this.shadow.getElementById("btn-toggle-vis");
       const btnStartSetup = this.shadow.getElementById("btn-start-setup");
       const btnSkipWelcome = this.shadow.getElementById("btn-skip-welcome");
+      const syncModelSelect = async () => {
+        const { gemini_model } = await Storage.get("gemini_model", { gemini_model: DEFAULT_FREE_MODEL });
+        const activeId = VALID_FREE_MODEL_IDS.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
+        if (selectSetupModel) selectSetupModel.value = activeId;
+      };
+      syncModelSelect();
+      if (selectSetupModel) {
+        selectSetupModel.addEventListener("change", async () => {
+          const chosen = selectSetupModel.value;
+          if (VALID_FREE_MODEL_IDS.includes(chosen)) {
+            await Storage.set({ gemini_model: chosen });
+            Toast.success(`Model AI default diatur ke: ${selectSetupModel.options[selectSetupModel.selectedIndex].text.split(" (")[0]}`);
+          }
+        });
+      }
+      try {
+        if (Storage.isContextValid() && chrome.storage?.onChanged) {
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === "local" && changes.gemini_model?.newValue && selectSetupModel) {
+              const nv = changes.gemini_model.newValue;
+              if (VALID_FREE_MODEL_IDS.includes(nv) && selectSetupModel.value !== nv) {
+                selectSetupModel.value = nv;
+              }
+            }
+          });
+        }
+      } catch {
+      }
       inputKey.addEventListener("mousedown", (e) => {
         e.stopPropagation();
         inputKey.focus();
@@ -1287,6 +1432,16 @@
       btnClose.addEventListener("click", close);
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close();
+      });
+      btnFinishSetup.addEventListener("click", async () => {
+        const chosenModel = selectSetupModel?.value;
+        const updates = { mentari_onboarding_completed: true };
+        if (chosenModel && VALID_FREE_MODEL_IDS.includes(chosenModel)) {
+          updates.gemini_model = chosenModel;
+        }
+        await Storage.set(updates);
+        Toast.success("Konfigurasi AI selesai dan siap digunakan.");
+        this.closeModal();
       });
       btnSkipWelcome.addEventListener("click", async () => {
         await Storage.set({ mentari_onboarding_completed: true });
@@ -1318,7 +1473,7 @@
           if (res && res.valid) {
             inputKey.value = "";
             await Storage.set({ mentari_onboarding_completed: true });
-            Toast.success("API Key valid dan berhasil ditambahkan ke pool.");
+            Toast.success("API Key valid tersimpan. Cek Model AI Default lalu klik Simpan & Selesai.");
             await this._loadAndRenderKeys();
             window.dispatchEvent(new CustomEvent("gemini-api-key-updated", {
               detail: { apiKey: keyVal }
@@ -1330,12 +1485,13 @@
       });
       this._applyTheme();
     }
-    _switchView(viewName) {
+    async _switchView(viewName) {
       this.currentView = viewName;
       if (!this.shadow) return;
       const welcomeEl = this.shadow.getElementById("view-welcome");
       const apikeyEl = this.shadow.getElementById("view-apikey");
       const titleText = this.shadow.getElementById("header-title-text");
+      const selectSetupModel = this.shadow.getElementById("select-setup-model");
       if (viewName === "welcome") {
         welcomeEl?.classList.add("active");
         apikeyEl?.classList.remove("active");
@@ -1344,9 +1500,37 @@
         welcomeEl?.classList.remove("active");
         apikeyEl?.classList.add("active");
         if (titleText) titleText.textContent = "Koneksi Google Gemini AI";
+        try {
+          const { gemini_model } = await Storage.get("gemini_model", { gemini_model: DEFAULT_FREE_MODEL });
+          if (selectSetupModel) {
+            selectSetupModel.value = VALID_FREE_MODEL_IDS.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
+          }
+        } catch {
+        }
         this._loadAndRenderKeys();
         const inputKey = this.shadow.getElementById("input-api-key");
         setTimeout(() => inputKey?.focus(), 140);
+      }
+    }
+    _updateFooterState(keyCount) {
+      if (!this.shadow) return;
+      const btnCancel = this.shadow.getElementById("btn-cancel");
+      const btnAddKey = this.shadow.getElementById("btn-add-key");
+      const btnFinishSetup = this.shadow.getElementById("btn-finish-setup");
+      if (keyCount > 0) {
+        if (btnCancel) btnCancel.style.display = "none";
+        if (btnFinishSetup) btnFinishSetup.style.display = "inline-flex";
+        if (btnAddKey) {
+          btnAddKey.className = "btn btn-outline";
+          btnAddKey.textContent = "Tambah Key";
+        }
+      } else {
+        if (btnCancel) btnCancel.style.display = "inline-flex";
+        if (btnFinishSetup) btnFinishSetup.style.display = "none";
+        if (btnAddKey) {
+          btnAddKey.className = "btn btn-save";
+          btnAddKey.textContent = "Tambah & Uji Key";
+        }
       }
     }
     async _loadAndRenderKeys() {
@@ -1360,6 +1544,7 @@
         if (countBadge) {
           countBadge.textContent = `${keys.length} Key`;
         }
+        this._updateFooterState(keys.length);
         if (keys.length === 0) {
           container.innerHTML = `
           <div class="empty-keys">
@@ -1438,7 +1623,7 @@
       if (this.host) {
         this.host.style.display = "block";
       }
-      this._switchView(view);
+      await this._switchView(view);
       const overlay = this.shadow?.querySelector(".overlay");
       if (overlay) overlay.classList.add("open");
     }

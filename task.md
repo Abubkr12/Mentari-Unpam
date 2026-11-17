@@ -4,6 +4,13 @@
 - Tidak ada task aktif saat ini. Penyederhanaan ikon UI, pembaruan daftar model Gemini Free Tier aktif (`gemini-4-hydrogen` dkk), dan pengemasan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Pemilihan Model Default di Setup Key & Dropdown Status API/Model Real-Time (`models.js`, `service-worker.js`, `apiKeyManager.js`, `token.js`):
+  1. **Single Source of Truth Model (`src/utils/models.js`)**: Mengonsolidasikan daftar 6 model Free Tier aktif (`gemini-4-hydrogen` default) dan memusatkan seluruh impor di `service-worker.js`, `token.js`, `quiz.js`, `gemini.js`, `apiKeyManager.js`, dan `storage.js`.
+  2. **Alur Setup API Key & Model Default (`apiKeyManager.js`, `service-worker.js`)**:
+     - Menambahkan pemilih `Model AI Default (Free Tier)` + tombol akhir `Simpan & Selesai` setelah API key tersimpan.
+     - Memperbaiki `handleValidateApiKey` agar penambahan key cadangan tidak menimpa API key utama awal dan pilihan model terakhir tetap dipertahankan.
+  3. **Dropdown Status API & Telemetry Lokal (`token.js`, `service-worker.js`)**:
+     - Menambahkan dropdown lipat *"Status API & Pemakaian Model Tersedia"* di Tab Pengaturan (tertutup default agar rapi) menampilkan status aktual (`Siap`, `Cooldown Xs`, `Limit Harian 429`), request/RPM lokal, total token dari `usageMetadata`, tombol `Cek Koneksi API`, dan tautan ke Google AI Studio Rate Limits.
 - [x] Perbaikan `TypeError: Failed to execute 'contains' on 'Node'` pada `_windowFocusGuard` (`apiKeyManager.js` & `token.js`):
   1. **Akar Masalah**: Event `focus` pada `window` menghasilkan `e.target === window` (bukan `Node`), sehingga pemanggilan `this.host?.contains(e.target)` melempar `TypeError` saat tab/jendela browser berpindah fokus.
   2. **Resolusi**: Menambahkan penjagaan tipe `target instanceof Node` sebelum memanggil `.contains(target)` pada `_windowFocusGuard` di `src/content/apiKeyManager.js` dan `src/content/token.js`.
