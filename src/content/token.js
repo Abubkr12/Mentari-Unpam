@@ -9,7 +9,13 @@ import { Toast } from '../utils/toast.js';
 import { DocxGenerator } from '../utils/docx-generator.js';
 import { MarkdownGenerator } from '../utils/md-generator.js';
 import { ThemeHelper, getBrandSvgMarkup } from '../utils/theme.js';
-import { ACTIVE_FREE_MODELS, DEFAULT_FREE_MODEL } from '../utils/models.js';
+import {
+  ACTIVE_FREE_MODELS,
+  DEFAULT_FREE_MODEL,
+  THINKING_LEVEL_META,
+  getSupportedThinkingLevels,
+  resolveThinkingLevelForModel
+} from '../utils/models.js';
 
 const ALL_MODELS = ACTIVE_FREE_MODELS.map(m => ({ id: m.id, name: m.label }));
 
@@ -1581,6 +1587,14 @@ class MentariDashboard {
               </select>
             </div>
 
+            <div class="settings-item">
+              <div class="settings-info">
+                <h4>Thinking Level AI</h4>
+                <p>Atur kecepatan vs kedalaman penalaran sesuai level yang didukung model aktif.</p>
+              </div>
+              <select id="select-thinking-level" class="select-field"></select>
+            </div>
+
             <div class="model-status-dropdown" id="model-status-dropdown">
               <button class="model-status-trigger" id="btn-toggle-model-status" type="button">
                 <div class="model-status-trigger-left">
@@ -1722,34 +1736,63 @@ class MentariDashboard {
       });
     }
 
-    // Model selection on the fly
+    // Model & Thinking Level selection on the fly
     const selectModel = this.shadow.getElementById('select-active-model');
+    const selectThinking = this.shadow.getElementById('select-thinking-level');
     const validModelIds = ALL_MODELS.map(m => m.id);
-    Storage.get('gemini_model').then(({ gemini_model }) => {
-      if (gemini_model && validModelIds.includes(gemini_model)) {
-        selectModel.value = gemini_model;
-      } else {
-        selectModel.value = DEFAULT_FREE_MODEL;
-        Storage.set({ gemini_model: DEFAULT_FREE_MODEL });
+
+    const renderThinkingOptions = (modelId, preferredLevel = null) => {
+      if (!selectThinking) return 'low';
+      const supported = getSupportedThinkingLevels(modelId);
+      const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+      selectThinking.innerHTML = supported
+        .map(lvl => `<option value="${lvl}">${THINKING_LEVEL_META[lvl]?.label || lvl}</option>`)
+        .join('');
+      selectThinking.value = resolved;
+      return resolved;
+    };
+
+    Storage.get(['gemini_model', 'gemini_thinking_level']).then(({ gemini_model, gemini_thinking_level }) => {
+      const resolvedModel = (gemini_model && validModelIds.includes(gemini_model))
+        ? gemini_model
+        : DEFAULT_FREE_MODEL;
+      selectModel.value = resolvedModel;
+      const resolvedLevel = renderThinkingOptions(resolvedModel, gemini_thinking_level);
+      if (gemini_model !== resolvedModel || gemini_thinking_level !== resolvedLevel) {
+        Storage.set({ gemini_model: resolvedModel, gemini_thinking_level: resolvedLevel });
       }
     });
 
     selectModel.addEventListener('change', () => {
       const chosen = selectModel.value;
       if (chosen && validModelIds.includes(chosen)) {
-        Storage.set({ gemini_model: chosen });
-        Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+        const nextLevel = renderThinkingOptions(chosen, selectThinking?.value);
+        Storage.set({ gemini_model: chosen, gemini_thinking_level: nextLevel });
+        Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text} (${THINKING_LEVEL_META[nextLevel]?.shortLabel || nextLevel})`);
       }
     });
 
+    if (selectThinking) {
+      selectThinking.addEventListener('change', () => {
+        const modelId = selectModel?.value || DEFAULT_FREE_MODEL;
+        const resolved = resolveThinkingLevelForModel(modelId, selectThinking.value);
+        Storage.set({ gemini_thinking_level: resolved });
+        Toast.success(`Thinking Level diubah ke: ${THINKING_LEVEL_META[resolved]?.label || resolved}`);
+      });
+    }
+
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.gemini_model) {
-          const newModel = changes.gemini_model.newValue;
-          if (newModel && validModelIds.includes(newModel) && selectModel.value !== newModel) {
-            selectModel.value = newModel;
+        if (area === 'local' && (changes.gemini_model || changes.gemini_thinking_level)) {
+          const nextModel = (changes.gemini_model?.newValue && validModelIds.includes(changes.gemini_model.newValue))
+            ? changes.gemini_model.newValue
+            : selectModel.value;
+          if (selectModel.value !== nextModel) {
+            selectModel.value = nextModel;
             this._renderModelStatusPanel();
           }
+          const nextLevel = changes.gemini_thinking_level?.newValue ?? selectThinking?.value;
+          renderThinkingOptions(nextModel, nextLevel);
         }
         if (area === 'local' && changes.mentari_model_telemetry && this.isOpen) {
           this._renderModelStatusPanel();

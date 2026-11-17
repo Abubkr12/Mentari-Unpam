@@ -1,45 +1,84 @@
 (() => {
   // src/utils/models.js
   var DEFAULT_FREE_MODEL = "gemini-4-hydrogen";
+  var THINKING_LEVEL_META = {
+    minimal: { id: "minimal", label: "Minimal (Tercepat)", shortLabel: "Minimal", timeoutMs: 18e3 },
+    low: { id: "low", label: "Low (Cepat & Hemat)", shortLabel: "Low", timeoutMs: 18e3 },
+    medium: { id: "medium", label: "Medium (Seimbang)", shortLabel: "Medium", timeoutMs: 26e3 },
+    high: { id: "high", label: "High (Mendalam / Lebih Lama)", shortLabel: "High", timeoutMs: 36e3 },
+    xhigh: { id: "xhigh", label: "XHigh (Maksimal / Paling Lama)", shortLabel: "XHigh", timeoutMs: 45e3 }
+  };
   var ACTIVE_FREE_MODELS = [
     {
       id: "gemini-4-hydrogen",
       name: "Gemini 4 Hydrogen",
       label: "Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)",
-      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi"
+      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi",
+      thinkingLevels: ["low", "medium", "high", "xhigh"],
+      defaultThinkingLevel: "low"
     },
     {
       id: "gemini-3.8-flash",
       name: "Gemini 3.8 Flash",
       label: "Gemini 3.8 Flash (Flagship Gen-3)",
-      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks"
+      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks",
+      thinkingLevels: ["low", "medium", "high"],
+      defaultThinkingLevel: "low"
     },
     {
       id: "gemini-3.6-flash",
       name: "Gemini 3.6 Flash",
       label: "Gemini 3.6 Flash (Seimbang)",
-      desc: "Seimbang antara kecepatan respon dan pemahaman teks"
+      desc: "Seimbang antara kecepatan respon dan pemahaman teks",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3.5-flash-lite",
       name: "Gemini 3.5 Flash-Lite",
       label: "Gemini 3.5 Flash-Lite (Kuota Tinggi)",
-      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi"
+      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3.1-flash-lite",
       name: "Gemini 3.1 Flash-Lite",
       label: "Gemini 3.1 Flash-Lite (Ringan & Cepat)",
-      desc: "Latensi rendah dan hemat token di Free Tier"
+      desc: "Latensi rendah dan hemat token di Free Tier",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3-flash-preview",
       name: "Gemini 3 Flash Preview",
       label: "Gemini 3 Flash Preview (Free Tier)",
-      desc: "Varian preview cepat yang tersedia gratis di AI Studio"
+      desc: "Varian preview cepat yang tersedia gratis di AI Studio",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     }
   ];
   var VALID_FREE_MODEL_IDS = ACTIVE_FREE_MODELS.map((m) => m.id);
+  function getModelMeta(modelId) {
+    return ACTIVE_FREE_MODELS.find((m) => m.id === modelId) || ACTIVE_FREE_MODELS[0];
+  }
+  function getSupportedThinkingLevels(modelId) {
+    return getModelMeta(modelId).thinkingLevels || ["low", "medium", "high"];
+  }
+  function resolveThinkingLevelForModel(modelId, requestedLevel = null) {
+    const meta = getModelMeta(modelId);
+    const allowed = meta.thinkingLevels || ["low"];
+    if (requestedLevel && allowed.includes(requestedLevel)) {
+      return requestedLevel;
+    }
+    if (requestedLevel === "minimal" && allowed.includes("low")) {
+      return "low";
+    }
+    if (requestedLevel === "xhigh" && allowed.includes("high")) {
+      return "high";
+    }
+    return meta.defaultThinkingLevel || allowed[0];
+  }
 
   // src/utils/storage.js
   var Storage = {
@@ -1320,42 +1359,65 @@
       this.hudShadow = null;
       this.hudHost = null;
       this.activeModel = DEFAULT_MODEL;
+      this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
       this._currentSessionQuestions = [];
       this._init();
     }
     async _init() {
       console.log("[Mentari Mod] Quiz Assistant aktif.");
       try {
-        const { gemini_model } = await Storage.get("gemini_model", { gemini_model: DEFAULT_MODEL });
+        const { gemini_model, gemini_thinking_level } = await Storage.get({
+          gemini_model: DEFAULT_MODEL,
+          gemini_thinking_level: null
+        });
         if (gemini_model && VALID_MODEL_IDS.includes(gemini_model)) {
           this.activeModel = gemini_model;
         } else {
           this.activeModel = DEFAULT_MODEL;
           await Storage.set({ gemini_model: DEFAULT_MODEL });
         }
+        this.activeThinkingLevel = resolveThinkingLevelForModel(this.activeModel, gemini_thinking_level);
       } catch (e) {
         this.activeModel = DEFAULT_MODEL;
+        this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
       }
       this._injectFloatingControl();
       if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, area) => {
-          if (area === "local" && changes.gemini_model) {
-            const newModel = changes.gemini_model.newValue;
-            if (newModel && VALID_MODEL_IDS.includes(newModel)) {
-              this.activeModel = newModel;
-              const selectModel = this.shadow?.getElementById("quiz-select-model");
-              if (selectModel && selectModel.value !== newModel) {
-                selectModel.value = newModel;
-              }
-              const hudSelect = this.hudShadow?.getElementById("hud-select-model");
-              if (hudSelect && hudSelect.value !== newModel) {
-                hudSelect.value = newModel;
-              }
+          if (area === "local" && (changes.gemini_model || changes.gemini_thinking_level)) {
+            const nextModel = changes.gemini_model?.newValue && VALID_MODEL_IDS.includes(changes.gemini_model.newValue) ? changes.gemini_model.newValue : this.activeModel;
+            const nextThinking = resolveThinkingLevelForModel(
+              nextModel,
+              changes.gemini_thinking_level?.newValue ?? this.activeThinkingLevel
+            );
+            this.activeModel = nextModel;
+            this.activeThinkingLevel = nextThinking;
+            const selectModel = this.shadow?.getElementById("quiz-select-model");
+            if (selectModel && selectModel.value !== nextModel) {
+              selectModel.value = nextModel;
             }
+            this._syncThinkingSelect(this.shadow?.getElementById("quiz-select-thinking"), nextModel, nextThinking, false);
+            const hudSelect = this.hudShadow?.getElementById("hud-select-model");
+            if (hudSelect && hudSelect.value !== nextModel) {
+              hudSelect.value = nextModel;
+            }
+            this._syncThinkingSelect(this.hudShadow?.getElementById("hud-select-thinking"), nextModel, nextThinking, true);
           }
         });
       }
       await this._checkAndInitAutoPilot();
+    }
+    _syncThinkingSelect(selectEl, modelId, preferredLevel = null, compact = false) {
+      const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+      if (!selectEl) return resolved;
+      const supported = getSupportedThinkingLevels(modelId);
+      selectEl.innerHTML = supported.map((lvl) => {
+        const meta = THINKING_LEVEL_META[lvl];
+        const text = compact ? meta?.shortLabel || lvl : meta?.label || lvl;
+        return `<option value="${lvl}">${text}</option>`;
+      }).join("");
+      selectEl.value = resolved;
+      return resolved;
     }
     _getExamSessionKey() {
       try {
@@ -1531,10 +1593,11 @@
           Mentari AI Quiz
         </div>
       </div>
-      <div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
         <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
           ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === this.activeModel ? "selected" : ""}>${m.name}</option>`).join("")}
         </select>
+        <select class="model-select" id="quiz-select-thinking" title="Pilih Thinking Level (Kecepatan vs Kedalaman AI)"></select>
       </div>
       <div class="status-text" id="status-text">Siap membantu mengerjakan kuis.</div>
       <div style="display:flex; gap:8px;">
@@ -1551,19 +1614,31 @@
       document.body.appendChild(host);
       this._makeElementDraggable(host, card.querySelector(".quiz-header"));
       const selectModel = this.shadow.getElementById("quiz-select-model");
+      const selectThinking = this.shadow.getElementById("quiz-select-thinking");
       const btnSingle = this.shadow.getElementById("btn-single");
       const btnAuto = this.shadow.getElementById("btn-auto");
       const btnVerifyAll = this.shadow.getElementById("btn-verify-all");
       const statusText = this.shadow.getElementById("status-text");
+      if (selectThinking) {
+        this.activeThinkingLevel = this._syncThinkingSelect(selectThinking, this.activeModel, this.activeThinkingLevel, false);
+        selectThinking.addEventListener("change", () => {
+          const resolved = resolveThinkingLevelForModel(this.activeModel, selectThinking.value);
+          this.activeThinkingLevel = resolved;
+          Storage.set({ gemini_thinking_level: resolved });
+          Toast.info(`Thinking Level: ${THINKING_LEVEL_META[resolved]?.label || resolved}`);
+        });
+      }
       if (selectModel) {
         selectModel.value = this.activeModel;
         selectModel.addEventListener("change", () => {
           const chosen = selectModel.value;
           if (chosen && VALID_MODEL_IDS.includes(chosen)) {
             this.activeModel = chosen;
-            Storage.set({ gemini_model: chosen });
+            const nextThinking = this._syncThinkingSelect(selectThinking, chosen, this.activeThinkingLevel, false);
+            this.activeThinkingLevel = nextThinking;
+            Storage.set({ gemini_model: chosen, gemini_thinking_level: nextThinking });
             const label = selectModel.options[selectModel.selectedIndex]?.text || chosen;
-            Toast.info(`Model diubah ke: ${label}`);
+            Toast.info(`Model diubah ke: ${label} (${THINKING_LEVEL_META[nextThinking]?.shortLabel || nextThinking})`);
           }
         });
       }
@@ -2774,9 +2849,12 @@
             ${currentItem.type === "PRE_TEST" ? "Pre-Test" : currentItem.type === "POST_TEST" ? "Post-Test" : "Kuesioner"}
           </span>
           <span>${currentItem.sectionName}</span>
-          <select class="hud-model-select" id="hud-select-model" title="Ganti Model AI Saat Ini">
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:2px;">
+          <select class="hud-model-select" id="hud-select-model" style="margin-left:0; flex:1; max-width:none;" title="Ganti Model AI Saat Ini">
             ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === currentModelId ? "selected" : ""}>${m.name.split(" (")[0]}</option>`).join("")}
           </select>
+          <select class="hud-model-select" id="hud-select-thinking" style="margin-left:0; width:96px; max-width:96px;" title="Thinking Level (Kecepatan vs Kedalaman AI)"></select>
         </div>
       </div>
 
@@ -2829,13 +2907,27 @@
       const btnCancel = this.hudShadow.getElementById("hud-btn-cancel");
       const progressBar = this.hudShadow.getElementById("hud-progress-fill");
       const hudModelSelect = this.hudShadow.getElementById("hud-select-model");
+      const hudThinkingSelect = this.hudShadow.getElementById("hud-select-thinking");
+      if (hudThinkingSelect) {
+        this.activeThinkingLevel = this._syncThinkingSelect(hudThinkingSelect, currentModelId, this.activeThinkingLevel, true);
+        hudThinkingSelect.addEventListener("change", async () => {
+          const activeM = hudModelSelect?.value || this.activeModel;
+          const resolved = resolveThinkingLevelForModel(activeM, hudThinkingSelect.value);
+          this.activeThinkingLevel = resolved;
+          await Storage.set({ gemini_thinking_level: resolved });
+          this._syncThinkingSelect(this.shadow?.getElementById("quiz-select-thinking"), activeM, resolved, false);
+          Toast.info(`Thinking Level: ${THINKING_LEVEL_META[resolved]?.shortLabel || resolved}`);
+        });
+      }
       if (hudModelSelect) {
         hudModelSelect.value = currentModelId;
         hudModelSelect.addEventListener("change", async () => {
           const newModel = hudModelSelect.value;
           if (newModel && VALID_MODEL_IDS.includes(newModel)) {
             this.activeModel = newModel;
-            await Storage.set({ gemini_model: newModel });
+            const nextThinking = this._syncThinkingSelect(hudThinkingSelect, newModel, this.activeThinkingLevel, true);
+            this.activeThinkingLevel = nextThinking;
+            await Storage.set({ gemini_model: newModel, gemini_thinking_level: nextThinking });
             const curStore = await Storage.get("mentari_auto_pilot_state");
             if (curStore?.mentari_auto_pilot_state) {
               curStore.mentari_auto_pilot_state.model = newModel;
@@ -2845,8 +2937,9 @@
             if (selectModel && selectModel.value !== newModel) {
               selectModel.value = newModel;
             }
+            this._syncThinkingSelect(this.shadow?.getElementById("quiz-select-thinking"), newModel, nextThinking, false);
             const label = hudModelSelect.options[hudModelSelect.selectedIndex]?.text || newModel;
-            Toast.info(`Model AI diubah ke: ${label}`);
+            Toast.info(`Model AI diubah ke: ${label} (${THINKING_LEVEL_META[nextThinking]?.shortLabel || nextThinking})`);
           }
         });
       }
@@ -3186,14 +3279,21 @@
       const systemInstruction = `Kamu adalah profesor dan pakar akademik perguruan tinggi Indonesia berintelektual tinggi dengan target akurasi 100%. Analisis soal ujian akademik (termasuk soal pedagogi, kurikulum, filsafat pendidikan, dan soal bermuatan kata 'KECUALI' atau 'BUKAN') dengan sangat teliti, kritis, dan tanpa bias distractor. Pilih HANYA SATU opsi jawaban yang 100% benar dan paling tepat. Format output HARUS HANYA HURUF OPSI DAN TEKS JAWABAN SAJA (contoh: "C. Pendekatan kontekstual" atau "A"). JANGAN memberikan penjelasan, pengantar, atau penutup.`;
       const hudModelSelect = this.hudShadow?.getElementById("hud-select-model");
       const selectModel = this.shadow?.getElementById("quiz-select-model");
+      const hudThinkingSelect = this.hudShadow?.getElementById("hud-select-thinking");
+      const selectThinking = this.shadow?.getElementById("quiz-select-thinking");
       const chosenModel = hudModelSelect && hudModelSelect.value && VALID_MODEL_IDS.includes(hudModelSelect.value) ? hudModelSelect.value : selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value) ? selectModel.value : this.activeModel || DEFAULT_MODEL;
+      const chosenThinking = resolveThinkingLevelForModel(
+        chosenModel,
+        hudThinkingSelect?.value || selectThinking?.value || this.activeThinkingLevel
+      );
       const response = await new Promise((resolve) => {
         try {
           chrome.runtime.sendMessage({
             action: "generateGeminiContent",
             prompt,
             systemInstruction,
-            model: chosenModel
+            model: chosenModel,
+            thinkingLevel: chosenThinking
           }, (res) => {
             if (chrome.runtime?.lastError) {
               resolve({ success: false, error: chrome.runtime.lastError.message });

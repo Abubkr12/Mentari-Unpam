@@ -2405,45 +2405,84 @@
 
   // src/utils/models.js
   var DEFAULT_FREE_MODEL = "gemini-4-hydrogen";
+  var THINKING_LEVEL_META = {
+    minimal: { id: "minimal", label: "Minimal (Tercepat)", shortLabel: "Minimal", timeoutMs: 18e3 },
+    low: { id: "low", label: "Low (Cepat & Hemat)", shortLabel: "Low", timeoutMs: 18e3 },
+    medium: { id: "medium", label: "Medium (Seimbang)", shortLabel: "Medium", timeoutMs: 26e3 },
+    high: { id: "high", label: "High (Mendalam / Lebih Lama)", shortLabel: "High", timeoutMs: 36e3 },
+    xhigh: { id: "xhigh", label: "XHigh (Maksimal / Paling Lama)", shortLabel: "XHigh", timeoutMs: 45e3 }
+  };
   var ACTIVE_FREE_MODELS = [
     {
       id: "gemini-4-hydrogen",
       name: "Gemini 4 Hydrogen",
       label: "Gemini 4 Hydrogen (Terbaru - Rekomendasi Free Tier)",
-      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi"
+      desc: "Generasi 4 terbaru gratis di AI Studio, konteks 1M token, akurasi & kecepatan tinggi",
+      thinkingLevels: ["low", "medium", "high", "xhigh"],
+      defaultThinkingLevel: "low"
     },
     {
       id: "gemini-3.8-flash",
       name: "Gemini 3.8 Flash",
       label: "Gemini 3.8 Flash (Flagship Gen-3)",
-      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks"
+      desc: "Flagship generasi 3 di Free Tier untuk penalaran kompleks",
+      thinkingLevels: ["low", "medium", "high"],
+      defaultThinkingLevel: "low"
     },
     {
       id: "gemini-3.6-flash",
       name: "Gemini 3.6 Flash",
       label: "Gemini 3.6 Flash (Seimbang)",
-      desc: "Seimbang antara kecepatan respon dan pemahaman teks"
+      desc: "Seimbang antara kecepatan respon dan pemahaman teks",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3.5-flash-lite",
       name: "Gemini 3.5 Flash-Lite",
       label: "Gemini 3.5 Flash-Lite (Kuota Tinggi)",
-      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi"
+      desc: "Model ringan untuk eksekusi berulang dengan kuota harian tinggi",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3.1-flash-lite",
       name: "Gemini 3.1 Flash-Lite",
       label: "Gemini 3.1 Flash-Lite (Ringan & Cepat)",
-      desc: "Latensi rendah dan hemat token di Free Tier"
+      desc: "Latensi rendah dan hemat token di Free Tier",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     },
     {
       id: "gemini-3-flash-preview",
       name: "Gemini 3 Flash Preview",
       label: "Gemini 3 Flash Preview (Free Tier)",
-      desc: "Varian preview cepat yang tersedia gratis di AI Studio"
+      desc: "Varian preview cepat yang tersedia gratis di AI Studio",
+      thinkingLevels: ["minimal", "low", "medium", "high"],
+      defaultThinkingLevel: "minimal"
     }
   ];
   var VALID_FREE_MODEL_IDS = ACTIVE_FREE_MODELS.map((m) => m.id);
+  function getModelMeta(modelId) {
+    return ACTIVE_FREE_MODELS.find((m) => m.id === modelId) || ACTIVE_FREE_MODELS[0];
+  }
+  function getSupportedThinkingLevels(modelId) {
+    return getModelMeta(modelId).thinkingLevels || ["low", "medium", "high"];
+  }
+  function resolveThinkingLevelForModel(modelId, requestedLevel = null) {
+    const meta = getModelMeta(modelId);
+    const allowed = meta.thinkingLevels || ["low"];
+    if (requestedLevel && allowed.includes(requestedLevel)) {
+      return requestedLevel;
+    }
+    if (requestedLevel === "minimal" && allowed.includes("low")) {
+      return "low";
+    }
+    if (requestedLevel === "xhigh" && allowed.includes("high")) {
+      return "high";
+    }
+    return meta.defaultThinkingLevel || allowed[0];
+  }
 
   // src/utils/storage.js
   var Storage = {
@@ -5961,6 +6000,14 @@ ${items}
               </select>
             </div>
 
+            <div class="settings-item">
+              <div class="settings-info">
+                <h4>Thinking Level AI</h4>
+                <p>Atur kecepatan vs kedalaman penalaran sesuai level yang didukung model aktif.</p>
+              </div>
+              <select id="select-thinking-level" class="select-field"></select>
+            </div>
+
             <div class="model-status-dropdown" id="model-status-dropdown">
               <button class="model-status-trigger" id="btn-toggle-model-status" type="button">
                 <div class="model-status-trigger-left">
@@ -6102,30 +6149,50 @@ ${items}
         });
       }
       const selectModel = this.shadow.getElementById("select-active-model");
+      const selectThinking = this.shadow.getElementById("select-thinking-level");
       const validModelIds = ALL_MODELS.map((m) => m.id);
-      Storage.get("gemini_model").then(({ gemini_model }) => {
-        if (gemini_model && validModelIds.includes(gemini_model)) {
-          selectModel.value = gemini_model;
-        } else {
-          selectModel.value = DEFAULT_FREE_MODEL;
-          Storage.set({ gemini_model: DEFAULT_FREE_MODEL });
+      const renderThinkingOptions = (modelId, preferredLevel = null) => {
+        if (!selectThinking) return "low";
+        const supported = getSupportedThinkingLevels(modelId);
+        const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+        selectThinking.innerHTML = supported.map((lvl) => `<option value="${lvl}">${THINKING_LEVEL_META[lvl]?.label || lvl}</option>`).join("");
+        selectThinking.value = resolved;
+        return resolved;
+      };
+      Storage.get(["gemini_model", "gemini_thinking_level"]).then(({ gemini_model, gemini_thinking_level }) => {
+        const resolvedModel = gemini_model && validModelIds.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
+        selectModel.value = resolvedModel;
+        const resolvedLevel = renderThinkingOptions(resolvedModel, gemini_thinking_level);
+        if (gemini_model !== resolvedModel || gemini_thinking_level !== resolvedLevel) {
+          Storage.set({ gemini_model: resolvedModel, gemini_thinking_level: resolvedLevel });
         }
       });
       selectModel.addEventListener("change", () => {
         const chosen = selectModel.value;
         if (chosen && validModelIds.includes(chosen)) {
-          Storage.set({ gemini_model: chosen });
-          Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text}`);
+          const nextLevel = renderThinkingOptions(chosen, selectThinking?.value);
+          Storage.set({ gemini_model: chosen, gemini_thinking_level: nextLevel });
+          Toast.success(`Model Gemini diubah ke: ${selectModel.options[selectModel.selectedIndex].text} (${THINKING_LEVEL_META[nextLevel]?.shortLabel || nextLevel})`);
         }
       });
+      if (selectThinking) {
+        selectThinking.addEventListener("change", () => {
+          const modelId = selectModel?.value || DEFAULT_FREE_MODEL;
+          const resolved = resolveThinkingLevelForModel(modelId, selectThinking.value);
+          Storage.set({ gemini_thinking_level: resolved });
+          Toast.success(`Thinking Level diubah ke: ${THINKING_LEVEL_META[resolved]?.label || resolved}`);
+        });
+      }
       if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, area) => {
-          if (area === "local" && changes.gemini_model) {
-            const newModel = changes.gemini_model.newValue;
-            if (newModel && validModelIds.includes(newModel) && selectModel.value !== newModel) {
-              selectModel.value = newModel;
+          if (area === "local" && (changes.gemini_model || changes.gemini_thinking_level)) {
+            const nextModel = changes.gemini_model?.newValue && validModelIds.includes(changes.gemini_model.newValue) ? changes.gemini_model.newValue : selectModel.value;
+            if (selectModel.value !== nextModel) {
+              selectModel.value = nextModel;
               this._renderModelStatusPanel();
             }
+            const nextLevel = changes.gemini_thinking_level?.newValue ?? selectThinking?.value;
+            renderThinkingOptions(nextModel, nextLevel);
           }
           if (area === "local" && changes.mentari_model_telemetry && this.isOpen) {
             this._renderModelStatusPanel();

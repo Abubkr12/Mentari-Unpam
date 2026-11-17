@@ -1,9 +1,15 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Verifikasi & koreksi jawaban terisi dari soal #1 pada modul kuis/posttest (`quiz.js`), perbaikan timeout & fallback AI (`service-worker.js`), fitur seleksi & prioritas forum Rekap Tugas (`token.js`), dan rilis `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Pemilihan dinamis Thinking Level per model AI (`models.js`, `service-worker.js`, `apiKeyManager.js`, `token.js`, `quiz.js`), verifikasi & koreksi jawaban terisi dari soal #1 (`quiz.js`), perbaikan timeout & fallback AI (`service-worker.js`), fitur seleksi & prioritas forum Rekap Tugas (`token.js`), dan rilis `v2.1.2` telah selesai.
 
 ## Arsip
+- [x] Pilihan Dinamis Thinking Level Sesuai Spesifikasi Tiap Model Gemini (`src/utils/models.js`, `src/background/service-worker.js`, `src/content/apiKeyManager.js`, `src/content/token.js`, `src/content/quiz.js`):
+  1. **Metadata Terpusat per Model (`src/utils/models.js`)**:
+     - Menambahkan `THINKING_LEVEL_META`, `thinkingLevels` yang didukung per model (`low`/`medium`/`high`/`xhigh` untuk `gemini-4-hydrogen`, `low`/`medium`/`high` untuk `gemini-3.8-flash`, serta `minimal`/`low`/`medium`/`high` untuk seri 3 lainnya), `getSupportedThinkingLevels()`, dan `resolveThinkingLevelForModel()`.
+  2. **Sinkronisasi UI & Timeout Adaptif (`apiKeyManager.js`, `token.js`, `quiz.js`, `service-worker.js`)**:
+     - Menambahkan pemilih Thinking Level yang opsinya berubah dinamis sesuai model aktif pada Setup API Key (`apiKeyManager.js`), Tab Pengaturan Dashboard (`token.js`), dan Panel/HUD Kuis (`quiz.js`), tersimpan serta tersinkronisasi lewat `gemini_thinking_level`.
+     - Menyesuaikan timeout utama di `service-worker.js` (`18s` untuk `minimal`/`low`, `26s` untuk `medium`, `36s` untuk `high`, `45s` untuk `xhigh`) sementara fallback darurat tetap memakai level tercepat untuk penyelamatan instan.
 - [x] Verifikasi & Koreksi Jawaban Kuis Terisi dari Soal #1 Pasca-Error / Pause (`src/content/quiz.js`):
   1. **Analisis Kebutuhan**:
      - Saat kuis sempat gagal/fallback atau dijeda (misal soal 1–3 sudah hijau tapi validitas belum pasti), melanjutkan langsung ke soal 4 berisiko mengirim jawaban fallback Opsi A yang salah.

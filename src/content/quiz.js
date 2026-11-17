@@ -9,7 +9,14 @@ import { AutoPilotSync } from '../utils/autopilot-sync.js';
 import { DOM } from '../utils/dom.js';
 import { Humanizer } from '../utils/humanizer.js';
 import { Toast } from '../utils/toast.js';
-import { ACTIVE_FREE_MODELS, VALID_FREE_MODEL_IDS, DEFAULT_FREE_MODEL } from '../utils/models.js';
+import {
+  ACTIVE_FREE_MODELS,
+  VALID_FREE_MODEL_IDS,
+  DEFAULT_FREE_MODEL,
+  THINKING_LEVEL_META,
+  getSupportedThinkingLevels,
+  resolveThinkingLevelForModel
+} from '../utils/models.js';
 
 const ALL_MODELS = ACTIVE_FREE_MODELS.map(m => ({ id: m.id, name: m.label }));
 const VALID_MODEL_IDS = VALID_FREE_MODEL_IDS;
@@ -27,6 +34,7 @@ class QuizAssistant {
     this.hudShadow = null;
     this.hudHost = null;
     this.activeModel = DEFAULT_MODEL;
+    this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
     this._currentSessionQuestions = [];
     this._init();
   }
@@ -34,44 +42,73 @@ class QuizAssistant {
   async _init() {
     console.log('[Mentari Mod] Quiz Assistant aktif.');
 
-    // 1. Muat model terakhir dari storage sebelum UI diinjeksi (mencegah flash blank)
+    // 1. Muat model & thinking level terakhir dari storage sebelum UI diinjeksi
     try {
-      const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_MODEL });
+      const { gemini_model, gemini_thinking_level } = await Storage.get({
+        gemini_model: DEFAULT_MODEL,
+        gemini_thinking_level: null
+      });
       if (gemini_model && VALID_MODEL_IDS.includes(gemini_model)) {
         this.activeModel = gemini_model;
       } else {
         this.activeModel = DEFAULT_MODEL;
         await Storage.set({ gemini_model: DEFAULT_MODEL });
       }
+      this.activeThinkingLevel = resolveThinkingLevelForModel(this.activeModel, gemini_thinking_level);
     } catch (e) {
       this.activeModel = DEFAULT_MODEL;
+      this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
     }
 
     // 2. Pasang panel kontrol mini asisten kuis
     this._injectFloatingControl();
 
-    // 3. Sinkronisasi real-time jika model diubah dari komponen lain (Settings / Chat)
+    // 3. Sinkronisasi real-time jika model / thinking level diubah dari komponen lain
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'local' && changes.gemini_model) {
-          const newModel = changes.gemini_model.newValue;
-          if (newModel && VALID_MODEL_IDS.includes(newModel)) {
-            this.activeModel = newModel;
-            const selectModel = this.shadow?.getElementById('quiz-select-model');
-            if (selectModel && selectModel.value !== newModel) {
-              selectModel.value = newModel;
-            }
-            const hudSelect = this.hudShadow?.getElementById('hud-select-model');
-            if (hudSelect && hudSelect.value !== newModel) {
-              hudSelect.value = newModel;
-            }
+        if (area === 'local' && (changes.gemini_model || changes.gemini_thinking_level)) {
+          const nextModel = (changes.gemini_model?.newValue && VALID_MODEL_IDS.includes(changes.gemini_model.newValue))
+            ? changes.gemini_model.newValue
+            : this.activeModel;
+          const nextThinking = resolveThinkingLevelForModel(
+            nextModel,
+            changes.gemini_thinking_level?.newValue ?? this.activeThinkingLevel
+          );
+          this.activeModel = nextModel;
+          this.activeThinkingLevel = nextThinking;
+
+          const selectModel = this.shadow?.getElementById('quiz-select-model');
+          if (selectModel && selectModel.value !== nextModel) {
+            selectModel.value = nextModel;
           }
+          this._syncThinkingSelect(this.shadow?.getElementById('quiz-select-thinking'), nextModel, nextThinking, false);
+
+          const hudSelect = this.hudShadow?.getElementById('hud-select-model');
+          if (hudSelect && hudSelect.value !== nextModel) {
+            hudSelect.value = nextModel;
+          }
+          this._syncThinkingSelect(this.hudShadow?.getElementById('hud-select-thinking'), nextModel, nextThinking, true);
         }
       });
     }
 
     // 4. Periksa dan inisialisasi sesi Auto-Pilot jika aktif
     await this._checkAndInitAutoPilot();
+  }
+
+  _syncThinkingSelect(selectEl, modelId, preferredLevel = null, compact = false) {
+    const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+    if (!selectEl) return resolved;
+    const supported = getSupportedThinkingLevels(modelId);
+    selectEl.innerHTML = supported
+      .map(lvl => {
+        const meta = THINKING_LEVEL_META[lvl];
+        const text = compact ? (meta?.shortLabel || lvl) : (meta?.label || lvl);
+        return `<option value="${lvl}">${text}</option>`;
+      })
+      .join('');
+    selectEl.value = resolved;
+    return resolved;
   }
 
   _getExamSessionKey() {
@@ -255,10 +292,11 @@ class QuizAssistant {
           Mentari AI Quiz
         </div>
       </div>
-      <div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
         <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
           ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === this.activeModel ? 'selected' : ''}>${m.name}</option>`).join('')}
         </select>
+        <select class="model-select" id="quiz-select-thinking" title="Pilih Thinking Level (Kecepatan vs Kedalaman AI)"></select>
       </div>
       <div class="status-text" id="status-text">Siap membantu mengerjakan kuis.</div>
       <div style="display:flex; gap:8px;">
@@ -278,10 +316,21 @@ class QuizAssistant {
     this._makeElementDraggable(host, card.querySelector('.quiz-header'));
 
     const selectModel = this.shadow.getElementById('quiz-select-model');
+    const selectThinking = this.shadow.getElementById('quiz-select-thinking');
     const btnSingle = this.shadow.getElementById('btn-single');
     const btnAuto = this.shadow.getElementById('btn-auto');
     const btnVerifyAll = this.shadow.getElementById('btn-verify-all');
     const statusText = this.shadow.getElementById('status-text');
+
+    if (selectThinking) {
+      this.activeThinkingLevel = this._syncThinkingSelect(selectThinking, this.activeModel, this.activeThinkingLevel, false);
+      selectThinking.addEventListener('change', () => {
+        const resolved = resolveThinkingLevelForModel(this.activeModel, selectThinking.value);
+        this.activeThinkingLevel = resolved;
+        Storage.set({ gemini_thinking_level: resolved });
+        Toast.info(`Thinking Level: ${THINKING_LEVEL_META[resolved]?.label || resolved}`);
+      });
+    }
 
     if (selectModel) {
       selectModel.value = this.activeModel;
@@ -290,9 +339,11 @@ class QuizAssistant {
         const chosen = selectModel.value;
         if (chosen && VALID_MODEL_IDS.includes(chosen)) {
           this.activeModel = chosen;
-          Storage.set({ gemini_model: chosen });
+          const nextThinking = this._syncThinkingSelect(selectThinking, chosen, this.activeThinkingLevel, false);
+          this.activeThinkingLevel = nextThinking;
+          Storage.set({ gemini_model: chosen, gemini_thinking_level: nextThinking });
           const label = selectModel.options[selectModel.selectedIndex]?.text || chosen;
-          Toast.info(`Model diubah ke: ${label}`);
+          Toast.info(`Model diubah ke: ${label} (${THINKING_LEVEL_META[nextThinking]?.shortLabel || nextThinking})`);
         }
       });
     }
@@ -1719,9 +1770,12 @@ class QuizAssistant {
             ${currentItem.type === 'PRE_TEST' ? 'Pre-Test' : (currentItem.type === 'POST_TEST' ? 'Post-Test' : 'Kuesioner')}
           </span>
           <span>${currentItem.sectionName}</span>
-          <select class="hud-model-select" id="hud-select-model" title="Ganti Model AI Saat Ini">
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; margin-top:2px;">
+          <select class="hud-model-select" id="hud-select-model" style="margin-left:0; flex:1; max-width:none;" title="Ganti Model AI Saat Ini">
             ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === currentModelId ? 'selected' : ''}>${m.name.split(' (')[0]}</option>`).join('')}
           </select>
+          <select class="hud-model-select" id="hud-select-thinking" style="margin-left:0; width:96px; max-width:96px;" title="Thinking Level (Kecepatan vs Kedalaman AI)"></select>
         </div>
       </div>
 
@@ -1777,6 +1831,19 @@ class QuizAssistant {
     const btnCancel = this.hudShadow.getElementById('hud-btn-cancel');
     const progressBar = this.hudShadow.getElementById('hud-progress-fill');
     const hudModelSelect = this.hudShadow.getElementById('hud-select-model');
+    const hudThinkingSelect = this.hudShadow.getElementById('hud-select-thinking');
+
+    if (hudThinkingSelect) {
+      this.activeThinkingLevel = this._syncThinkingSelect(hudThinkingSelect, currentModelId, this.activeThinkingLevel, true);
+      hudThinkingSelect.addEventListener('change', async () => {
+        const activeM = hudModelSelect?.value || this.activeModel;
+        const resolved = resolveThinkingLevelForModel(activeM, hudThinkingSelect.value);
+        this.activeThinkingLevel = resolved;
+        await Storage.set({ gemini_thinking_level: resolved });
+        this._syncThinkingSelect(this.shadow?.getElementById('quiz-select-thinking'), activeM, resolved, false);
+        Toast.info(`Thinking Level: ${THINKING_LEVEL_META[resolved]?.shortLabel || resolved}`);
+      });
+    }
 
     if (hudModelSelect) {
       hudModelSelect.value = currentModelId;
@@ -1784,7 +1851,9 @@ class QuizAssistant {
         const newModel = hudModelSelect.value;
         if (newModel && VALID_MODEL_IDS.includes(newModel)) {
           this.activeModel = newModel;
-          await Storage.set({ gemini_model: newModel });
+          const nextThinking = this._syncThinkingSelect(hudThinkingSelect, newModel, this.activeThinkingLevel, true);
+          this.activeThinkingLevel = nextThinking;
+          await Storage.set({ gemini_model: newModel, gemini_thinking_level: nextThinking });
           const curStore = await Storage.get('mentari_auto_pilot_state');
           if (curStore?.mentari_auto_pilot_state) {
             curStore.mentari_auto_pilot_state.model = newModel;
@@ -1794,8 +1863,9 @@ class QuizAssistant {
           if (selectModel && selectModel.value !== newModel) {
             selectModel.value = newModel;
           }
+          this._syncThinkingSelect(this.shadow?.getElementById('quiz-select-thinking'), newModel, nextThinking, false);
           const label = hudModelSelect.options[hudModelSelect.selectedIndex]?.text || newModel;
-          Toast.info(`Model AI diubah ke: ${label}`);
+          Toast.info(`Model AI diubah ke: ${label} (${THINKING_LEVEL_META[nextThinking]?.shortLabel || nextThinking})`);
         }
       });
     }
@@ -2250,11 +2320,17 @@ class QuizAssistant {
 
     const hudModelSelect = this.hudShadow?.getElementById('hud-select-model');
     const selectModel = this.shadow?.getElementById('quiz-select-model');
+    const hudThinkingSelect = this.hudShadow?.getElementById('hud-select-thinking');
+    const selectThinking = this.shadow?.getElementById('quiz-select-thinking');
     const chosenModel = (hudModelSelect && hudModelSelect.value && VALID_MODEL_IDS.includes(hudModelSelect.value))
       ? hudModelSelect.value
       : ((selectModel && selectModel.value && VALID_MODEL_IDS.includes(selectModel.value))
           ? selectModel.value
           : (this.activeModel || DEFAULT_MODEL));
+    const chosenThinking = resolveThinkingLevelForModel(
+      chosenModel,
+      hudThinkingSelect?.value || selectThinking?.value || this.activeThinkingLevel
+    );
 
     // Panggil Service Worker
     const response = await new Promise((resolve) => {
@@ -2263,7 +2339,8 @@ class QuizAssistant {
           action: 'generateGeminiContent',
           prompt,
           systemInstruction,
-          model: chosenModel
+          model: chosenModel,
+          thinkingLevel: chosenThinking
         }, (res) => {
           if (chrome.runtime?.lastError) {
             resolve({ success: false, error: chrome.runtime.lastError.message });

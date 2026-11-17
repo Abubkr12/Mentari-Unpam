@@ -3,7 +3,13 @@
  * Manifest V3 background hub untuk isolasi API calls, verifikasi API Key, dan auto-update.
  */
 
-import { ACTIVE_FREE_MODELS, VALID_FREE_MODEL_IDS, DEFAULT_FREE_MODEL } from '../utils/models.js';
+import {
+  ACTIVE_FREE_MODELS,
+  VALID_FREE_MODEL_IDS,
+  DEFAULT_FREE_MODEL,
+  THINKING_LEVEL_META,
+  resolveThinkingLevelForModel
+} from '../utils/models.js';
 
 const GEMINI_MODELS_DEFAULT = ACTIVE_FREE_MODELS;
 const ACTIVE_FREE_MODEL_IDS = VALID_FREE_MODEL_IDS;
@@ -12,13 +18,15 @@ const ACTIVE_FREE_MODEL_IDS = VALID_FREE_MODEL_IDS;
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[Service Worker] Mentari Mod Modern Edition terpasang:', details.reason);
 
-  const current = await chrome.storage.local.get(['gemini_model', 'available_models']);
+  const current = await chrome.storage.local.get(['gemini_model', 'gemini_thinking_level', 'available_models']);
   const nextModel = ACTIVE_FREE_MODEL_IDS.includes(current.gemini_model)
     ? current.gemini_model
     : DEFAULT_FREE_MODEL;
+  const nextThinking = resolveThinkingLevelForModel(nextModel, current.gemini_thinking_level);
 
   await chrome.storage.local.set({
     gemini_model: nextModel,
+    gemini_thinking_level: nextThinking,
     available_models: GEMINI_MODELS_DEFAULT
   });
 });
@@ -400,22 +408,15 @@ function resolveUpstreamModel(modelId) {
 }
 
 /**
- * Konfigurasi thinkingLevel resmi per model Gemini Free Tier:
- * - Gemini 4 Hydrogen & Gemini 3.8 Flash hanya mendukung minimal 'low' ('minimal' ditolak 400 API)
- * - Seri 3.6 / 3.5-Lite / 3.1-Lite / 3-Flash-Preview mendukung 'minimal'
+ * Konfigurasi thinkingLevel resmi per model Gemini Free Tier via resolveThinkingLevelForModel()
  */
-function getThinkingConfigForModel(modelId) {
+function getThinkingConfigForModel(modelId, preferredLevel = null) {
   if (!modelId) return null;
-  if (modelId.startsWith('gemini-4') || modelId === 'gemini-3.8-flash') {
-    return { thinkingLevel: 'low' };
-  }
-  if (modelId.startsWith('gemini-3')) {
-    return { thinkingLevel: 'minimal' };
-  }
-  return null;
+  const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+  return resolved ? { thinkingLevel: resolved } : null;
 }
 
-function buildGeneratePayload({ prompt, systemInstruction, modelId, includeThinking = true }) {
+function buildGeneratePayload({ prompt, systemInstruction, modelId, thinkingLevel = null, includeThinking = true }) {
   const payload = {
     contents: [
       {
@@ -431,7 +432,7 @@ function buildGeneratePayload({ prompt, systemInstruction, modelId, includeThink
   };
 
   if (includeThinking) {
-    const thinkingCfg = getThinkingConfigForModel(modelId);
+    const thinkingCfg = getThinkingConfigForModel(modelId, thinkingLevel);
     if (thinkingCfg) {
       payload.generationConfig.thinkingConfig = thinkingCfg;
     }
@@ -445,7 +446,7 @@ function buildGeneratePayload({ prompt, systemInstruction, modelId, includeThink
   return payload;
 }
 
-async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, keyPool, primaryKey, timeoutMs = 18000 }) {
+async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, thinkingLevel = null, keyPool, primaryKey, timeoutMs = 18000 }) {
   let lastError = '';
   let includeThinking = true;
 
@@ -459,7 +460,7 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, keyPo
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildGeneratePayload({ prompt, systemInstruction, modelId, includeThinking })),
+        body: JSON.stringify(buildGeneratePayload({ prompt, systemInstruction, modelId, thinkingLevel, includeThinking })),
         signal: controller.signal
       });
       clearTimeout(timer);
@@ -527,10 +528,15 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, keyPo
   return { ok: false, lastError };
 }
 
-async function handleGenerateContent({ prompt, systemInstruction = '', model = null }) {
-  const store = await chrome.storage.local.get(['geminiApiKey', 'geminiApiKeys', 'gemini_model']);
+async function handleGenerateContent({ prompt, systemInstruction = '', model = null, thinkingLevel = null }) {
+  const store = await chrome.storage.local.get(['geminiApiKey', 'geminiApiKeys', 'gemini_model', 'gemini_thinking_level']);
   const activeModel = model || store.gemini_model || DEFAULT_FREE_MODEL;
   const targetEngineModel = resolveUpstreamModel(activeModel);
+  const resolvedThinkingLevel = resolveThinkingLevelForModel(
+    targetEngineModel,
+    thinkingLevel || store.gemini_thinking_level
+  );
+  const primaryTimeoutMs = THINKING_LEVEL_META[resolvedThinkingLevel]?.timeoutMs || 18000;
 
   let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
   if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
@@ -547,14 +553,15 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
     };
   }
 
-  // 1. Jalankan pada model utama pilihan user (timeout 18 detik agar tahan lonjakan latensi Free Tier)
+  // 1. Jalankan pada model utama pilihan user (timeout menyesuaikan thinkingLevel)
   const primaryAttempt = await invokeModelAcrossKeys({
     modelId: targetEngineModel,
     prompt,
     systemInstruction,
+    thinkingLevel: resolvedThinkingLevel,
     keyPool,
     primaryKey: store.geminiApiKey,
-    timeoutMs: 18000
+    timeoutMs: primaryTimeoutMs
   });
 
   if (primaryAttempt.ok) {
@@ -563,12 +570,13 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
       text: primaryAttempt.text,
       model: activeModel,
       engine: targetEngineModel,
+      thinkingLevel: resolvedThinkingLevel,
       keyIndex: primaryAttempt.keyIndex,
       totalKeys: keyPool.length
     };
   }
 
-  // 2. Fallback berantai otomatis ke model Free Tier sehat lain jika model utama gagal/timeout
+  // 2. Fallback berantai otomatis ke model Free Tier sehat lain memakai level tercepat masing-masing
   const fallbackCandidates = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash']
     .filter(m => m !== targetEngineModel)
     .slice(0, 2);
@@ -580,9 +588,10 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
       modelId: fbEngine,
       prompt,
       systemInstruction,
+      thinkingLevel: null,
       keyPool,
       primaryKey: store.geminiApiKey,
-      timeoutMs: 12000
+      timeoutMs: 14000
     });
 
     if (fbAttempt.ok) {
@@ -591,6 +600,7 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
         text: fbAttempt.text,
         model: `${activeModel} -> ${fbEngine} (Fallback)`,
         engine: fbEngine,
+        thinkingLevel: resolveThinkingLevelForModel(fbEngine, null),
         keyIndex: fbAttempt.keyIndex,
         totalKeys: keyPool.length
       };

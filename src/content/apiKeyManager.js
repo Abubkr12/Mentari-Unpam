@@ -7,7 +7,14 @@
 import { Storage } from '../utils/storage.js';
 import { Toast } from '../utils/toast.js';
 import { ThemeHelper, getBrandSvgMarkup, getBrandBadgeMarkup } from '../utils/theme.js';
-import { ACTIVE_FREE_MODELS, VALID_FREE_MODEL_IDS, DEFAULT_FREE_MODEL } from '../utils/models.js';
+import {
+  ACTIVE_FREE_MODELS,
+  VALID_FREE_MODEL_IDS,
+  DEFAULT_FREE_MODEL,
+  THINKING_LEVEL_META,
+  getSupportedThinkingLevels,
+  resolveThinkingLevelForModel
+} from '../utils/models.js';
 
 class ApiKeyManager {
   constructor() {
@@ -776,7 +783,11 @@ class ApiKeyManager {
               <select id="select-setup-model" class="select-model-field">
                 ${ACTIVE_FREE_MODELS.map(m => `<option value="${m.id}">${m.label}</option>`).join('')}
               </select>
-              <span class="model-setup-hint">Pilihan model tetap mengikuti pengaturan terakhir Anda saat menambah API Key cadangan.</span>
+              <div class="section-label" style="margin-top:6px;">
+                <span>Thinking Level (Kecepatan vs Kedalaman AI)</span>
+              </div>
+              <select id="select-setup-thinking" class="select-model-field"></select>
+              <span class="model-setup-hint">Opsi level menyesuaikan yang didukung model terpilih. Makin rendah makin cepat, makin tinggi makin mendalam.</span>
             </div>
           </div>
 
@@ -821,17 +832,33 @@ class ApiKeyManager {
     const btnAddKey = this.shadow.getElementById('btn-add-key');
     const btnFinishSetup = this.shadow.getElementById('btn-finish-setup');
     const selectSetupModel = this.shadow.getElementById('select-setup-model');
+    const selectSetupThinking = this.shadow.getElementById('select-setup-thinking');
     const btnCancel = this.shadow.getElementById('btn-cancel');
     const btnClose = this.shadow.getElementById('btn-close');
     const btnToggleVis = this.shadow.getElementById('btn-toggle-vis');
     const btnStartSetup = this.shadow.getElementById('btn-start-setup');
     const btnSkipWelcome = this.shadow.getElementById('btn-skip-welcome');
 
-    // Muat pilihan model saat ini tanpa menimpa pengaturan user
+    this._renderThinkingOptions = (modelId, preferredLevel = null) => {
+      if (!selectSetupThinking) return;
+      const supported = getSupportedThinkingLevels(modelId);
+      const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+      selectSetupThinking.innerHTML = supported
+        .map(lvl => `<option value="${lvl}">${THINKING_LEVEL_META[lvl]?.label || lvl}</option>`)
+        .join('');
+      selectSetupThinking.value = resolved;
+      return resolved;
+    };
+
+    // Muat pilihan model & thinking level saat ini tanpa menimpa pengaturan user
     const syncModelSelect = async () => {
-      const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_FREE_MODEL });
+      const { gemini_model, gemini_thinking_level } = await Storage.get({
+        gemini_model: DEFAULT_FREE_MODEL,
+        gemini_thinking_level: null
+      });
       const activeId = VALID_FREE_MODEL_IDS.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
       if (selectSetupModel) selectSetupModel.value = activeId;
+      this._renderThinkingOptions(activeId, gemini_thinking_level);
     };
     syncModelSelect();
 
@@ -839,20 +866,34 @@ class ApiKeyManager {
       selectSetupModel.addEventListener('change', async () => {
         const chosen = selectSetupModel.value;
         if (VALID_FREE_MODEL_IDS.includes(chosen)) {
-          await Storage.set({ gemini_model: chosen });
-          Toast.success(`Model AI default diatur ke: ${selectSetupModel.options[selectSetupModel.selectedIndex].text.split(' (')[0]}`);
+          const nextThinking = this._renderThinkingOptions(chosen, selectSetupThinking?.value);
+          await Storage.set({ gemini_model: chosen, gemini_thinking_level: nextThinking });
+          Toast.success(`Model AI default diatur ke: ${selectSetupModel.options[selectSetupModel.selectedIndex].text.split(' (')[0]} (${THINKING_LEVEL_META[nextThinking]?.shortLabel || nextThinking})`);
         }
+      });
+    }
+
+    if (selectSetupThinking) {
+      selectSetupThinking.addEventListener('change', async () => {
+        const modelId = selectSetupModel?.value || DEFAULT_FREE_MODEL;
+        const resolved = resolveThinkingLevelForModel(modelId, selectSetupThinking.value);
+        await Storage.set({ gemini_thinking_level: resolved });
+        Toast.success(`Thinking Level diatur ke: ${THINKING_LEVEL_META[resolved]?.label || resolved}`);
       });
     }
 
     try {
       if (Storage.isContextValid() && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, area) => {
-          if (area === 'local' && changes.gemini_model?.newValue && selectSetupModel) {
-            const nv = changes.gemini_model.newValue;
-            if (VALID_FREE_MODEL_IDS.includes(nv) && selectSetupModel.value !== nv) {
-              selectSetupModel.value = nv;
+          if (area === 'local' && (changes.gemini_model?.newValue || changes.gemini_thinking_level?.newValue)) {
+            const nextModel = changes.gemini_model?.newValue && VALID_FREE_MODEL_IDS.includes(changes.gemini_model.newValue)
+              ? changes.gemini_model.newValue
+              : (selectSetupModel?.value || DEFAULT_FREE_MODEL);
+            if (selectSetupModel && selectSetupModel.value !== nextModel) {
+              selectSetupModel.value = nextModel;
             }
+            const nextLevel = changes.gemini_thinking_level?.newValue || selectSetupThinking?.value;
+            this._renderThinkingOptions(nextModel, nextLevel);
           }
         });
       }
@@ -888,10 +929,13 @@ class ApiKeyManager {
 
     btnFinishSetup.addEventListener('click', async () => {
       const chosenModel = selectSetupModel?.value;
+      const chosenThinking = selectSetupThinking?.value;
       const updates = { mentari_onboarding_completed: true };
-      if (chosenModel && VALID_FREE_MODEL_IDS.includes(chosenModel)) {
-        updates.gemini_model = chosenModel;
-      }
+      const finalModel = (chosenModel && VALID_FREE_MODEL_IDS.includes(chosenModel))
+        ? chosenModel
+        : DEFAULT_FREE_MODEL;
+      updates.gemini_model = finalModel;
+      updates.gemini_thinking_level = resolveThinkingLevelForModel(finalModel, chosenThinking);
       await Storage.set(updates);
       Toast.success('Konfigurasi AI selesai dan siap digunakan.');
       this.closeModal();
@@ -966,10 +1010,15 @@ class ApiKeyManager {
       apikeyEl?.classList.add('active');
       if (titleText) titleText.textContent = 'Koneksi Google Gemini AI';
       try {
-        const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_FREE_MODEL });
+        const { gemini_model, gemini_thinking_level } = await Storage.get({
+          gemini_model: DEFAULT_FREE_MODEL,
+          gemini_thinking_level: null
+        });
+        const resolvedModel = VALID_FREE_MODEL_IDS.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
         if (selectSetupModel) {
-          selectSetupModel.value = VALID_FREE_MODEL_IDS.includes(gemini_model) ? gemini_model : DEFAULT_FREE_MODEL;
+          selectSetupModel.value = resolvedModel;
         }
+        this._renderThinkingOptions?.(resolvedModel, gemini_thinking_level);
       } catch {}
       this._loadAndRenderKeys();
       const inputKey = this.shadow.getElementById('input-api-key');
