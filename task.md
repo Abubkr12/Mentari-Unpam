@@ -11,8 +11,9 @@
   2. **Isolasi Kuota Model Ketat (`src/background/service-worker.js`, `src/content/token.js`)**:
      - Memastikan model cadangan lain seperti `gemini-3.8-flash` (20 RPD) tidak diam-diam dipanggil saat model pilihan pengguna (misalnya `gemini-3.5-flash-lite`) timeout atau gagal, kecuali opsi `"Fallback Otomatis Model Cadangan"` (`gemini_auto_fallback`) diaktifkan di Tab Pengaturan.
      - Menaikkan batas timeout minimum ke 20s, merotasi seluruh API key saat timeout, dan menambah 1 kali retry pada model yang sama untuk gangguan jaringan sementara.
-  3. **Tema Kuis Light/Dark, Auto-Koreksi Error, & Fix Berhenti Dini (`src/content/quiz.js`)**:
+  3. **Tema Kuis Light/Dark, Auto-Koreksi Error, Kontrol Minimize/Tutup, & Fix Berhenti Dini (`src/content/quiz.js`)**:
      - Menghubungkan `ThemeHelper` ke panel kontrol kuis manual dan HUD Auto-Pilot (`theme-light` Navy/putih bersih + warna teks status/matriks kontras AA).
+     - Menambahkan tombol minimize (memperkecil panel/HUD ke tampilan bar ringkas progres) dan tombol silang tutup pada panel manual kuis serta HUD Auto-Pilot, memindah HUD ke sudut kanan bawah agar tidak tertutup Toast, dan memperbarui status progres HUD ke 100% saat antrean selesai.
      - Memperbaiki deteksi false-positive `_checkIfExamAlreadyCompleted` (mencegah wrapper `div`, teks legenda, atau tabel riwayat kosong menganggap kuis berikut sudah selesai ketika tombol `Mulai` masih ada).
      - Menyimpan nomor soal yang sempat error (`mentari_quiz_recovery_map`) secara persisten di storage, tidak menandai soal fallback Opsi A sebagai terverifikasi, menjalankan auto-koreksi otomatis sebelum submit tanpa perlu jeda manual, memveto submit bila koreksi gagal, serta memperbaiki tombol `Cek & Koreksi (1 -> N)` agar tetap aktif saat loop sedang dijeda.
 - [x] Pilihan Dinamis Thinking Level Sesuai Spesifikasi Tiap Model Gemini (`src/utils/models.js`, `src/background/service-worker.js`, `src/content/apiKeyManager.js`, `src/content/token.js`, `src/content/quiz.js`):

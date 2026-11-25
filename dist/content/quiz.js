@@ -1699,6 +1699,62 @@
       .quiz-card.theme-light ::-webkit-scrollbar-thumb {
         background: rgba(30, 58, 138, 0.28);
       }
+      .quiz-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .quiz-icon-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .quiz-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+      }
+      .quiz-icon-btn.close:hover {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.45);
+        color: #fca5a5;
+      }
+      .quiz-card.theme-light .quiz-icon-btn {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #475569;
+      }
+      .quiz-card.theme-light .quiz-icon-btn:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .quiz-card.theme-light .quiz-icon-btn.close:hover {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+      .quiz-card.minimized {
+        min-width: 215px;
+        padding: 10px 14px;
+        gap: 6px;
+      }
+      .quiz-card.minimized .quiz-body-controls {
+        display: none !important;
+      }
+      .quiz-card.minimized .status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+      }
     `;
       const card = document.createElement("div");
       card.className = `quiz-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
@@ -1710,27 +1766,51 @@
           </svg>
           Mentari AI Quiz
         </div>
+        <div class="quiz-header-actions">
+          <button class="quiz-icon-btn" id="quiz-btn-minimize" type="button" title="Perkecil panel" aria-label="Perkecil panel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="quiz-icon-btn close" id="quiz-btn-close" type="button" title="Tutup panel" aria-label="Tutup panel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
       </div>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
-          ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === this.activeModel ? "selected" : ""}>${m.name}</option>`).join("")}
-        </select>
-        <select class="model-select" id="quiz-select-thinking" title="Pilih Thinking Level (Kecepatan vs Kedalaman AI)"></select>
+      <div class="quiz-body-controls" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <select class="model-select" id="quiz-select-model" title="Pilih Model AI Gemini">
+            ${ALL_MODELS.map((m) => `<option value="${m.id}" ${m.id === this.activeModel ? "selected" : ""}>${m.name}</option>`).join("")}
+          </select>
+          <select class="model-select" id="quiz-select-thinking" title="Pilih Thinking Level (Kecepatan vs Kedalaman AI)"></select>
+        </div>
       </div>
       <div class="status-text" id="status-text">Siap membantu mengerjakan kuis.</div>
-      <div style="display:flex; gap:8px;">
-        <button class="btn-single" id="btn-single" type="button">Jawab Ini</button>
-        <button class="btn-action" id="btn-auto" type="button">Auto Semua</button>
+      <div class="quiz-body-controls" style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; gap:8px;">
+          <button class="btn-single" id="btn-single" type="button">Jawab Ini</button>
+          <button class="btn-action" id="btn-auto" type="button">Auto Semua</button>
+        </div>
+        <button class="btn-single" id="btn-verify-all" type="button" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;" title="Periksa semua soal yang sudah terjawab mulai dari nomor 1 dan perbaiki jika salah">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Cek &amp; Koreksi (1 \u2192 N)
+        </button>
       </div>
-      <button class="btn-single" id="btn-verify-all" type="button" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;" title="Periksa semua soal yang sudah terjawab mulai dari nomor 1 dan perbaiki jika salah">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Cek &amp; Koreksi (1 \u2192 N)
-      </button>
     `;
       this.shadow.appendChild(style);
       this.shadow.appendChild(card);
       document.body.appendChild(host);
       this._makeElementDraggable(host, card.querySelector(".quiz-header"));
+      const btnQuizMin = this.shadow.getElementById("quiz-btn-minimize");
+      const btnQuizClose = this.shadow.getElementById("quiz-btn-close");
+      btnQuizMin?.addEventListener("click", () => {
+        const minimized = card.classList.toggle("minimized");
+        btnQuizMin.title = minimized ? "Perbesar panel" : "Perkecil panel";
+        btnQuizMin.setAttribute("aria-label", btnQuizMin.title);
+        btnQuizMin.innerHTML = minimized ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+      });
+      btnQuizClose?.addEventListener("click", () => {
+        this.isRunning = false;
+        host.style.display = "none";
+      });
       const selectModel = this.shadow.getElementById("quiz-select-model");
       const selectThinking = this.shadow.getElementById("quiz-select-thinking");
       const btnSingle = this.shadow.getElementById("btn-single");
@@ -2746,7 +2826,7 @@
       this.hudHost = document.createElement("div");
       this.hudHost.id = "mentari-autopilot-hud-host";
       this.hudHost.style.position = "fixed";
-      this.hudHost.style.top = "20px";
+      this.hudHost.style.bottom = "24px";
       this.hudHost.style.right = "24px";
       this.hudHost.style.zIndex = "2147483646";
       this.hudShadow = this.hudHost.attachShadow({ mode: "closed" });
@@ -3116,6 +3196,60 @@
       .hud-card.theme-light ::-webkit-scrollbar-thumb {
         background: rgba(30, 58, 138, 0.28);
       }
+      .hud-header-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .hud-icon-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .hud-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+      }
+      .hud-icon-btn.close:hover {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.45);
+        color: #fca5a5;
+      }
+      .hud-card.theme-light .hud-icon-btn {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #475569;
+      }
+      .hud-card.theme-light .hud-icon-btn:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-icon-btn.close:hover {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+      .hud-card.minimized {
+        width: 270px;
+        padding: 10px 14px;
+        gap: 8px;
+      }
+      .hud-card.minimized .hud-body,
+      .hud-card.minimized .hud-matrix-wrap,
+      .hud-card.minimized .hud-status,
+      .hud-card.minimized .hud-btn-verify,
+      .hud-card.minimized .hud-actions {
+        display: none !important;
+      }
     `;
       const hudCard = document.createElement("div");
       hudCard.className = `hud-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
@@ -3131,8 +3265,16 @@
           </svg>
           Auto-Pilot Kuis
         </div>
-        <div class="hud-badge ${this.isPaused ? "paused" : "running"}" id="hud-badge">
-          ${this.isPaused ? "Dijeda" : "Berjalan"}
+        <div class="hud-header-right">
+          <div class="hud-badge ${this.isPaused ? "paused" : "running"}" id="hud-badge">
+            ${this.isPaused ? "Dijeda" : "Berjalan"}
+          </div>
+          <button class="hud-icon-btn" id="hud-btn-minimize" type="button" title="Perkecil ke bar progres" aria-label="Perkecil ke bar progres">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="hud-icon-btn close" id="hud-btn-close" type="button" title="Sembunyikan HUD" aria-label="Sembunyikan HUD">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
       </div>
 
@@ -3154,8 +3296,8 @@
 
       <div class="hud-progress-wrap">
         <div class="hud-progress-info">
-          <span>Kuis ${currentIdx + 1} dari ${totalCount}</span>
-          <span>${progressPercent}%</span>
+          <span id="hud-progress-label">Kuis ${currentIdx + 1} dari ${totalCount}</span>
+          <span id="hud-progress-pct">${progressPercent}%</span>
         </div>
         <div class="hud-progress-bar-bg">
           <div class="hud-progress-bar-fill" id="hud-progress-fill" style="width: ${progressPercent}%;"></div>
@@ -3194,6 +3336,22 @@
       this.hudShadow.appendChild(hudCard);
       document.body.appendChild(this.hudHost);
       this._makeElementDraggable(this.hudHost, hudCard.querySelector(".hud-header"));
+      const btnHudMin = this.hudShadow.getElementById("hud-btn-minimize");
+      const btnHudClose = this.hudShadow.getElementById("hud-btn-close");
+      btnHudMin?.addEventListener("click", () => {
+        const minimized = hudCard.classList.toggle("minimized");
+        btnHudMin.title = minimized ? "Perbesar HUD" : "Perkecil ke bar progres";
+        btnHudMin.setAttribute("aria-label", btnHudMin.title);
+        btnHudMin.innerHTML = minimized ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+      });
+      btnHudClose?.addEventListener("click", () => {
+        if (!this.isAutoPilot && !this.isRunning) {
+          this.hudHost?.remove();
+        } else if (this.hudHost) {
+          this.hudHost.style.display = "none";
+          Toast.info("HUD Auto-Pilot disembunyikan. Otomatisasi tetap berjalan.");
+        }
+      });
       const statusEl = this.hudShadow.getElementById("hud-status-text");
       const badgeEl = this.hudShadow.getElementById("hud-badge");
       const btnPause = this.hudShadow.getElementById("hud-btn-pause");
@@ -3450,13 +3608,31 @@
         window.location.replace(nextItem.url);
       } else {
         await AutoPilotState.reset();
+        this.isAutoPilot = false;
+        this.isRunning = false;
+        const totalDone = state.queue?.length || 1;
+        const fillEl = this.hudShadow?.getElementById("hud-progress-fill");
+        const labelEl = this.hudShadow?.getElementById("hud-progress-label");
+        const pctEl = this.hudShadow?.getElementById("hud-progress-pct");
+        const badgeEl = this.hudShadow?.getElementById("hud-badge");
+        const actionsEl = this.hudShadow?.querySelector(".hud-actions");
+        const verifyEl = this.hudShadow?.getElementById("hud-btn-verify");
+        if (fillEl) fillEl.style.width = "100%";
+        if (labelEl) labelEl.textContent = `Kuis ${totalDone} dari ${totalDone}`;
+        if (pctEl) pctEl.textContent = "100%";
+        if (badgeEl) {
+          badgeEl.className = "hud-badge running";
+          badgeEl.textContent = "Selesai";
+        }
+        if (actionsEl) actionsEl.style.display = "none";
+        if (verifyEl) verifyEl.style.display = "none";
         if (statusEl) statusEl.textContent = "Seluruh antrean Auto-Pilot kuis & evaluasi selesai 100%!";
         Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah berhasil diselesaikan!");
         setTimeout(() => {
           if (this.hudHost) this.hudHost.remove();
           const manualCtrl = document.getElementById("mentari-quiz-control-host");
           if (manualCtrl) manualCtrl.style.display = "block";
-        }, 7e3);
+        }, 4e3);
       }
     }
     /**
