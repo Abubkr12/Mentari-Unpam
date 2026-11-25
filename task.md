@@ -1,9 +1,20 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Pemilihan dinamis Thinking Level per model AI (`models.js`, `service-worker.js`, `apiKeyManager.js`, `token.js`, `quiz.js`), verifikasi & koreksi jawaban terisi dari soal #1 (`quiz.js`), perbaikan timeout & fallback AI (`service-worker.js`), fitur seleksi & prioritas forum Rekap Tugas (`token.js`), dan rilis `v2.1.2` telah selesai.
+- Tidak ada task aktif saat ini. Pemilih Thinking Level & perbaikan Light Mode pada modal Auto-Pilot (`token.js`), tema adaptif Terang/Gelap pada panel & HUD Kuis (`quiz.js`), isolasi kuota model ketat + toggle fallback opsional (`service-worker.js`, `token.js`), auto-koreksi soal error sebelum submit & perbaikan false-completed/resume Auto-Pilot (`quiz.js`), serta audit `/antislop` sudah selesai.
 
 ## Arsip
+- [x] Audit Total Auto-Pilot, Tema Kuis Light/Dark, & Isolasi Kuota Model AI (`src/content/token.js`, `src/content/quiz.js`, `src/background/service-worker.js`):
+  1. **Modal Auto-Pilot (`src/content/token.js`)**:
+     - Menambahkan dropdown dinamis `Thinking Level` (`#ap-thinking-select`) di modal Auto-Pilot yang menyesuaikan opsi per model dan tersinkron ke `gemini_thinking_level` serta `AutoPilotState.thinkingLevel`.
+     - Memperbaiki kontras Light Mode pada modal Auto-Pilot (mengganti warna inline `#d4af37`, `#ddd`, dan `#10b981` dengan kelas bertema yang lolos WCAG AA, serta memastikan `.ap-modal` langsung menerima kelas `theme-light`).
+  2. **Isolasi Kuota Model Ketat (`src/background/service-worker.js`, `src/content/token.js`)**:
+     - Memastikan model cadangan lain seperti `gemini-3.8-flash` (20 RPD) tidak diam-diam dipanggil saat model pilihan pengguna (misalnya `gemini-3.5-flash-lite`) timeout atau gagal, kecuali opsi `"Fallback Otomatis Model Cadangan"` (`gemini_auto_fallback`) diaktifkan di Tab Pengaturan.
+     - Menaikkan batas timeout minimum ke 20s, merotasi seluruh API key saat timeout, dan menambah 1 kali retry pada model yang sama untuk gangguan jaringan sementara.
+  3. **Tema Kuis Light/Dark, Auto-Koreksi Error, & Fix Berhenti Dini (`src/content/quiz.js`)**:
+     - Menghubungkan `ThemeHelper` ke panel kontrol kuis manual dan HUD Auto-Pilot (`theme-light` Navy/putih bersih + warna teks status/matriks kontras AA).
+     - Memperbaiki deteksi false-positive `_checkIfExamAlreadyCompleted` (mencegah wrapper `div`, teks legenda, atau tabel riwayat kosong menganggap kuis berikut sudah selesai ketika tombol `Mulai` masih ada).
+     - Menyimpan nomor soal yang sempat error (`mentari_quiz_recovery_map`) secara persisten di storage, tidak menandai soal fallback Opsi A sebagai terverifikasi, menjalankan auto-koreksi otomatis sebelum submit tanpa perlu jeda manual, memveto submit bila koreksi gagal, serta memperbaiki tombol `Cek & Koreksi (1 -> N)` agar tetap aktif saat loop sedang dijeda.
 - [x] Pilihan Dinamis Thinking Level Sesuai Spesifikasi Tiap Model Gemini (`src/utils/models.js`, `src/background/service-worker.js`, `src/content/apiKeyManager.js`, `src/content/token.js`, `src/content/quiz.js`):
   1. **Metadata Terpusat per Model (`src/utils/models.js`)**:
      - Menambahkan `THINKING_LEVEL_META`, `thinkingLevels` yang didukung per model (`low`/`medium`/`high`/`xhigh` untuk `gemini-4-hydrogen`, `low`/`medium`/`high` untuk `gemini-3.8-flash`, serta `minimal`/`low`/`medium`/`high` untuk seri 3 lainnya), `getSupportedThinkingLevels()`, dan `resolveThinkingLevelForModel()`.

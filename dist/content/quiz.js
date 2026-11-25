@@ -1358,13 +1358,21 @@
       this.shadow = null;
       this.hudShadow = null;
       this.hudHost = null;
+      this.currentTheme = ThemeHelper.detectSystemTheme();
       this.activeModel = DEFAULT_MODEL;
       this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
       this._currentSessionQuestions = [];
+      this._failedQuestionNums = /* @__PURE__ */ new Set();
+      this._examNeedsVerify = false;
+      this._verifyModeRequested = false;
       this._init();
     }
     async _init() {
-      console.log("[Mentari Mod] Quiz Assistant aktif.");
+      this.currentTheme = await ThemeHelper.getEffectiveTheme();
+      ThemeHelper.watchTheme((newTheme) => {
+        this.currentTheme = newTheme;
+        this._applyTheme(newTheme);
+      });
       try {
         const { gemini_model, gemini_thinking_level } = await Storage.get({
           gemini_model: DEFAULT_MODEL,
@@ -1382,6 +1390,7 @@
         this.activeThinkingLevel = resolveThinkingLevelForModel(DEFAULT_MODEL);
       }
       this._injectFloatingControl();
+      this._applyTheme(this.currentTheme);
       if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
         chrome.storage.onChanged.addListener((changes, area) => {
           if (area === "local" && (changes.gemini_model || changes.gemini_thinking_level)) {
@@ -1407,6 +1416,11 @@
       }
       await this._checkAndInitAutoPilot();
     }
+    _applyTheme(theme = this.currentTheme) {
+      const isLight = theme === "light";
+      this.shadow?.querySelector(".quiz-card")?.classList.toggle("theme-light", isLight);
+      this.hudShadow?.querySelector(".hud-card")?.classList.toggle("theme-light", isLight);
+    }
     _syncThinkingSelect(selectEl, modelId, preferredLevel = null, compact = false) {
       const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
       if (!selectEl) return resolved;
@@ -1427,23 +1441,84 @@
         return "quiz";
       }
     }
-    _hasExamNeedsVerification() {
+    async _loadExamRecoveryState() {
+      const sessionKey = this._getExamSessionKey();
+      let needsVerify = false;
+      const failedNums = /* @__PURE__ */ new Set();
       try {
-        return sessionStorage.getItem(`mentari_quiz_needs_verify_${this._getExamSessionKey()}`) === "1";
-      } catch {
-        return false;
-      }
-    }
-    _markExamNeedsVerification(flag = true) {
-      try {
-        const key = `mentari_quiz_needs_verify_${this._getExamSessionKey()}`;
-        if (flag) {
-          sessionStorage.setItem(key, "1");
-        } else {
-          sessionStorage.removeItem(key);
+        const { mentari_quiz_recovery_map } = await Storage.get({ mentari_quiz_recovery_map: {} });
+        const entry = mentari_quiz_recovery_map?.[sessionKey];
+        if (entry) {
+          needsVerify = Boolean(entry.needsVerify);
+          if (Array.isArray(entry.failedNums)) {
+            entry.failedNums.forEach((n) => {
+              const parsed = parseInt(n, 10);
+              if (!isNaN(parsed) && parsed > 0) failedNums.add(parsed);
+            });
+          }
+        }
+        if (sessionStorage.getItem(`mentari_quiz_needs_verify_${sessionKey}`) === "1") {
+          needsVerify = true;
         }
       } catch {
       }
+      this._examNeedsVerify = needsVerify || failedNums.size > 0;
+      this._failedQuestionNums = failedNums;
+      return { needsVerify: this._examNeedsVerify, failedNums };
+    }
+    async _persistExamRecoveryState() {
+      const sessionKey = this._getExamSessionKey();
+      try {
+        const { mentari_quiz_recovery_map } = await Storage.get({ mentari_quiz_recovery_map: {} });
+        const nextMap = { ...mentari_quiz_recovery_map || {} };
+        if (!this._examNeedsVerify && this._failedQuestionNums.size === 0) {
+          delete nextMap[sessionKey];
+          sessionStorage.removeItem(`mentari_quiz_needs_verify_${sessionKey}`);
+        } else {
+          nextMap[sessionKey] = {
+            needsVerify: Boolean(this._examNeedsVerify || this._failedQuestionNums.size > 0),
+            failedNums: Array.from(this._failedQuestionNums).sort((a, b) => a - b),
+            updatedAt: Date.now()
+          };
+          sessionStorage.setItem(`mentari_quiz_needs_verify_${sessionKey}`, "1");
+        }
+        await Storage.set({ mentari_quiz_recovery_map: nextMap });
+      } catch {
+      }
+    }
+    _hasExamNeedsVerification() {
+      try {
+        return Boolean(
+          this._examNeedsVerify || this._failedQuestionNums.size > 0 || sessionStorage.getItem(`mentari_quiz_needs_verify_${this._getExamSessionKey()}`) === "1"
+        );
+      } catch {
+        return this._examNeedsVerify || this._failedQuestionNums.size > 0;
+      }
+    }
+    _markExamNeedsVerification(flag = true) {
+      this._examNeedsVerify = Boolean(flag);
+      if (!flag) {
+        this._failedQuestionNums.clear();
+      }
+      this._persistExamRecoveryState();
+    }
+    async _recordFailedQuestion(qNum) {
+      const num = parseInt(qNum, 10);
+      if (!isNaN(num) && num > 0) {
+        this._failedQuestionNums.add(num);
+      }
+      this._examNeedsVerify = true;
+      await this._persistExamRecoveryState();
+    }
+    async _clearFailedQuestion(qNum) {
+      const num = parseInt(qNum, 10);
+      if (!isNaN(num)) {
+        this._failedQuestionNums.delete(num);
+      }
+      if (this._failedQuestionNums.size === 0) {
+        this._examNeedsVerify = false;
+      }
+      await this._persistExamRecoveryState();
     }
     async _waitForQuestionNumberChange(prevNum, maxWaitMs = 2500) {
       const start = Date.now();
@@ -1578,12 +1653,55 @@
       }
       .status-text {
         font-size: 11px;
-        color: #aaa;
+        color: #9ca3af;
         line-height: 1.3;
+      }
+      .quiz-card.theme-light {
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .quiz-card.theme-light .quiz-title {
+        color: #1e3a8a;
+      }
+      .quiz-card.theme-light .model-select {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+      }
+      .quiz-card.theme-light .model-select:focus {
+        border-color: #1e3a8a;
+      }
+      .quiz-card.theme-light .model-select option {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .quiz-card.theme-light .btn-action {
+        background: #1e3a8a;
+        color: #ffffff;
+      }
+      .quiz-card.theme-light .btn-action:hover {
+        background: #1d4ed8;
+      }
+      .quiz-card.theme-light .btn-single {
+        background: #f1f5f9;
+        color: #1e293b;
+        border-color: #cbd5e1;
+      }
+      .quiz-card.theme-light .btn-single:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .quiz-card.theme-light .status-text {
+        color: #475569;
+      }
+      .quiz-card.theme-light ::-webkit-scrollbar-thumb {
+        background: rgba(30, 58, 138, 0.28);
       }
     `;
       const card = document.createElement("div");
-      card.className = "quiz-card";
+      card.className = `quiz-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
       card.innerHTML = `
       <div class="quiz-header">
         <div class="quiz-title">
@@ -1965,44 +2083,18 @@
         "kuis sudah selesai",
         "ujian sudah selesai",
         "tes sudah selesai",
-        "telah diselesaikan",
-        "sudah diselesaikan",
-        "hasil kuis",
-        "hasil ujian",
-        "nilai akhir",
-        "skor anda",
-        "nilai anda",
         "anda telah menyelesaikan kuis ini",
         "anda sudah mengerjakan kuis ini",
-        "attempt 1 of 1",
-        "percobaan 1 dari 1"
+        "kuis ini telah diselesaikan",
+        "ujian ini telah diselesaikan"
       ];
-      const allHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, p, div"));
-      let explicitCompletion = null;
-      for (const el of allHeaders) {
-        if (el.closest("#mentari-autopilot-hud-host") || el.closest("#mentari-quiz-control-host") || el.closest("#mentari-token-mod-host") || el.closest(".mentari-toast-container")) {
-          continue;
-        }
-        const t = (el.textContent || "").trim().toLowerCase();
-        for (const kw of completedKeywords) {
-          if (t.includes(kw)) {
-            explicitCompletion = {
-              isCompleted: true,
-              reason: `Teks '${kw}' terdeteksi pada layar`,
-              detectedType: domInfo.detectedType,
-              title: domInfo.cleanTitle
-            };
-            break;
-          }
-        }
-        if (explicitCompletion) break;
-      }
+      const hasStartBtn = Boolean(this._findStartExamButton());
       const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
       const hasActiveRadios = activeRadios.length > 0;
       const pageText = (document.body?.innerText || "").toLowerCase();
       const hasActiveTimer = pageText.includes("waktu tersisa") || pageText.includes("sisa waktu") || pageText.includes("time remaining");
       const hasUnansweredBadge = pageText.includes("belum dijawab");
-      if (!explicitCompletion && (hasActiveTimer || hasUnansweredBadge || hasActiveRadios)) {
+      if (hasActiveRadios || hasActiveTimer || hasUnansweredBadge || hasStartBtn) {
         return {
           isCompleted: false,
           reason: "",
@@ -2010,13 +2102,30 @@
           title: domInfo.cleanTitle
         };
       }
-      if (explicitCompletion && !hasActiveRadios) {
-        return explicitCompletion;
+      const allHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, .MuiAlert-message, p, span"));
+      for (const el of allHeaders) {
+        if (el.closest("#mentari-autopilot-hud-host, #mentari-quiz-control-host, #mentari-token-mod-host, .mentari-toast-container")) {
+          continue;
+        }
+        const t = (el.textContent || "").trim().toLowerCase();
+        if (!t || t.length > 180) continue;
+        for (const kw of completedKeywords) {
+          if (t.includes(kw)) {
+            return {
+              isCompleted: true,
+              reason: `Teks '${kw}' terdeteksi pada layar`,
+              detectedType: domInfo.detectedType,
+              title: domInfo.cleanTitle
+            };
+          }
+        }
       }
       const scoreTable = document.querySelector("table.MuiTable-root, .hasil-ujian, .skor-container");
-      if (scoreTable && !hasActiveRadios) {
-        const tableText = (scoreTable.textContent || "").toLowerCase();
-        if (tableText.includes("nilai") || tableText.includes("skor") || tableText.includes("grade") || tableText.includes("selesai")) {
+      if (scoreTable) {
+        const bodyRows = Array.from(scoreTable.querySelectorAll("tbody tr"));
+        const rowText = bodyRows.map((r) => (r.textContent || "").trim().toLowerCase()).join(" ");
+        const hasScoreRow = bodyRows.length > 0 && !rowText.includes("belum ada") && !rowText.includes("no data") && /\d/.test(rowText);
+        if (hasScoreRow) {
           return {
             isCompleted: true,
             reason: "Tabel riwayat nilai/skor terdeteksi",
@@ -2026,7 +2135,7 @@
         }
       }
       const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
-      if (radioInputs.length > 0 && radioInputs.every((r) => r.disabled || r.getAttribute("aria-disabled") === "true")) {
+      if (radioInputs.length >= 2 && radioInputs.every((r) => r.disabled || r.getAttribute("aria-disabled") === "true")) {
         return {
           isCompleted: true,
           reason: "Seluruh opsi pilihan kuis disabled (Read-only review)",
@@ -2199,6 +2308,19 @@
     /**
      * Eksekusi loop menjawab & memverifikasi seluruh soal dengan jeda natural manusia
      */
+    _findQuizFinishButton(finishKeywords) {
+      const scope = document.querySelector("main") || document;
+      const candidates = DOM.findAllButtonsByText(finishKeywords, scope);
+      return candidates.find((btn) => {
+        if (btn.disabled || btn.classList?.contains("Mui-disabled") || btn.getAttribute("aria-disabled") === "true") {
+          return false;
+        }
+        if (btn.closest('header, nav, aside, [role="navigation"], #mentari-autopilot-hud-host, #mentari-quiz-control-host, #mentari-token-mod-host')) {
+          return false;
+        }
+        return true;
+      }) || null;
+    }
     async runAutoLoop(statusEl, isAutoPilot = false, { verifyExisting = false } = {}) {
       const initialComp = this._checkIfExamAlreadyCompleted();
       if (initialComp.isCompleted) {
@@ -2225,23 +2347,25 @@
           qContainer = await this._waitForQuestionContainer(15e3);
         }
       }
-      const verifyMode = Boolean(verifyExisting || this._hasExamNeedsVerification());
+      await this._loadExamRecoveryState();
+      let verifyMode = Boolean(verifyExisting || this._verifyModeRequested || this._hasExamNeedsVerification());
+      this._verifyModeRequested = false;
       const verifiedNums = /* @__PURE__ */ new Set();
-      let hadVerifyFailure = false;
+      const postRecoveryAttempted = /* @__PURE__ */ new Set();
       const initialNav = this._getExamNavigationStatus();
       if (verifyMode && initialNav?.questions?.length > 0) {
-        const firstAnswered = initialNav.questions.find((q) => q.isAnswered) || initialNav.questions[0];
+        const firstTarget = (this._failedQuestionNums.size > 0 ? initialNav.questions.find((q) => this._failedQuestionNums.has(q.num)) : null) || initialNav.questions.find((q) => q.isAnswered) || initialNav.questions[0];
         const curActiveNum = this._extractActiveQuestionNumberFromDOM();
-        if (firstAnswered && !firstAnswered.isCurrent && firstAnswered.btn) {
-          if (statusEl) statusEl.textContent = `Membuka Soal ${firstAnswered.num} untuk memeriksa jawaban...`;
-          await Humanizer.naturalClick(firstAnswered.btn);
+        if (firstTarget && !firstTarget.isCurrent && firstTarget.btn) {
+          if (statusEl) statusEl.textContent = `Membuka Soal ${firstTarget.num} untuk memeriksa jawaban...`;
+          await Humanizer.naturalClick(firstTarget.btn);
           await this._waitForQuestionNumberChange(curActiveNum, 2500);
           await Humanizer.delay(250);
         }
       }
       let loopIterations = 0;
       const totalQEstimate = initialNav?.questions?.length || 20;
-      const maxSafetyIterations = Math.max(60, totalQEstimate * 3);
+      const maxSafetyIterations = Math.max(60, totalQEstimate * 4);
       this._currentSessionQuestions = [];
       while (this.isRunning && loopIterations < maxSafetyIterations) {
         loopIterations++;
@@ -2252,9 +2376,14 @@
         if (!this.isRunning) {
           return { isFinished: false, submitted: false, reason: "Dibatalkan oleh pengguna" };
         }
+        if (this._verifyModeRequested) {
+          verifyMode = true;
+          this._verifyModeRequested = false;
+        } else if (!verifyMode && this._hasExamNeedsVerification()) {
+          verifyMode = true;
+        }
         const stepComp = this._checkIfExamAlreadyCompleted();
         if (stepComp.isCompleted) {
-          console.log("[Auto-Pilot] Kuis selesai terdeteksi di tengah loop. Menghentikan.");
           if (statusEl) statusEl.textContent = `${stepComp.title || "Kuis"} telah selesai dikerjakan.`;
           this._markExamNeedsVerification(false);
           this.isRunning = false;
@@ -2272,20 +2401,29 @@
         const currentQNav = navStatusCurrent?.questions?.find((q) => q.isCurrent);
         const curQNum = this._extractActiveQuestionNumberFromDOM() || currentQNav?.num || loopIterations;
         const isCurrentVerifiedGreen = currentQNav ? currentQNav.isAnswered : false;
+        const isCurrentFailed = this._failedQuestionNums.has(curQNum);
         const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
         const anyUnansweredRemaining = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.some((q) => q.isUnanswered || !q.isAnswered);
-        const nextUnverifiedRemaining = verifyMode && navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => (!verifiedNums.has(q.num) || !q.isAnswered) && !q.isCurrent) : null;
-        if (!verifyMode && isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
+        const pendingCorrectionQ = navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num) && !q.isCurrent) : null;
+        const nextUnverifiedRemaining = verifyMode && navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => (!verifiedNums.has(q.num) || this._failedQuestionNums.has(q.num) || !q.isAnswered) && !q.isCurrent) : null;
+        if (!verifyMode && !isCurrentFailed && isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
           const nextUnanswered = navStatusCurrent.questions.find((q) => (q.isUnanswered || !q.isAnswered) && !q.isCurrent);
           if (nextUnanswered && nextUnanswered.btn) {
-            console.log(`[Auto-Pilot] Soal saat ini sudah hijau. Melompat langsung ke Soal ${nextUnanswered.num} yang masih putih.`);
-            if (statusEl) statusEl.textContent = `Soal sudah dijawab. Melompat ke Soal ${nextUnanswered.num}...`;
+            if (statusEl) statusEl.textContent = `Soal ${curQNum} sudah hijau. Melompat ke Soal ${nextUnanswered.num}...`;
             await Humanizer.randomDelay(300, 600);
             await Humanizer.naturalClick(nextUnanswered.btn);
             await Humanizer.delay(600);
             continue;
           }
-        } else if (verifyMode && alreadyCheckedRadio && verifiedNums.has(curQNum) && nextUnverifiedRemaining?.btn) {
+        } else if (!verifyMode && !isCurrentFailed && isCurrentVerifiedGreen && alreadyCheckedRadio && pendingCorrectionQ?.btn) {
+          if (statusEl) statusEl.textContent = `Auto-koreksi: membuka Soal ${pendingCorrectionQ.num} yang sempat error...`;
+          verifyMode = true;
+          await Humanizer.randomDelay(350, 650);
+          await Humanizer.naturalClick(pendingCorrectionQ.btn);
+          await this._waitForQuestionNumberChange(curQNum, 2500);
+          await Humanizer.delay(250);
+          continue;
+        } else if (verifyMode && !isCurrentFailed && alreadyCheckedRadio && verifiedNums.has(curQNum) && nextUnverifiedRemaining?.btn) {
           if (statusEl) statusEl.textContent = `Soal ${curQNum} sudah diperiksa. Menuju Soal ${nextUnverifiedRemaining.num}...`;
           await Humanizer.randomDelay(250, 450);
           await Humanizer.naturalClick(nextUnverifiedRemaining.btn);
@@ -2298,39 +2436,40 @@
           try {
             await this.processCurrentQuestion(true);
             verifiedNums.add(curQNum);
+            await this._clearFailedQuestion(curQNum);
           } catch (err) {
             console.warn("[Mentari AI] Gagal memproses soal (percobaan 1):", err);
-            await Humanizer.delay(600);
+            await Humanizer.delay(800);
             try {
               await this.processCurrentQuestion(true);
               verifiedNums.add(curQNum);
+              await this._clearFailedQuestion(curQNum);
             } catch (retryErr) {
-              console.error("[Mentari AI] Percobaan 2 gagal. Mengaktifkan self-recovery:", retryErr);
-              this._markExamNeedsVerification(true);
-              hadVerifyFailure = true;
-              if (statusEl) statusEl.textContent = `Peringatan: ${retryErr.message}. Memilih opsi pemulihan...`;
+              console.error("[Mentari AI] Percobaan 2 gagal. Menandai soal untuk auto-koreksi sebelum submit:", retryErr);
+              await this._recordFailedQuestion(curQNum);
+              if (statusEl) statusEl.textContent = `Soal ${curQNum} error (${retryErr.message}). Menyimpan antrean koreksi...`;
               await this._forceSelectFirstOption(curQContainer);
-              verifiedNums.add(curQNum);
             }
           }
-        } else if (verifyMode && !verifiedNums.has(curQNum)) {
-          if (statusEl) statusEl.textContent = `Memeriksa jawaban Soal ${curQNum} via AI...`;
+        } else if (verifyMode && (!verifiedNums.has(curQNum) || isCurrentFailed)) {
+          if (statusEl) statusEl.textContent = isCurrentFailed ? `Mengoreksi ulang Soal ${curQNum} yang sempat error...` : `Memeriksa jawaban Soal ${curQNum} via AI...`;
           let verifyResult = null;
           try {
             verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
             verifiedNums.add(curQNum);
+            await this._clearFailedQuestion(curQNum);
           } catch (verErr) {
             console.warn(`[Mentari AI] Gagal verifikasi Soal ${curQNum} (percobaan 1):`, verErr);
-            await Humanizer.delay(600);
+            await Humanizer.delay(800);
             try {
               verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
               verifiedNums.add(curQNum);
+              await this._clearFailedQuestion(curQNum);
             } catch (verRetryErr) {
-              console.error(`[Mentari AI] Verifikasi Soal ${curQNum} gagal, mempertahankan opsi terpilih:`, verRetryErr);
-              this._markExamNeedsVerification(true);
-              hadVerifyFailure = true;
-              verifiedNums.add(curQNum);
-              if (statusEl) statusEl.textContent = `Soal ${curQNum}: Gagal verifikasi (${verRetryErr.message}), mempertahankan opsi ada.`;
+              console.error(`[Mentari AI] Koreksi Soal ${curQNum} masih gagal:`, verRetryErr);
+              await this._recordFailedQuestion(curQNum);
+              postRecoveryAttempted.add(curQNum);
+              if (statusEl) statusEl.textContent = `Soal ${curQNum}: Gagal dikoreksi (${verRetryErr.message}).`;
             }
           }
           if (verifyResult?.status === "corrected" && statusEl) {
@@ -2339,14 +2478,15 @@
             statusEl.textContent = `Soal ${curQNum} sudah benar, lanjut...`;
           }
         } else {
-          console.log("[Auto-Pilot] Soal saat ini sudah memiliki opsi terpilih.");
-          if (statusEl) statusEl.textContent = "Soal ini sudah terjawab.";
+          if (statusEl) statusEl.textContent = `Soal ${curQNum} sudah terjawab.`;
           const curQInfo = curQContainer ? this._parseQuestionAndOptions(curQContainer) : null;
           const selectedOpt = curQInfo?.options?.find((o) => o.element?.checked);
           if (curQInfo?.questionText && selectedOpt) {
             this._recordCurrentQuestionAnswer(curQInfo.questionText, selectedOpt.text, selectedOpt.letter);
           }
-          verifiedNums.add(curQNum);
+          if (!isCurrentFailed) {
+            verifiedNums.add(curQNum);
+          }
         }
         const navStatusAfterAnswer = this._getExamNavigationStatus();
         if (navStatusAfterAnswer) {
@@ -2379,7 +2519,6 @@
             return q.isUnanswered || !q.isAnswered;
           });
           if (unansweredList.length > 0) {
-            console.warn(`[Hard Veto Kotak Hijau] Masih ada ${unansweredList.length} soal abu-abu. Submisi DIBLOKIR. Mengarahkan ke soal yang belum terjawab...`, unansweredList);
             const targetQ = unansweredList.find((q) => !q.isCurrent) || unansweredList[0];
             if (targetQ && targetQ.btn) {
               if (statusEl) statusEl.textContent = `Hard Veto: Soal ${targetQ.num} belum terjawab. Membuka Soal ${targetQ.num}...`;
@@ -2391,6 +2530,31 @@
               await Humanizer.delay(600);
             }
             continue;
+          }
+          if (this._failedQuestionNums.size > 0) {
+            const retryableFailed = navStatus.questions.find(
+              (q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num)
+            );
+            if (retryableFailed) {
+              verifyMode = true;
+              postRecoveryAttempted.add(retryableFailed.num);
+              if (statusEl) statusEl.textContent = `Auto-koreksi Soal ${retryableFailed.num} sebelum kirim jawaban...`;
+              await Humanizer.delay(1400);
+              if (!retryableFailed.isCurrent && retryableFailed.btn) {
+                await Humanizer.naturalClick(retryableFailed.btn);
+                await this._waitForQuestionNumberChange(prevQNum, 2500);
+                await Humanizer.delay(300);
+              }
+              continue;
+            }
+            const failedListStr = Array.from(this._failedQuestionNums).sort((a, b) => a - b).join(", ");
+            if (statusEl) statusEl.textContent = `Auto-koreksi gagal di Soal ${failedListStr}. Submisi ditahan.`;
+            this.isRunning = false;
+            return {
+              isFinished: false,
+              submitted: false,
+              reason: `Soal ${failedListStr} gagal diverifikasi AI, submisi dibatalkan agar tidak mengirim tebakan`
+            };
           }
           if (verifyMode) {
             const unverifiedQ = navStatus.questions.find((q) => !verifiedNums.has(q.num));
@@ -2422,7 +2586,7 @@
           "submit exam",
           "submit"
         ];
-        const finishBtn = DOM.findButtonByText(finishKeywords);
+        const finishBtn = this._findQuizFinishButton(finishKeywords);
         if (finishBtn) {
           const finalNav = this._getExamNavigationStatus();
           const activeRadioFinal = this._findQuestionContainer()?.querySelector('input[type="radio"]:checked');
@@ -2432,7 +2596,6 @@
               return q.isUnanswered || !q.isAnswered;
             });
             if (finalUnanswered.length > 0 || !finalNav.allAnswered) {
-              console.warn(`[Hard Veto Submit Prematur] Tombol selesai DIBLOKIR MUTLAK! Terdeteksi ${finalUnanswered.length} soal abu-abu.`, finalUnanswered);
               const target = finalUnanswered.find((q) => !q.isCurrent) || finalUnanswered[0];
               if (target && target.btn) {
                 if (statusEl) statusEl.textContent = `Veto: Soal ${target.num} belum terjawab. Membuka Soal ${target.num}...`;
@@ -2440,6 +2603,11 @@
               }
               await Humanizer.delay(600);
               continue;
+            }
+            if (this._failedQuestionNums.size > 0) {
+              const failedStr = Array.from(this._failedQuestionNums).sort((a, b) => a - b).join(", ");
+              this.isRunning = false;
+              return { isFinished: false, submitted: false, reason: `Soal ${failedStr} belum berhasil dikoreksi AI` };
             }
             if (verifyMode) {
               const finalUnverified = finalNav.questions.find((q) => !verifiedNums.has(q.num));
@@ -2451,9 +2619,7 @@
               }
             }
           }
-          if (!hadVerifyFailure) {
-            this._markExamNeedsVerification(false);
-          }
+          this._markExamNeedsVerification(false);
           if (statusEl) statusEl.textContent = "Semua kotak soal terverifikasi 100% hijau! Menyelesaikan kuis...";
           Toast.success("Semua kotak nomor soal terverifikasi hijau (terjawab)!");
           const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
@@ -2477,6 +2643,7 @@
         } else {
           const postCheck = this._checkIfExamAlreadyCompleted();
           if (postCheck.isCompleted) {
+            this._markExamNeedsVerification(false);
             await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
             this.isRunning = false;
             return { isFinished: true, submitted: true, reason: postCheck.reason };
@@ -2485,7 +2652,6 @@
           if (recheckNav && recheckNav.questions && recheckNav.questions.length > 0) {
             const stillUnanswered = recheckNav.questions.filter((q) => q.isUnanswered || !q.isAnswered);
             if (stillUnanswered.length > 0) {
-              console.warn(`[Auto-Pilot] Belum menemukan tombol Next/Finish, tapi masih ada ${stillUnanswered.length} soal belum terjawab. Membuka Soal ${stillUnanswered[0].num}...`);
               if (stillUnanswered[0].btn) {
                 if (statusEl) statusEl.textContent = `Mengarahkan ke Soal ${stillUnanswered[0].num}...`;
                 await Humanizer.naturalClick(stillUnanswered[0].btn);
@@ -2493,13 +2659,13 @@
                 continue;
               }
             }
-            if (recheckNav.allAnswered) {
+            if (recheckNav.allAnswered && this._failedQuestionNums.size === 0) {
               if (statusEl) statusEl.textContent = "Semua soal terjawab. Menunggu tombol penyelesaian kuis...";
               const waitFinishStart = Date.now();
               let delayedFinishBtn = null;
               while (Date.now() - waitFinishStart < 2500 && !delayedFinishBtn) {
                 await Humanizer.delay(300);
-                delayedFinishBtn = DOM.findButtonByText(finishKeywords);
+                delayedFinishBtn = this._findQuizFinishButton(finishKeywords);
               }
               if (delayedFinishBtn) {
                 await Humanizer.naturalClick(delayedFinishBtn);
@@ -2516,16 +2682,14 @@
               }
             }
           }
-          if (statusEl) statusEl.textContent = "Semua nomor soal telah dikerjakan.";
-          Toast.success("Seluruh nomor soal telah berhasil dijawab!");
+          if (statusEl) statusEl.textContent = "Tombol selesai kuis belum ditemukan.";
           this.isRunning = false;
-          return { isFinished: true, submitted: false, reason: "Semua soal telah dikerjakan" };
+          return { isFinished: false, submitted: false, reason: "Tombol selesai belum tersedia pada halaman" };
         }
       }
       this.isRunning = false;
       return { isFinished: false, submitted: false, reason: "Loop mencapai batas maksimum atau dihentikan" };
     }
-    // ─── Auto-Pilot Kuis (Single-Tab Batch Runner) ────────────────────────────────
     async _checkAndInitAutoPilot() {
       const state = await AutoPilotState.get();
       if (!state || !state.active || !Array.isArray(state.queue)) {
@@ -2547,28 +2711,28 @@
       this.isPaused = Boolean(state.paused);
       if (state.model && VALID_MODEL_IDS.includes(state.model)) {
         this.activeModel = state.model;
-        await Storage.set({ gemini_model: state.model });
+        this.activeThinkingLevel = resolveThinkingLevelForModel(state.model, state.thinkingLevel || this.activeThinkingLevel);
+        await Storage.set({ gemini_model: state.model, gemini_thinking_level: this.activeThinkingLevel });
         const selectModel = this.shadow?.getElementById("quiz-select-model");
         if (selectModel && selectModel.value !== state.model) {
           selectModel.value = state.model;
         }
+        this._syncThinkingSelect(this.shadow?.getElementById("quiz-select-thinking"), state.model, this.activeThinkingLevel, false);
       }
       const currentItem = state.queue[state.currentIndex];
       if (!currentItem) return;
       if (currentItem.type === "KUESIONER" && currentItem.url) {
-        console.log("[Auto-Pilot Transition] Beralih dari ujian ke Kuesioner:", currentItem);
         window.location.replace(currentItem.url);
         return;
       }
       const urlMatch = window.location.pathname.match(/\/exam\/([^\/\?]+)/);
       const currentUrlExamId = urlMatch ? urlMatch[1] : null;
       if (currentUrlExamId && currentItem.id && currentUrlExamId !== currentItem.id) {
-        console.warn(`[Auto-Pilot Guard] URL exam ID (${currentUrlExamId}) tidak cocok dengan kuis saat ini (${currentItem.id}). Segera redirect ke kuis yang benar...`);
         window.location.replace(currentItem.url);
         return;
       }
-      console.log(`[Auto-Pilot] Memulai kuis ${state.currentIndex + 1}/${state.queue.length}:`, currentItem);
       const { statusEl, badgeEl, btnPause, progressBar } = this._injectAutoPilotHUD(state, currentItem);
+      await this._loadExamRecoveryState();
       if (this.isPaused) {
         statusEl.textContent = state.pauseReason ? `Terjeda: ${state.pauseReason}. Klik Lanjutkan untuk mencoba lagi.` : "Auto-Pilot dijeda. Klik Lanjutkan untuk mencoba lagi.";
         return;
@@ -2822,9 +2986,139 @@
         border: 1px solid rgba(245, 158, 11, 0.6);
         box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
       }
+      .hud-matrix-meta {
+        font-size: 10px;
+        color: #9ca3af;
+        display: flex;
+        justify-content: space-between;
+      }
+      .hud-matrix-summary.done {
+        color: #34d399;
+        font-weight: 700;
+      }
+      .hud-matrix-summary.pending {
+        color: #fbbf24;
+        font-weight: 700;
+      }
+      .hud-matrix-empty {
+        font-size: 10px;
+        color: #9ca3af;
+      }
+      .hud-card.theme-light {
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-brand {
+        color: #1e3a8a;
+      }
+      .hud-card.theme-light .hud-badge.running {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .hud-card.theme-light .hud-badge.paused {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fde68a;
+      }
+      .hud-card.theme-light .hud-title {
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-subtitle,
+      .hud-card.theme-light .hud-progress-info,
+      .hud-card.theme-light .hud-matrix-meta,
+      .hud-card.theme-light .hud-matrix-empty {
+        color: #475569;
+      }
+      .hud-card.theme-light .hud-tag.pre {
+        background: #eff6ff;
+        color: #1e3a8a;
+      }
+      .hud-card.theme-light .hud-tag.post {
+        background: #ecfdf5;
+        color: #047857;
+      }
+      .hud-card.theme-light .hud-tag.kues {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .hud-card.theme-light .hud-model-select {
+        background: #f8fafc;
+        color: #0f172a;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-model-select option {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-progress-bar-bg {
+        background: #e2e8f0;
+      }
+      .hud-card.theme-light .hud-progress-bar-fill {
+        background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+      }
+      .hud-card.theme-light .hud-status {
+        color: #1e293b;
+        background: #f8fafc;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-btn-pause {
+        background: #f1f5f9;
+        color: #1e293b;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-btn-pause:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-btn-verify {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #93c5fd;
+      }
+      .hud-card.theme-light .hud-btn-verify:hover {
+        background: #dbeafe;
+        color: #1e3a8a;
+      }
+      .hud-card.theme-light .hud-btn-cancel {
+        background: #fef2f2;
+        color: #b91c1c;
+        border-color: #fecaca;
+      }
+      .hud-card.theme-light .hud-btn-cancel:hover {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .hud-card.theme-light .hud-q-pill.answered {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .hud-card.theme-light .hud-q-pill.unanswered {
+        background: #f1f5f9;
+        color: #475569;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-q-pill.current {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #1e3a8a;
+        box-shadow: 0 0 0 1px rgba(30, 58, 138, 0.25);
+      }
+      .hud-card.theme-light .hud-matrix-summary.done {
+        color: #047857;
+      }
+      .hud-card.theme-light .hud-matrix-summary.pending {
+        color: #b45309;
+      }
+      .hud-card.theme-light ::-webkit-scrollbar-thumb {
+        background: rgba(30, 58, 138, 0.28);
+      }
     `;
       const hudCard = document.createElement("div");
-      hudCard.className = "hud-card";
+      hudCard.className = `hud-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
       const currentIdx = state.currentIndex;
       const totalCount = state.queue.length;
       const progressPercent = Math.round(currentIdx / totalCount * 100);
@@ -2869,12 +3163,12 @@
       </div>
 
       <div class="hud-matrix-wrap" style="display: flex; flex-direction: column; gap: 4px; margin-top: 2px;">
-        <div style="font-size: 10px; color: #888; display: flex; justify-content: space-between;">
+        <div class="hud-matrix-meta">
           <span>Status Kotak Soal:</span>
-          <span id="hud-matrix-summary">0/0 Hijau</span>
+          <span class="hud-matrix-summary pending" id="hud-matrix-summary">0/0 Hijau</span>
         </div>
         <div class="hud-nav-matrix" id="hud-nav-matrix" style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 55px; overflow-y: auto;">
-          <span style="font-size: 10px; color: #666;">Menunggu scan navigasi...</span>
+          <span class="hud-matrix-empty">Menunggu scan navigasi...</span>
         </div>
       </div>
 
@@ -2915,6 +3209,11 @@
           const resolved = resolveThinkingLevelForModel(activeM, hudThinkingSelect.value);
           this.activeThinkingLevel = resolved;
           await Storage.set({ gemini_thinking_level: resolved });
+          const curStore = await Storage.get("mentari_auto_pilot_state");
+          if (curStore?.mentari_auto_pilot_state) {
+            curStore.mentari_auto_pilot_state.thinkingLevel = resolved;
+            await Storage.set({ mentari_auto_pilot_state: curStore.mentari_auto_pilot_state });
+          }
           this._syncThinkingSelect(this.shadow?.getElementById("quiz-select-thinking"), activeM, resolved, false);
           Toast.info(`Thinking Level: ${THINKING_LEVEL_META[resolved]?.shortLabel || resolved}`);
         });
@@ -2931,6 +3230,7 @@
             const curStore = await Storage.get("mentari_auto_pilot_state");
             if (curStore?.mentari_auto_pilot_state) {
               curStore.mentari_auto_pilot_state.model = newModel;
+              curStore.mentari_auto_pilot_state.thinkingLevel = nextThinking;
               await Storage.set({ mentari_auto_pilot_state: curStore.mentari_auto_pilot_state });
             }
             const selectModel = this.shadow?.getElementById("quiz-select-model");
@@ -2944,19 +3244,21 @@
         });
       }
       const resumeExecution = async (verifyExisting = false) => {
+        const needsVerify = Boolean(verifyExisting || this._hasExamNeedsVerification());
+        this._verifyModeRequested = needsVerify;
         this.isPaused = false;
         badgeEl.className = "hud-badge running";
         badgeEl.textContent = "Berjalan";
         btnPause.textContent = "Jeda";
         if (btnVerify) btnVerify.style.display = "none";
-        statusEl.textContent = verifyExisting ? "Memeriksa jawaban terisi dari soal #1..." : "Melanjutkan pengerjaan kuis...";
+        statusEl.textContent = needsVerify ? "Memeriksa & mengoreksi jawaban dari soal #1..." : "Melanjutkan pengerjaan kuis...";
         await AutoPilotState.resume();
         if (!this.isRunning) {
           this.isRunning = true;
           this.isAutoPilot = true;
           const curStore = await AutoPilotState.get();
           const curItem = curStore?.queue?.[curStore?.currentIndex];
-          this._executeAutoPilotQuiz(curStore, curItem, statusEl, badgeEl, btnPause, progressBar, { verifyExisting });
+          this._executeAutoPilotQuiz(curStore, curItem, statusEl, badgeEl, btnPause, progressBar, { verifyExisting: needsVerify });
         }
       };
       btnVerify?.addEventListener("click", () => resumeExecution(true));
@@ -3658,11 +3960,7 @@ Jawaban:`;
       const answered = navStatus.answeredCount !== void 0 ? navStatus.answeredCount : navStatus.questions.filter((q) => q.isAnswered).length;
       if (summaryEl) {
         summaryEl.textContent = `${answered}/${total} Hijau`;
-        if (answered >= total && total > 0) {
-          summaryEl.style.color = "#34d399";
-        } else {
-          summaryEl.style.color = "#fbbf24";
-        }
+        summaryEl.className = answered >= total && total > 0 ? "hud-matrix-summary done" : "hud-matrix-summary pending";
       }
       matrixEl.innerHTML = navStatus.questions.map((q) => {
         let stateClass = "unanswered";

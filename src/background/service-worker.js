@@ -446,8 +446,9 @@ function buildGeneratePayload({ prompt, systemInstruction, modelId, thinkingLeve
   return payload;
 }
 
-async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, thinkingLevel = null, keyPool, primaryKey, timeoutMs = 18000 }) {
+async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, thinkingLevel = null, keyPool, primaryKey, timeoutMs = 20000 }) {
   let lastError = '';
+  let lastStatus = 0;
   let includeThinking = true;
 
   for (let i = 0; i < keyPool.length; i++) {
@@ -471,7 +472,6 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, think
         await recordModelSuccess(modelId, resJson.usageMetadata);
 
         if (currentKey !== primaryKey) {
-          console.log(`[Service Worker] Sukses menggunakan API Key cadangan ke-${i + 1}. Mengubah primary key.`);
           await chrome.storage.local.set({ geminiApiKey: currentKey });
         }
 
@@ -484,10 +484,10 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, think
 
       const errData = await response.json().catch(() => ({}));
       const errMsg = errData.error?.message || `Error HTTP ${response.status}`;
+      lastStatus = response.status;
 
-      // Auto-heal jika parameter thinkingConfig ditolak oleh varian model tertentu (HTTP 400)
+      // Retry once without thinkingConfig if a model rejects thinking fields.
       if (response.status === 400 && includeThinking && /thinking/i.test(errMsg)) {
-        console.warn(`[Service Worker] ${modelId} menolak thinkingConfig (${errMsg}). Mencoba ulang tanpa thinkingConfig...`);
         includeThinking = false;
         i--;
         continue;
@@ -497,8 +497,7 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, think
       lastError = errMsg;
 
       if (response.status === 404 || response.status === 400) {
-        console.warn(`[Service Worker] Model ${modelId} gagal (${response.status}: ${errMsg}). Lanjut ke model fallback.`);
-        break;
+        return { ok: false, lastError, httpStatus: response.status, canFallback: true };
       }
 
       const isQuotaOrLimit = response.status === 429 || response.status === 403 ||
@@ -506,37 +505,43 @@ async function invokeModelAcrossKeys({ modelId, prompt, systemInstruction, think
                             errMsg.toLowerCase().includes('rate limit') ||
                             errMsg.toLowerCase().includes('resource has been exhausted');
 
-      if (isQuotaOrLimit && i < keyPool.length - 1) {
-        console.warn(`[Service Worker] API Key ke-${i + 1} terkena limit (${errMsg}). Beralih otomatis ke API Key cadangan berikutnya...`);
-        lastError = `API Key #${i + 1} kena limit: ${errMsg}`;
+      if (i < keyPool.length - 1) {
+        lastError = isQuotaOrLimit ? `API Key #${i + 1} kena limit: ${errMsg}` : errMsg;
         continue;
       }
-      if (!isQuotaOrLimit) break;
+      return { ok: false, lastError, httpStatus: response.status, canFallback: isQuotaOrLimit || response.status >= 500 };
     } catch (netErr) {
       clearTimeout(timer);
       const isAbort = netErr.name === 'AbortError';
+      lastStatus = isAbort ? 408 : 0;
       lastError = isAbort
-        ? `Timeout ${Math.round(timeoutMs / 1000)}s: Model ${modelId} tidak merespon dalam ${Math.round(timeoutMs / 1000)} detik`
+        ? `Timeout ${Math.round(timeoutMs / 1000)}s: Model ${modelId} tidak merespon tepat waktu`
         : netErr.message;
-      await recordModelError(modelId, isAbort ? 408 : 0, { error: { message: lastError } });
-      console.warn(`[Service Worker] Percobaan ${modelId} (Key #${i + 1}) gagal: ${lastError}`);
-      if (!isAbort && i < keyPool.length - 1) continue;
-      if (isAbort) break;
+      await recordModelError(modelId, lastStatus, { error: { message: lastError } });
+      if (i < keyPool.length - 1) continue;
     }
   }
 
-  return { ok: false, lastError };
+  return { ok: false, lastError, httpStatus: lastStatus, canFallback: lastStatus === 408 || lastStatus === 0 || lastStatus >= 500 };
 }
 
 async function handleGenerateContent({ prompt, systemInstruction = '', model = null, thinkingLevel = null }) {
-  const store = await chrome.storage.local.get(['geminiApiKey', 'geminiApiKeys', 'gemini_model', 'gemini_thinking_level']);
+  const store = await chrome.storage.local.get([
+    'geminiApiKey',
+    'geminiApiKeys',
+    'gemini_model',
+    'gemini_thinking_level',
+    'gemini_auto_fallback'
+  ]);
   const activeModel = model || store.gemini_model || DEFAULT_FREE_MODEL;
   const targetEngineModel = resolveUpstreamModel(activeModel);
   const resolvedThinkingLevel = resolveThinkingLevelForModel(
     targetEngineModel,
     thinkingLevel || store.gemini_thinking_level
   );
-  const primaryTimeoutMs = THINKING_LEVEL_META[resolvedThinkingLevel]?.timeoutMs || 18000;
+  // Enforce a 20s floor so free-tier Flash-Lite endpoints do not falsely abort on minor latency spikes.
+  const primaryTimeoutMs = Math.max(THINKING_LEVEL_META[resolvedThinkingLevel]?.timeoutMs || 20000, 20000);
+  const allowCrossModelFallback = store.gemini_auto_fallback === true;
 
   let keyPool = Array.isArray(store.geminiApiKeys) ? [...store.geminiApiKeys] : [];
   if (store.geminiApiKey && !keyPool.includes(store.geminiApiKey)) {
@@ -553,8 +558,7 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
     };
   }
 
-  // 1. Jalankan pada model utama pilihan user (timeout menyesuaikan thinkingLevel)
-  const primaryAttempt = await invokeModelAcrossKeys({
+  let primaryAttempt = await invokeModelAcrossKeys({
     modelId: targetEngineModel,
     prompt,
     systemInstruction,
@@ -576,36 +580,64 @@ async function handleGenerateContent({ prompt, systemInstruction = '', model = n
     };
   }
 
-  // 2. Fallback berantai otomatis ke model Free Tier sehat lain memakai level tercepat masing-masing
-  const fallbackCandidates = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-3.6-flash']
-    .filter(m => m !== targetEngineModel)
-    .slice(0, 2);
-
-  let fallbackLastError = '';
-  for (const fbEngine of fallbackCandidates) {
-    console.log(`[Service Worker] Mengaktifkan fallback ke ${fbEngine} setelah ${targetEngineModel} gagal (${primaryAttempt.lastError})...`);
-    const fbAttempt = await invokeModelAcrossKeys({
-      modelId: fbEngine,
+  // Retry once on the exact user-selected model for transient timeouts/5xx before giving up or consuming backup quota.
+  const isTransientFailure = primaryAttempt.httpStatus === 408 || primaryAttempt.httpStatus === 0 || primaryAttempt.httpStatus >= 500;
+  if (isTransientFailure) {
+    await new Promise(r => setTimeout(r, 700));
+    primaryAttempt = await invokeModelAcrossKeys({
+      modelId: targetEngineModel,
       prompt,
       systemInstruction,
-      thinkingLevel: null,
+      thinkingLevel: resolvedThinkingLevel,
       keyPool,
       primaryKey: store.geminiApiKey,
-      timeoutMs: 14000
+      timeoutMs: primaryTimeoutMs + 6000
     });
 
-    if (fbAttempt.ok) {
+    if (primaryAttempt.ok) {
       return {
         success: true,
-        text: fbAttempt.text,
-        model: `${activeModel} -> ${fbEngine} (Fallback)`,
-        engine: fbEngine,
-        thinkingLevel: resolveThinkingLevelForModel(fbEngine, null),
-        keyIndex: fbAttempt.keyIndex,
+        text: primaryAttempt.text,
+        model: activeModel,
+        engine: targetEngineModel,
+        thinkingLevel: resolvedThinkingLevel,
+        keyIndex: primaryAttempt.keyIndex,
         totalKeys: keyPool.length
       };
     }
-    fallbackLastError = `${fbEngine}: ${fbAttempt.lastError}`;
+  }
+
+  let fallbackLastError = '';
+  if (allowCrossModelFallback && primaryAttempt.canFallback) {
+    // Prefer higher-RPD siblings first and exclude low-RPD gemini-3.8-flash unless explicitly opted in.
+    const fallbackCandidates = ['gemini-4-hydrogen', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.6-flash']
+      .filter(m => m !== targetEngineModel)
+      .slice(0, 2);
+
+    for (const fbEngine of fallbackCandidates) {
+      const fbAttempt = await invokeModelAcrossKeys({
+        modelId: fbEngine,
+        prompt,
+        systemInstruction,
+        thinkingLevel: null,
+        keyPool,
+        primaryKey: store.geminiApiKey,
+        timeoutMs: 18000
+      });
+
+      if (fbAttempt.ok) {
+        return {
+          success: true,
+          text: fbAttempt.text,
+          model: `${activeModel} -> ${fbEngine} (Fallback)`,
+          engine: fbEngine,
+          thinkingLevel: resolveThinkingLevelForModel(fbEngine, null),
+          keyIndex: fbAttempt.keyIndex,
+          totalKeys: keyPool.length
+        };
+      }
+      fallbackLastError = `${fbEngine}: ${fbAttempt.lastError}`;
+    }
   }
 
   const combinedErr = fallbackLastError

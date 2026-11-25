@@ -1646,6 +1646,14 @@ class MentariDashboard {
               </div>
               <input type="checkbox" id="toggle-auto-finish" style="cursor:pointer; width:18px; height:18px;">
             </div>
+
+            <div class="settings-item">
+              <div class="settings-info">
+                <h4>Fallback Otomatis Model Cadangan</h4>
+                <p>Matikan agar kuota model lain tidak ikut terpakai saat model pilihan sibuk atau timeout.</p>
+              </div>
+              <input type="checkbox" id="toggle-auto-fallback" style="cursor:pointer; width:18px; height:18px;">
+            </div>
           </div>
         </div>
       </div>
@@ -1818,7 +1826,6 @@ class MentariDashboard {
       }
     });
 
-    // Auto finish toggle
     const toggleAutoFinish = this.shadow.getElementById('toggle-auto-finish');
     Storage.get('mentari_auto_finish_quiz').then(({ mentari_auto_finish_quiz }) => {
       toggleAutoFinish.checked = !!mentari_auto_finish_quiz;
@@ -1827,6 +1834,17 @@ class MentariDashboard {
       Storage.set({ mentari_auto_finish_quiz: toggleAutoFinish.checked });
       Toast.info(`Auto finish kuis: ${toggleAutoFinish.checked ? 'Aktif' : 'Nonaktif'}`);
     });
+
+    const toggleAutoFallback = this.shadow.getElementById('toggle-auto-fallback');
+    if (toggleAutoFallback) {
+      Storage.get('gemini_auto_fallback').then(({ gemini_auto_fallback }) => {
+        toggleAutoFallback.checked = gemini_auto_fallback === true;
+      });
+      toggleAutoFallback.addEventListener('change', () => {
+        Storage.set({ gemini_auto_fallback: toggleAutoFallback.checked });
+        Toast.info(`Fallback model cadangan: ${toggleAutoFallback.checked ? 'Aktif' : 'Nonaktif (Ketat sesuai model pilihan)'}`);
+      });
+    }
 
     // Theme Switcher Triggers
     const btnThemeToggle = this.shadow.getElementById('btn-theme-toggle');
@@ -4875,10 +4893,13 @@ class MentariDashboard {
       return;
     }
 
-    // Ambil preferensi model Gemini aktif dari storage
     const validModelIds = ALL_MODELS.map(m => m.id);
-    const { gemini_model } = await Storage.get('gemini_model', { gemini_model: DEFAULT_FREE_MODEL });
+    const { gemini_model, gemini_thinking_level } = await Storage.get({
+      gemini_model: DEFAULT_FREE_MODEL,
+      gemini_thinking_level: null
+    });
     const currentModel = (gemini_model && validModelIds.includes(gemini_model)) ? gemini_model : DEFAULT_FREE_MODEL;
+    const currentThinking = resolveThinkingLevelForModel(currentModel, gemini_thinking_level);
     const storeKues = await Storage.get('mentari_kuesioner_preference');
     let selectedKuesPref = (storeKues?.mentari_kuesioner_preference === 'tidak') ? 'tidak' : 'iya';
 
@@ -5150,6 +5171,71 @@ class MentariDashboard {
           display: flex;
           align-items: center;
           justify-content: space-between;
+        }
+        .ap-label-hint {
+          color: #fbbf24;
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .ap-label-hint.success {
+          color: #34d399;
+        }
+        .ap-queue-header .ap-label {
+          color: #e2e8f0;
+          margin: 0;
+        }
+        .ap-model-grid {
+          display: grid;
+          grid-template-columns: 1.35fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 560px) {
+          .ap-model-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .ap-modal.theme-light .ap-label-hint {
+          color: #b45309;
+        }
+        .ap-modal.theme-light .ap-label-hint.success {
+          color: #047857;
+        }
+        .ap-modal.theme-light .ap-queue-header .ap-label {
+          color: #1e293b;
+        }
+        .ap-modal.theme-light .ap-queue-count-badge {
+          color: #1e3a8a;
+          background: #eff6ff;
+          border-color: #bfdbfe;
+        }
+        .ap-modal.theme-light .ap-row-num {
+          color: #475569;
+        }
+        .ap-modal.theme-light .ap-row-status {
+          color: #047857;
+          background: #ecfdf5;
+        }
+        .ap-modal.theme-light .ap-type-tag.pre {
+          background: #eff6ff;
+          color: #1e3a8a;
+          border-color: #bfdbfe;
+        }
+        .ap-modal.theme-light .ap-type-tag.post {
+          background: #ecfdf5;
+          color: #047857;
+          border-color: #a7f3d0;
+        }
+        .ap-modal.theme-light .ap-type-tag.kues {
+          background: #fef3c7;
+          color: #92400e;
+          border-color: #fde68a;
+        }
+        .ap-modal.theme-light .ap-skipped-box {
+          background: #fef2f2;
+          border-color: #fecaca;
+          color: #b91c1c;
         }
         .ap-select {
           width: 100%;
@@ -5658,7 +5744,7 @@ class MentariDashboard {
         }
       </style>
 
-      <div class="ap-modal">
+      <div class="ap-modal ${this.currentTheme === 'light' ? 'theme-light' : ''}">
         <div class="ap-header">
           <div class="ap-header-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -5753,20 +5839,29 @@ class MentariDashboard {
             </div>
           </div>
 
-          <div class="ap-field-group">
-            <div class="ap-label">
-              <span>Model AI Gemini</span>
-              <span style="color:#d4af37; font-size:10px; font-weight:600; text-transform:none;">Otak Penjawab Kuis</span>
+          <div class="ap-model-grid">
+            <div class="ap-field-group">
+              <div class="ap-label">
+                <span>Model AI Gemini</span>
+                <span class="ap-label-hint">Otak Penjawab Kuis</span>
+              </div>
+              <select id="ap-model-select" class="ap-select">
+                ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === currentModel ? 'selected' : ''}>${m.name}</option>`).join('')}
+              </select>
             </div>
-            <select id="ap-model-select" class="ap-select">
-              ${ALL_MODELS.map(m => `<option value="${m.id}" ${m.id === currentModel ? 'selected' : ''}>${m.name}</option>`).join('')}
-            </select>
+            <div class="ap-field-group">
+              <div class="ap-label">
+                <span>Thinking Level</span>
+                <span class="ap-label-hint">Kecepatan vs Akurasi</span>
+              </div>
+              <select id="ap-thinking-select" class="ap-select"></select>
+            </div>
           </div>
 
           <div class="ap-field-group" id="ap-kuesioner-pref-group" style="${(selectedMode === 'all' || selectedMode === 'kuesioner') ? '' : 'display:none;'}">
             <div class="ap-label">
               <span>Preferensi Kuesioner Dosen</span>
-              <span style="color:#10b981; font-size:10px; font-weight:600; text-transform:none;">Evaluasi Pembelajaran</span>
+              <span class="ap-label-hint success">Evaluasi Pembelajaran</span>
             </div>
             <div class="ap-mode-grid" id="ap-kues-pref-container" style="grid-template-columns: repeat(2, 1fr);">
               <div class="ap-pref-card ${selectedKuesPref === 'iya' ? 'active' : ''}" data-kues-pref="iya">
@@ -5789,7 +5884,7 @@ class MentariDashboard {
           <div class="ap-field-group">
             <div class="ap-queue-card">
               <div class="ap-queue-header">
-                <span class="ap-label" style="color:#ddd; margin:0;">Pratinjau Antrean Eksekusi</span>
+                <span class="ap-label">Pratinjau Antrean Eksekusi</span>
                 <span id="ap-queue-count" class="ap-queue-count-badge">0 Kuis Terjadwal</span>
               </div>
               <div id="ap-queue-preview-list" class="ap-queue-list">
@@ -6148,16 +6243,41 @@ class MentariDashboard {
     });
 
     const modelSelect = overlay.querySelector('#ap-model-select');
+    const thinkingSelect = overlay.querySelector('#ap-thinking-select');
+
+    const syncApThinkingSelect = (modelId, preferredLevel = null) => {
+      const resolved = resolveThinkingLevelForModel(modelId, preferredLevel);
+      if (!thinkingSelect) return resolved;
+      const supported = getSupportedThinkingLevels(modelId);
+      thinkingSelect.innerHTML = supported
+        .map(lvl => `<option value="${lvl}">${THINKING_LEVEL_META[lvl]?.label || lvl}</option>`)
+        .join('');
+      thinkingSelect.value = resolved;
+      return resolved;
+    };
+
+    let selectedThinking = syncApThinkingSelect(currentModel, currentThinking);
+
     if (modelSelect) {
       modelSelect.addEventListener('change', () => {
         const chosen = modelSelect.value;
         if (chosen && validModelIds.includes(chosen)) {
-          Storage.set({ gemini_model: chosen });
+          selectedThinking = syncApThinkingSelect(chosen, selectedThinking);
+          Storage.set({ gemini_model: chosen, gemini_thinking_level: selectedThinking });
         }
       });
     }
 
-    // Start Auto-Pilot Button
+    if (thinkingSelect) {
+      thinkingSelect.addEventListener('change', () => {
+        const activeM = (modelSelect && modelSelect.value && validModelIds.includes(modelSelect.value))
+          ? modelSelect.value
+          : currentModel;
+        selectedThinking = resolveThinkingLevelForModel(activeM, thinkingSelect.value);
+        Storage.set({ gemini_thinking_level: selectedThinking });
+      });
+    }
+
     btnStart.addEventListener('click', async () => {
       if (!activeValidQueue || activeValidQueue.length === 0) {
         Toast.warning('Tidak ada antrean kuis yang valid.');
@@ -6167,13 +6287,17 @@ class MentariDashboard {
       const chosenModel = (modelSelect && modelSelect.value && validModelIds.includes(modelSelect.value))
         ? modelSelect.value
         : currentModel;
+      const chosenThinking = resolveThinkingLevelForModel(
+        chosenModel,
+        thinkingSelect?.value || selectedThinking
+      );
 
       await Storage.set({
         gemini_model: chosenModel,
+        gemini_thinking_level: chosenThinking,
         mentari_kuesioner_preference: selectedKuesPref
       });
 
-      // Simpan state Auto-Pilot ke storage via AutoPilotState manager
       await AutoPilotState.set({
         active: true,
         currentIndex: 0,
@@ -6183,6 +6307,7 @@ class MentariDashboard {
         paused: false,
         total: activeValidQueue.length,
         model: chosenModel,
+        thinkingLevel: chosenThinking,
         kuesionerPreference: selectedKuesPref,
         mode: selectedMode,
         courseScope: courseSelect?.value || 'all',
