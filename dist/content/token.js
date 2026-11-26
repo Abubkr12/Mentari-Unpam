@@ -5232,6 +5232,16 @@ ${items}
         background: rgba(255, 255, 255, 0.12);
         color: #fff;
       }
+      .eval-autopilot-btn {
+        background: rgba(212, 175, 55, 0.18);
+        border-color: rgba(212, 175, 55, 0.45);
+        color: #fbbf24;
+        font-weight: 700;
+      }
+      .eval-autopilot-btn:hover {
+        background: rgba(212, 175, 55, 0.28);
+        color: #fde68a;
+      }
       @keyframes mentari-spin {
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
@@ -5598,6 +5608,17 @@ ${items}
       .modal.theme-light .btn-config:hover {
         background: #e2e8f0;
         color: #0f172a;
+      }
+      .modal.theme-light .eval-autopilot-btn {
+        background: #eff6ff;
+        border-color: #93c5fd;
+        color: #1e3a8a;
+        font-weight: 700;
+      }
+      .modal.theme-light .eval-autopilot-btn:hover {
+        background: #dbeafe;
+        border-color: #1e3a8a;
+        color: #1e3a8a;
       }
 
       .modal.theme-light .forum-sync-time {
@@ -8881,7 +8902,7 @@ ${rawText}`;
               </svg>
               <span id="eval-refresh-status-text">Periksa Status</span>
             </button>
-            <button class="eval-toggle-all-btn" id="eval-autopilot-btn" title="Auto-Pilot Kuis Batch (1 Tab Murni)" style="background:rgba(212,175,55,0.18); border-color:rgba(212,175,55,0.45); color:#fbbf24; font-weight:700;">
+            <button class="eval-toggle-all-btn eval-autopilot-btn" id="eval-autopilot-btn" title="Auto-Pilot Kuis Batch (1 Tab Murni)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
               </svg>

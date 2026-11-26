@@ -1320,22 +1320,35 @@
     constructor() {
       this.isProcessing = false;
       this.isPaused = false;
+      this.isAutoPilot = false;
       this.hudHost = null;
       this.hudShadow = null;
       this.shadow = null;
+      this.currentTheme = ThemeHelper.detectSystemTheme();
       this._init();
     }
-    _init() {
+    async _init() {
       console.log("[Mentari Mod] Kuisioner Assistant siap.");
+      this.currentTheme = await ThemeHelper.getEffectiveTheme();
+      ThemeHelper.watchTheme((t) => {
+        this.currentTheme = t;
+        this._applyTheme(t);
+      });
       this._injectFloatingCard();
-      this._checkAndInitAutoPilot();
+      this._applyTheme(this.currentTheme);
+      await this._checkAndInitAutoPilot();
+    }
+    _applyTheme(theme = this.currentTheme) {
+      const isLight = theme === "light";
+      this.shadow?.querySelector(".kues-card")?.classList.toggle("theme-light", isLight);
+      this.hudShadow?.querySelector(".hud-card")?.classList.toggle("theme-light", isLight);
     }
     _injectFloatingCard() {
       if (document.getElementById("mentari-kuisioner-card-host")) return;
       const host = document.createElement("div");
       host.id = "mentari-kuisioner-card-host";
       host.style.position = "fixed";
-      host.style.bottom = "24px";
+      host.style.bottom = "72px";
       host.style.right = "24px";
       host.style.zIndex = "2147483640";
       this.shadow = host.attachShadow({ mode: "closed" });
@@ -1343,7 +1356,6 @@
       style.textContent = `
       * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 
-      /* Custom Modern Scrollbars */
       ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -1385,6 +1397,9 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 8px;
+        cursor: grab;
+        user-select: none;
       }
       .kues-title {
         font-size: 13px;
@@ -1393,6 +1408,34 @@
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+      .kues-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .kues-icon-btn {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .kues-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+      }
+      .kues-icon-btn.close:hover {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.45);
+        color: #fca5a5;
       }
       .status-text {
         font-size: 11px;
@@ -1441,9 +1484,68 @@
         background: rgba(239, 68, 68, 0.35);
         transform: translateY(-1px);
       }
+      .kues-card.theme-light {
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .kues-card.theme-light .kues-title {
+        color: #1e3a8a;
+      }
+      .kues-card.theme-light .status-text {
+        color: #475569;
+      }
+      .kues-card.theme-light .btn-iya {
+        background: #047857;
+        color: #ffffff;
+      }
+      .kues-card.theme-light .btn-iya:hover:not(:disabled) {
+        background: #065f46;
+        box-shadow: 0 4px 12px rgba(4, 120, 87, 0.28);
+      }
+      .kues-card.theme-light .btn-tidak {
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+      }
+      .kues-card.theme-light .btn-tidak:hover:not(:disabled) {
+        background: #fee2e2;
+      }
+      .kues-card.theme-light .kues-icon-btn {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #475569;
+      }
+      .kues-card.theme-light .kues-icon-btn:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .kues-card.theme-light .kues-icon-btn.close:hover {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+      .kues-card.theme-light ::-webkit-scrollbar-thumb {
+        background: rgba(30, 58, 138, 0.28);
+      }
+      .kues-card.minimized {
+        min-width: 215px;
+        padding: 10px 14px;
+        gap: 6px;
+      }
+      .kues-card.minimized .actions-grid {
+        display: none !important;
+      }
+      .kues-card.minimized .status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+      }
     `;
       const card = document.createElement("div");
-      card.className = "kues-card";
+      card.className = `kues-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
       card.innerHTML = `
       <div class="kues-header">
         <div class="kues-title">
@@ -1451,6 +1553,14 @@
             <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
           </svg>
           Mentari Kuisioner
+        </div>
+        <div class="kues-header-actions">
+          <button class="kues-icon-btn" id="kues-btn-minimize" type="button" title="Perkecil panel" aria-label="Perkecil panel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="kues-icon-btn close" id="kues-btn-close" type="button" title="Tutup panel" aria-label="Tutup panel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
       </div>
       <div class="status-text" id="kues-status">Pilih preferensi pengisian:</div>
@@ -1468,6 +1578,19 @@
       this.shadow.appendChild(style);
       this.shadow.appendChild(card);
       document.body.appendChild(host);
+      this._makeElementDraggable(host, card.querySelector(".kues-header"));
+      const btnMin = this.shadow.getElementById("kues-btn-minimize");
+      const btnClose = this.shadow.getElementById("kues-btn-close");
+      btnMin?.addEventListener("click", () => {
+        const minimized = card.classList.toggle("minimized");
+        btnMin.title = minimized ? "Perbesar panel" : "Perkecil panel";
+        btnMin.setAttribute("aria-label", btnMin.title);
+        btnMin.innerHTML = minimized ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+      });
+      btnClose?.addEventListener("click", () => {
+        this.isProcessing = false;
+        host.style.display = "none";
+      });
       const btnIya = this.shadow.getElementById("btn-auto-iya");
       const btnTidak = this.shadow.getElementById("btn-auto-tidak");
       const statusText = this.shadow.getElementById("kues-status");
@@ -2044,7 +2167,6 @@
       }
       return { success: false, reason: "Batas waktu verifikasi habis tanpa konfirmasi berhasil dari LMS." };
     }
-    // ─── Auto-Pilot Kuesioner Adaptive HUD & Runner ─────────────────────────────
     _injectAutoPilotHUD(state, currentItem) {
       if (document.getElementById("mentari-autopilot-hud-host")) {
         document.getElementById("mentari-autopilot-hud-host").remove();
@@ -2052,7 +2174,7 @@
       this.hudHost = document.createElement("div");
       this.hudHost.id = "mentari-autopilot-hud-host";
       this.hudHost.style.position = "fixed";
-      this.hudHost.style.top = "20px";
+      this.hudHost.style.bottom = "72px";
       this.hudHost.style.right = "24px";
       this.hudHost.style.zIndex = "2147483646";
       this.hudShadow = this.hudHost.attachShadow({ mode: "closed" });
@@ -2077,6 +2199,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 8px;
         cursor: grab;
         user-select: none;
       }
@@ -2089,6 +2212,11 @@
         letter-spacing: 0.5px;
         text-transform: uppercase;
         color: #fbbf24;
+      }
+      .hud-header-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
       .hud-badge {
         font-size: 10px;
@@ -2109,6 +2237,29 @@
         background: rgba(245, 158, 11, 0.15);
         color: #fbbf24;
         border: 1px solid rgba(245, 158, 11, 0.3);
+      }
+      .hud-icon-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+      }
+      .hud-icon-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+      }
+      .hud-icon-btn.close:hover {
+        background: rgba(239, 68, 68, 0.2);
+        border-color: rgba(239, 68, 68, 0.45);
+        color: #fca5a5;
       }
       .hud-body {
         display: flex;
@@ -2138,9 +2289,9 @@
         font-weight: 600;
       }
       .hud-tag.kues {
-        background: rgba(168, 85, 247, 0.2);
-        color: #c084fc;
-        border: 1px solid rgba(168, 85, 247, 0.35);
+        background: rgba(245, 158, 11, 0.18);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.35);
       }
       .hud-pref-pill {
         font-size: 10px;
@@ -2227,9 +2378,103 @@
         background: rgba(239, 68, 68, 0.25);
         color: #ef4444;
       }
+      .hud-card.theme-light {
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-brand {
+        color: #1e3a8a;
+      }
+      .hud-card.theme-light .hud-badge.running {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .hud-card.theme-light .hud-badge.paused {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fde68a;
+      }
+      .hud-card.theme-light .hud-title {
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-subtitle,
+      .hud-card.theme-light .hud-progress-info {
+        color: #475569;
+      }
+      .hud-card.theme-light .hud-tag.kues {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fde68a;
+      }
+      .hud-card.theme-light .hud-pref-pill {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .hud-card.theme-light .hud-pref-pill.tidak {
+        background: #fef2f2;
+        color: #b91c1c;
+        border-color: #fecaca;
+      }
+      .hud-card.theme-light .hud-progress-bar-bg {
+        background: #e2e8f0;
+      }
+      .hud-card.theme-light .hud-progress-bar-fill {
+        background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+      }
+      .hud-card.theme-light .hud-status {
+        color: #1e293b;
+        background: #f8fafc;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-btn-pause {
+        background: #f1f5f9;
+        color: #1e293b;
+        border-color: #cbd5e1;
+      }
+      .hud-card.theme-light .hud-btn-pause:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-btn-cancel {
+        background: #fef2f2;
+        color: #b91c1c;
+        border-color: #fecaca;
+      }
+      .hud-card.theme-light .hud-btn-cancel:hover {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .hud-card.theme-light .hud-icon-btn {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #475569;
+      }
+      .hud-card.theme-light .hud-icon-btn:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+      .hud-card.theme-light .hud-icon-btn.close:hover {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+      }
+      .hud-card.minimized {
+        width: 270px;
+        padding: 10px 14px;
+        gap: 8px;
+      }
+      .hud-card.minimized .hud-body,
+      .hud-card.minimized .hud-status,
+      .hud-card.minimized .hud-actions {
+        display: none !important;
+      }
     `;
       const hudCard = document.createElement("div");
-      hudCard.className = "hud-card";
+      hudCard.className = `hud-card ${this.currentTheme === "light" ? "theme-light" : ""}`;
       const currentIdx = state.currentIndex || 0;
       const totalCount = state.queue?.length || 1;
       const progressPercent = Math.round(currentIdx / totalCount * 100);
@@ -2244,8 +2489,16 @@
           </svg>
           Auto-Pilot Kuis & Evaluasi
         </div>
-        <div class="hud-badge ${this.isPaused ? "paused" : "running"}" id="hud-badge">
-          ${this.isPaused ? "Dijeda" : "Berjalan"}
+        <div class="hud-header-right">
+          <div class="hud-badge ${this.isPaused ? "paused" : "running"}" id="hud-badge">
+            ${this.isPaused ? "Dijeda" : "Berjalan"}
+          </div>
+          <button class="hud-icon-btn" id="hud-btn-minimize" type="button" title="Perkecil ke bar progres" aria-label="Perkecil ke bar progres">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="hud-icon-btn close" id="hud-btn-close" type="button" title="Sembunyikan HUD" aria-label="Sembunyikan HUD">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
       </div>
 
@@ -2260,8 +2513,8 @@
 
       <div class="hud-progress-wrap">
         <div class="hud-progress-info">
-          <span>Item ${currentIdx + 1} dari ${totalCount}</span>
-          <span>${progressPercent}%</span>
+          <span id="hud-progress-label">Item ${currentIdx + 1} dari ${totalCount}</span>
+          <span id="hud-progress-pct">${progressPercent}%</span>
         </div>
         <div class="hud-progress-bar-bg">
           <div class="hud-progress-bar-fill" id="hud-progress-fill" style="width: ${progressPercent}%;"></div>
@@ -2285,6 +2538,22 @@
       this.hudShadow.appendChild(hudCard);
       document.body.appendChild(this.hudHost);
       this._makeElementDraggable(this.hudHost, hudCard.querySelector(".hud-header"));
+      const btnHudMin = this.hudShadow.getElementById("hud-btn-minimize");
+      const btnHudClose = this.hudShadow.getElementById("hud-btn-close");
+      btnHudMin?.addEventListener("click", () => {
+        const minimized = hudCard.classList.toggle("minimized");
+        btnHudMin.title = minimized ? "Perbesar HUD" : "Perkecil ke bar progres";
+        btnHudMin.setAttribute("aria-label", btnHudMin.title);
+        btnHudMin.innerHTML = minimized ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+      });
+      btnHudClose?.addEventListener("click", () => {
+        if (!this.isAutoPilot && !this.isProcessing) {
+          this.hudHost?.remove();
+        } else if (this.hudHost) {
+          this.hudHost.style.display = "none";
+          Toast.info("HUD Kuesioner disembunyikan. Otomatisasi tetap berjalan.");
+        }
+      });
       const statusEl = this.hudShadow.getElementById("hud-status-text");
       const badgeEl = this.hudShadow.getElementById("hud-badge");
       const btnPause = this.hudShadow.getElementById("hud-btn-pause");
@@ -2312,6 +2581,7 @@
         }
       });
       btnCancel.addEventListener("click", async () => {
+        this.isAutoPilot = false;
         this.isProcessing = false;
         this.isPaused = false;
         await AutoPilotState.reset();
@@ -2382,13 +2652,16 @@
       try {
         const state = await AutoPilotState.get();
         if (!state || !state.active || !Array.isArray(state.queue)) {
+          this.isAutoPilot = false;
           const manualCard2 = document.getElementById("mentari-kuisioner-card-host");
           if (manualCard2) manualCard2.style.display = "block";
           return;
         }
+        this.isAutoPilot = true;
         const manualCard = document.getElementById("mentari-kuisioner-card-host");
         if (manualCard) manualCard.style.display = "none";
         if (state.currentIndex >= state.queue.length) {
+          this.isAutoPilot = false;
           await Storage.set({
             mentari_auto_pilot_state: { ...state, active: false, finished: true }
           });
@@ -2494,6 +2767,7 @@
           badgeEl.textContent = "Dijeda";
         }
         if (btnPause) {
+          btnPause.style.display = "";
           btnPause.textContent = "Coba Lagi";
         }
         Toast.error(`Kuesioner error: ${err.message}`);
@@ -2522,13 +2796,29 @@
         }, 500);
       } else {
         await AutoPilotState.reset();
+        this.isAutoPilot = false;
+        this.isProcessing = false;
+        const totalDone = state.queue?.length || 1;
+        const fillEl = this.hudShadow?.getElementById("hud-progress-fill");
+        const labelEl = this.hudShadow?.getElementById("hud-progress-label");
+        const pctEl = this.hudShadow?.getElementById("hud-progress-pct");
+        const badgeEl = this.hudShadow?.getElementById("hud-badge");
+        const actionsEl = this.hudShadow?.querySelector(".hud-actions");
+        if (fillEl) fillEl.style.width = "100%";
+        if (labelEl) labelEl.textContent = `Item ${totalDone} dari ${totalDone}`;
+        if (pctEl) pctEl.textContent = "100%";
+        if (badgeEl) {
+          badgeEl.className = "hud-badge running";
+          badgeEl.textContent = "Selesai";
+        }
+        if (actionsEl) actionsEl.style.display = "none";
         if (statusEl) statusEl.textContent = "Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!";
         Toast.success("Seluruh antrean Auto-Pilot kuis & evaluasi telah selesai 100%!");
         setTimeout(() => {
           if (this.hudHost) this.hudHost.remove();
           const manualCard = document.getElementById("mentari-kuisioner-card-host");
           if (manualCard) manualCard.style.display = "block";
-        }, 7e3);
+        }, 4e3);
       }
     }
   };

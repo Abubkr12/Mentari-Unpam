@@ -6,14 +6,22 @@
 
 import { Humanizer } from '../utils/humanizer.js';
 import { Toast } from '../utils/toast.js';
+import { ThemeHelper } from '../utils/theme.js';
 
 class QuickSurveyAssistant {
   constructor() {
+    this.currentTheme = ThemeHelper.detectSystemTheme();
+    this.shadow = null;
     this._init();
   }
 
-  _init() {
+  async _init() {
     console.log('[Mentari Mod] MyUnpam Quick Survey Assistant aktif.');
+    this.currentTheme = await ThemeHelper.getEffectiveTheme();
+    ThemeHelper.watchTheme((t) => {
+      this.currentTheme = t;
+      this._applyTheme(t);
+    });
 
     // Dengarkan event trigger dari Unified Floating Dock di presensi.js
     window.addEventListener('mentari-survey-trigger', async () => {
@@ -26,6 +34,11 @@ class QuickSurveyAssistant {
 
     // Injeksi fallback standalone button hanya jika dock terpadu belum ada
     this._injectFloatingButtonIfNeeded();
+  }
+
+  _applyTheme(theme = this.currentTheme) {
+    const isLight = theme === 'light';
+    this.shadow?.querySelector('.btn-survey-fill')?.classList.toggle('theme-light', isLight);
   }
 
   _injectFloatingButtonIfNeeded() {
@@ -44,6 +57,7 @@ class QuickSurveyAssistant {
       host.style.zIndex = '2147483640';
 
       const shadow = host.attachShadow({ mode: 'closed' });
+      this.shadow = shadow;
 
       const style = document.createElement('style');
       style.textContent = `
@@ -72,6 +86,18 @@ class QuickSurveyAssistant {
           transform: translateY(-2px);
           box-shadow: 0 14px 35px rgba(16, 185, 129, 0.4);
         }
+        .btn-survey-fill.theme-light {
+          background: rgba(255, 255, 255, 0.96);
+          color: #1e3a8a;
+          border-color: #cbd5e1;
+          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+        }
+        .btn-survey-fill.theme-light:hover {
+          background: #1e3a8a;
+          color: #ffffff;
+          border-color: #1e3a8a;
+          box-shadow: 0 14px 32px rgba(30, 58, 138, 0.25);
+        }
         .btn-survey-fill:disabled {
           opacity: 0.6;
           cursor: not-allowed;
@@ -80,7 +106,7 @@ class QuickSurveyAssistant {
       `;
 
       const btn = document.createElement('button');
-      btn.className = 'btn-survey-fill';
+      btn.className = `btn-survey-fill ${this.currentTheme === 'light' ? 'theme-light' : ''}`;
       btn.innerHTML = `
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -112,11 +138,12 @@ class QuickSurveyAssistant {
       shadow.appendChild(style);
       shadow.appendChild(btn);
       document.body.appendChild(host);
+      this._applyTheme(this.currentTheme);
     }, 400);
   }
 
   async fillSurvey() {
-    // 1. Temukan rating buttons atau radio inputs pada portal MyUnpam
+    // Temukan rating buttons atau radio inputs pada portal MyUnpam
     const radioGroups = {};
     const radios = document.querySelectorAll('input[type="radio"]');
 
@@ -163,7 +190,7 @@ class QuickSurveyAssistant {
       }
     }
 
-    // 2. Rating buttons / custom score pills
+    // Rating buttons / custom score pills
     const customRatingBtns = document.querySelectorAll('.rating-btn, button[data-score], .btn-score');
     for (const el of customRatingBtns) {
       const score = el.getAttribute('data-score') || el.textContent.trim();
@@ -174,7 +201,7 @@ class QuickSurveyAssistant {
       }
     }
 
-    // 3. Tangani masukan kritik/saran pada textarea
+    // Tangani masukan kritik/saran pada textarea
     const textareas = document.querySelectorAll('textarea');
     let textFilled = 0;
     const feedbackList = [

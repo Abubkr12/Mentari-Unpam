@@ -1,9 +1,18 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Pemilih Thinking Level & perbaikan Light Mode pada modal Auto-Pilot (`token.js`), tema adaptif Terang/Gelap pada panel & HUD Kuis (`quiz.js`), isolasi kuota model ketat + toggle fallback opsional (`service-worker.js`, `token.js`), auto-koreksi soal error sebelum submit & perbaikan false-completed/resume Auto-Pilot (`quiz.js`), serta audit `/antislop` sudah selesai.
+- Tidak ada task aktif saat ini. Seluruh perbaikan pasca-audit rekaman layar 2026-11-26 (overhaul tema Light/Dark & kontrol minimize/tutup Kuesioner/QuickSurvey, kontras tombol `#eval-autopilot-btn` di Light Mode, format warning `quiz.js`, serta persiapan rilis ganda `v2.1.3` di GitHub & GitLab) sudah diselesaikan dan siap diverifikasi.
 
 ## Arsip
+- [x] Audit Rekaman Layar 2026-11-26, Overhaul UI Kuesioner/QuickSurvey Light/Dark, Kontras Tombol Auto-Pilot, & Persiapan Rilis `v2.1.3` (`src/content/kuisioner.js`, `src/content/QuickSurvey.js`, `src/content/token.js`, `src/content/quiz.js`, `package.json`, `README.md`, `Task.md`):
+  1. **Overhaul Tema Light/Dark & Kontrol HUD/Kartu Kuesioner (`src/content/kuisioner.js`, `src/content/QuickSurvey.js`)**:
+     - Menghubungkan `ThemeHelper` (`getEffectiveTheme()`, `watchTheme()`, `_applyTheme()`) pada panel manual Kuesioner, HUD Auto-Pilot Kuesioner, dan tombol `QuickSurvey.js` agar konsisten dengan tema Terang/Gelap ekstensi.
+     - Memindahkan posisi kartu dan HUD Kuesioner ke `bottom: 72px; right: 24px` agar tidak bertabrakan dengan toast, menambahkan drag header dan tombol minimize/tutup pada kartu maupun HUD, mengganti badge ungu ke palet Amber, serta memperbarui status progres HUD menjadi 100% dan memulihkan kartu manual saat antrean selesai.
+  2. **Perbaikan Kontras `#eval-autopilot-btn` & Format Log `quiz.js` (`src/content/token.js`, `src/content/quiz.js`)**:
+     - Memindahkan styling tombol `#eval-autopilot-btn` dari atribut inline ke kelas `.eval-autopilot-btn` dengan dukungan penuh `.modal.theme-light .eval-autopilot-btn` (`#1e3a8a` pada `#eff6ff`/`#dbeafe`).
+     - Mengubah `console.warn` pada `src/content/quiz.js` agar menampilkan `loopResult?.reason` sebagai string terbaca tanpa mencetak `[object Object]` di Chrome Extensions Errors.
+  3. **Dokumentasi & Rilis `v2.1.3` (`package.json`, `README.md`, `Task.md`)**:
+     - Menaikkan versi ke `2.1.3`, merapikan penomoran bab `1.` sampai `6.` serta menghapus em dash pada `README.md`, memperbarui catatan fitur `v2.1.3` dan referensi `Mentari-Unpam-v2.1.3-extension.zip`, serta mencantumkan mirror resmi GitLab (`https://gitlab.com/Abubkr12/mentari-unpam`) bersama GitHub Releases.
 - [x] Perbaikan Deteksi Selesai Kuis, Pemulihan Error 3-Sumber, Posisi HUD, & Mirror Fork GitLab (`src/content/quiz.js`, `README.md`, `Task.md`):
   1. **Deteksi Kuis Selesai (`_checkIfExamAlreadyCompleted` di `src/content/quiz.js`)**:
      - Memprioritaskan pengecekan selesai eksplisit sebelum veto timer (kata kunci selesai pada elemen teks ringkas `<= 180` karakter di luar host ekstensi, seluruh radio button disabled/`aria-disabled`, serta timer `00:00` saat tidak ada radio aktif atau tombol mulai), sehingga tampilan `"Quiz Sudah Selesai"` + `"Waktu tersisa : 00:00"` tidak lagi dianggap kuis aktif.

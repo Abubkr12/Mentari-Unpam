@@ -2520,7 +2520,7 @@ class QuizAssistant {
       Toast.success(`Kuis ${currentItem.courseTitle} selesai 100%!`);
       await this._advanceToNextQuiz(state, statusEl, false);
     } else {
-      console.warn('[Auto-Pilot] Kuis belum selesai diserahkan. TIDAK menandai selesai dan TIDAK melompat ke kuis berikutnya.', loopResult);
+      console.warn(`[Auto-Pilot] Kuis belum selesai diserahkan (${loopResult?.reason || 'belum tuntas'}). Auto-Pilot dijeda untuk verifikasi.`);
       statusEl.textContent = `Pengerjaan belum selesai (${loopResult?.reason || 'soal belum lengkap'}). Auto-Pilot dijeda untuk verifikasi pengguna.`;
       Toast.warning('Auto-Pilot dijeda: Kuis belum sepenuhnya selesai diserahkan. Periksa halaman kuis.');
       this.isRunning = false;
