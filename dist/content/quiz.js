@@ -1536,7 +1536,7 @@
       const host = document.createElement("div");
       host.id = "mentari-quiz-control-host";
       host.style.position = "fixed";
-      host.style.bottom = "24px";
+      host.style.bottom = "72px";
       host.style.right = "24px";
       host.style.zIndex = "2147483641";
       this.shadow = host.attachShadow({ mode: "closed" });
@@ -2169,23 +2169,20 @@
         "ujian ini telah diselesaikan"
       ];
       const hasStartBtn = Boolean(this._findStartExamButton());
-      const activeRadios = Array.from(document.querySelectorAll('input[type="radio"]:not(:disabled)'));
+      const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
+      const activeRadios = radioInputs.filter((r) => !r.disabled && r.getAttribute("aria-disabled") !== "true");
       const hasActiveRadios = activeRadios.length > 0;
       const pageText = (document.body?.innerText || "").toLowerCase();
-      const hasActiveTimer = pageText.includes("waktu tersisa") || pageText.includes("sisa waktu") || pageText.includes("time remaining");
-      const hasUnansweredBadge = pageText.includes("belum dijawab");
-      if (hasActiveRadios || hasActiveTimer || hasUnansweredBadge || hasStartBtn) {
-        return {
-          isCompleted: false,
-          reason: "",
-          detectedType: domInfo.detectedType,
-          title: domInfo.cleanTitle
-        };
-      }
       const allHeaders = Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6, .MuiTypography-root, .MuiAlert-message, p, span"));
       for (const el of allHeaders) {
         if (el.closest("#mentari-autopilot-hud-host, #mentari-quiz-control-host, #mentari-token-mod-host, .mentari-toast-container")) {
           continue;
+        }
+        if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+          const style = window.getComputedStyle(el);
+          if (style && (style.display === "none" || style.visibility === "hidden")) {
+            continue;
+          }
         }
         const t = (el.textContent || "").trim().toLowerCase();
         if (!t || t.length > 180) continue;
@@ -2200,6 +2197,32 @@
           }
         }
       }
+      if (radioInputs.length >= 2 && radioInputs.every((r) => r.disabled || r.getAttribute("aria-disabled") === "true")) {
+        return {
+          isCompleted: true,
+          reason: "Seluruh opsi pilihan kuis disabled (Read-only review)",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+      if (/(?:waktu tersisa|sisa waktu|time remaining)\s*[:\-]?\s*00:00(?::00)?\b/i.test(pageText) && !hasActiveRadios && !hasStartBtn) {
+        return {
+          isCompleted: true,
+          reason: "Waktu kuis habis (00:00)",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
+      const hasRunningTimer = /(?:waktu tersisa|sisa waktu|time remaining)\s*[:\-]?\s*(?!00:00(?::00)?\b)\d{1,2}:\d{2}/i.test(pageText);
+      const hasUnansweredBadge = pageText.includes("belum dijawab");
+      if (hasStartBtn || hasActiveRadios || hasRunningTimer || hasUnansweredBadge) {
+        return {
+          isCompleted: false,
+          reason: "",
+          detectedType: domInfo.detectedType,
+          title: domInfo.cleanTitle
+        };
+      }
       const scoreTable = document.querySelector("table.MuiTable-root, .hasil-ujian, .skor-container");
       if (scoreTable) {
         const bodyRows = Array.from(scoreTable.querySelectorAll("tbody tr"));
@@ -2213,15 +2236,6 @@
             title: domInfo.cleanTitle
           };
         }
-      }
-      const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
-      if (radioInputs.length >= 2 && radioInputs.every((r) => r.disabled || r.getAttribute("aria-disabled") === "true")) {
-        return {
-          isCompleted: true,
-          reason: "Seluruh opsi pilihan kuis disabled (Read-only review)",
-          detectedType: domInfo.detectedType,
-          title: domInfo.cleanTitle
-        };
       }
       return {
         isCompleted: false,
@@ -2401,10 +2415,99 @@
         return true;
       }) || null;
     }
+    _detectSiteDomError() {
+      const errorSelectors = [
+        ".MuiAlert-standardError",
+        ".MuiAlert-filledError",
+        '[role="alert"]',
+        ".notistack-SnackbarContainer",
+        ".Toastify__toast--error"
+      ].join(", ");
+      const errorKeywords = [
+        "error",
+        "gagal",
+        "kesalahan",
+        "timeout",
+        "network",
+        "tidak dapat menyimpan",
+        "terjadi kesalahan"
+      ];
+      const statusCodePattern = /\b(?:500|502|503|504|401|403|429)\b/;
+      const candidates = Array.from(document.querySelectorAll(errorSelectors));
+      for (const el of candidates) {
+        if (el.closest('[id^="mentari-"], .mentari-toast-container')) {
+          continue;
+        }
+        if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+          const style = window.getComputedStyle(el);
+          if (style && (style.display === "none" || style.visibility === "hidden" || style.opacity === "0")) {
+            continue;
+          }
+        }
+        const rawText = (el.textContent || "").trim();
+        if (!rawText) continue;
+        const lower = rawText.toLowerCase();
+        if (errorKeywords.some((kw) => lower.includes(kw)) || statusCodePattern.test(lower)) {
+          return { hasError: true, message: rawText.slice(0, 200) };
+        }
+      }
+      return { hasError: false, message: "" };
+    }
+    async _runQuestionWithChecks(curQContainer, verifyExisting = false) {
+      const result = await this.processCurrentQuestion(true, { verifyExisting });
+      await Humanizer.delay(150);
+      const activeContainer = curQContainer && curQContainer.isConnected !== false ? curQContainer : this._findQuestionContainer() || curQContainer;
+      const checkedRadio = activeContainer?.querySelector('input[type="radio"]:checked');
+      if (!checkedRadio) {
+        throw new Error("Opsi jawaban tidak tercentang di DOM setelah dipilih");
+      }
+      const siteErr = this._detectSiteDomError();
+      if (siteErr.hasError) {
+        throw new Error(`Site error terdeteksi: ${siteErr.message}`);
+      }
+      return result;
+    }
+    async _submitQuizAndAwaitCompletion(finishButton, statusEl, isAutoPilot = false) {
+      const preSubmitComp = this._checkIfExamAlreadyCompleted();
+      if (preSubmitComp.isCompleted) {
+        this._markExamNeedsVerification(false);
+        if (statusEl) statusEl.textContent = `${preSubmitComp.title || "Kuis"} sudah selesai dikerjakan.`;
+        this.isRunning = false;
+        return { isFinished: true, submitted: true, reason: preSubmitComp.reason };
+      }
+      const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
+      if (!(mentari_auto_finish_quiz || isAutoPilot)) {
+        this.isRunning = false;
+        return { isFinished: true, submitted: false, reason: "Menunggu konfirmasi selesai manual dari pengguna" };
+      }
+      await Humanizer.randomDelay(500, 1e3);
+      await Humanizer.naturalClick(finishButton);
+      await Humanizer.delay(600);
+      const confirmBtn = this._findDialogConfirmButton(finishButton) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
+      if (confirmBtn) {
+        await Humanizer.naturalClick(confirmBtn);
+      }
+      this._markExamNeedsVerification(false);
+      if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan. Menunggu konfirmasi skor sistem...";
+      let postComp = this._checkIfExamAlreadyCompleted();
+      const pollStart = Date.now();
+      while (!postComp.isCompleted && Date.now() - pollStart < 3500) {
+        await Humanizer.delay(500);
+        postComp = this._checkIfExamAlreadyCompleted();
+      }
+      await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
+      this.isRunning = false;
+      return {
+        isFinished: true,
+        submitted: true,
+        reason: postComp.isCompleted ? postComp.reason : "Kuis telah dikumpulkan dan diserahkan"
+      };
+    }
     async runAutoLoop(statusEl, isAutoPilot = false, { verifyExisting = false } = {}) {
       const initialComp = this._checkIfExamAlreadyCompleted();
       if (initialComp.isCompleted) {
         if (statusEl) statusEl.textContent = `${initialComp.title || "Kuis"} sudah selesai dikerjakan (${initialComp.reason}).`;
+        this._markExamNeedsVerification(false);
         this.isRunning = false;
         return { isFinished: true, submitted: true, reason: initialComp.reason };
       }
@@ -2430,6 +2533,7 @@
       await this._loadExamRecoveryState();
       let verifyMode = Boolean(verifyExisting || this._verifyModeRequested || this._hasExamNeedsVerification());
       this._verifyModeRequested = false;
+      let hadAnySessionError = this._failedQuestionNums.size > 0;
       const verifiedNums = /* @__PURE__ */ new Set();
       const postRecoveryAttempted = /* @__PURE__ */ new Set();
       const initialNav = this._getExamNavigationStatus();
@@ -2443,6 +2547,24 @@
           await Humanizer.delay(250);
         }
       }
+      const finishKeywords = [
+        "selesai quiz",
+        "selesai kuis",
+        "selesai ujian",
+        "selesai",
+        "finish quiz",
+        "finish exam",
+        "finish attempt",
+        "finish",
+        "kumpulkan jawaban",
+        "kumpulkan",
+        "akhiri kuis",
+        "akhiri ujian",
+        "akhiri",
+        "submit quiz",
+        "submit exam",
+        "submit"
+      ];
       let loopIterations = 0;
       const totalQEstimate = initialNav?.questions?.length || 20;
       const maxSafetyIterations = Math.max(60, totalQEstimate * 4);
@@ -2484,7 +2606,7 @@
         const isCurrentFailed = this._failedQuestionNums.has(curQNum);
         const alreadyCheckedRadio = curQContainer ? curQContainer.querySelector('input[type="radio"]:checked') : null;
         const anyUnansweredRemaining = navStatusCurrent && Array.isArray(navStatusCurrent.questions) && navStatusCurrent.questions.some((q) => q.isUnanswered || !q.isAnswered);
-        const pendingCorrectionQ = navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num) && !q.isCurrent) : null;
+        const pendingCorrectionQ = navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.filter((q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num) && !q.isCurrent).sort((a, b) => a.num - b.num)[0] : null;
         const nextUnverifiedRemaining = verifyMode && navStatusCurrent && Array.isArray(navStatusCurrent.questions) ? navStatusCurrent.questions.find((q) => (!verifiedNums.has(q.num) || this._failedQuestionNums.has(q.num) || !q.isAnswered) && !q.isCurrent) : null;
         if (!verifyMode && !isCurrentFailed && isCurrentVerifiedGreen && alreadyCheckedRadio && anyUnansweredRemaining) {
           const nextUnanswered = navStatusCurrent.questions.find((q) => (q.isUnanswered || !q.isAnswered) && !q.isCurrent);
@@ -2514,18 +2636,19 @@
         if (!alreadyCheckedRadio) {
           if (statusEl) statusEl.textContent = `Menganalisis Soal ${curQNum} via AI...`;
           try {
-            await this.processCurrentQuestion(true);
+            await this._runQuestionWithChecks(curQContainer, false);
             verifiedNums.add(curQNum);
             await this._clearFailedQuestion(curQNum);
           } catch (err) {
             console.warn("[Mentari AI] Gagal memproses soal (percobaan 1):", err);
             await Humanizer.delay(800);
             try {
-              await this.processCurrentQuestion(true);
+              await this._runQuestionWithChecks(curQContainer, false);
               verifiedNums.add(curQNum);
               await this._clearFailedQuestion(curQNum);
             } catch (retryErr) {
               console.error("[Mentari AI] Percobaan 2 gagal. Menandai soal untuk auto-koreksi sebelum submit:", retryErr);
+              hadAnySessionError = true;
               await this._recordFailedQuestion(curQNum);
               if (statusEl) statusEl.textContent = `Soal ${curQNum} error (${retryErr.message}). Menyimpan antrean koreksi...`;
               await this._forceSelectFirstOption(curQContainer);
@@ -2535,18 +2658,19 @@
           if (statusEl) statusEl.textContent = isCurrentFailed ? `Mengoreksi ulang Soal ${curQNum} yang sempat error...` : `Memeriksa jawaban Soal ${curQNum} via AI...`;
           let verifyResult = null;
           try {
-            verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
+            verifyResult = await this._runQuestionWithChecks(curQContainer, true);
             verifiedNums.add(curQNum);
             await this._clearFailedQuestion(curQNum);
           } catch (verErr) {
             console.warn(`[Mentari AI] Gagal verifikasi Soal ${curQNum} (percobaan 1):`, verErr);
             await Humanizer.delay(800);
             try {
-              verifyResult = await this.processCurrentQuestion(true, { verifyExisting: true });
+              verifyResult = await this._runQuestionWithChecks(curQContainer, true);
               verifiedNums.add(curQNum);
               await this._clearFailedQuestion(curQNum);
             } catch (verRetryErr) {
               console.error(`[Mentari AI] Koreksi Soal ${curQNum} masih gagal:`, verRetryErr);
+              hadAnySessionError = true;
               await this._recordFailedQuestion(curQNum);
               postRecoveryAttempted.add(curQNum);
               if (statusEl) statusEl.textContent = `Soal ${curQNum}: Gagal dikoreksi (${verRetryErr.message}).`;
@@ -2573,8 +2697,11 @@
           this._updateHUDNavMatrix(navStatusAfterAnswer);
         }
         await Humanizer.randomDelay(350, 600);
-        let nextBtn = DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
-        if (!nextBtn) {
+        const readyToSubmitDirectly = Boolean(
+          navStatusAfterAnswer?.allAnswered && this._failedQuestionNums.size === 0 && (!hadAnySessionError && !verifyMode ? true : navStatusAfterAnswer.questions.every((q) => verifiedNums.has(q.num))) && this._findQuizFinishButton(finishKeywords)
+        );
+        let nextBtn = readyToSubmitDirectly ? null : DOM.findButtonByText(["selanjutnya", "next", "berikutnya", "soal berikutnya"]);
+        if (!readyToSubmitDirectly && !nextBtn) {
           const waitStart = Date.now();
           while (Date.now() - waitStart < 1e3 && !nextBtn) {
             await Humanizer.delay(150);
@@ -2612,9 +2739,7 @@
             continue;
           }
           if (this._failedQuestionNums.size > 0) {
-            const retryableFailed = navStatus.questions.find(
-              (q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num)
-            );
+            const retryableFailed = navStatus.questions.filter((q) => this._failedQuestionNums.has(q.num) && !postRecoveryAttempted.has(q.num)).sort((a, b) => a.num - b.num)[0];
             if (retryableFailed) {
               verifyMode = true;
               postRecoveryAttempted.add(retryableFailed.num);
@@ -2629,6 +2754,7 @@
             }
             const failedListStr = Array.from(this._failedQuestionNums).sort((a, b) => a - b).join(", ");
             if (statusEl) statusEl.textContent = `Auto-koreksi gagal di Soal ${failedListStr}. Submisi ditahan.`;
+            Toast.warning(`Submisi ditahan: Soal ${failedListStr} gagal diverifikasi.`);
             this.isRunning = false;
             return {
               isFinished: false,
@@ -2636,7 +2762,7 @@
               reason: `Soal ${failedListStr} gagal diverifikasi AI, submisi dibatalkan agar tidak mengirim tebakan`
             };
           }
-          if (verifyMode) {
+          if (verifyMode && (hadAnySessionError || verifyExisting)) {
             const unverifiedQ = navStatus.questions.find((q) => !verifiedNums.has(q.num));
             if (unverifiedQ && unverifiedQ.btn) {
               if (statusEl) statusEl.textContent = `Memeriksa Soal ${unverifiedQ.num} sebelum selesai...`;
@@ -2648,24 +2774,13 @@
             }
           }
         }
-        const finishKeywords = [
-          "selesai quiz",
-          "selesai kuis",
-          "selesai ujian",
-          "selesai",
-          "finish quiz",
-          "finish exam",
-          "finish attempt",
-          "finish",
-          "kumpulkan jawaban",
-          "kumpulkan",
-          "akhiri kuis",
-          "akhiri ujian",
-          "akhiri",
-          "submit quiz",
-          "submit exam",
-          "submit"
-        ];
+        const preFinishComp = this._checkIfExamAlreadyCompleted();
+        if (preFinishComp.isCompleted) {
+          this._markExamNeedsVerification(false);
+          if (statusEl) statusEl.textContent = `${preFinishComp.title || "Kuis"} sudah selesai dikerjakan.`;
+          this.isRunning = false;
+          return { isFinished: true, submitted: true, reason: preFinishComp.reason };
+        }
         const finishBtn = this._findQuizFinishButton(finishKeywords);
         if (finishBtn) {
           const finalNav = this._getExamNavigationStatus();
@@ -2684,12 +2799,7 @@
               await Humanizer.delay(600);
               continue;
             }
-            if (this._failedQuestionNums.size > 0) {
-              const failedStr = Array.from(this._failedQuestionNums).sort((a, b) => a - b).join(", ");
-              this.isRunning = false;
-              return { isFinished: false, submitted: false, reason: `Soal ${failedStr} belum berhasil dikoreksi AI` };
-            }
-            if (verifyMode) {
+            if (verifyMode && (hadAnySessionError || verifyExisting)) {
               const finalUnverified = finalNav.questions.find((q) => !verifiedNums.has(q.num));
               if (finalUnverified && finalUnverified.btn) {
                 if (statusEl) statusEl.textContent = `Veto Verifikasi: Memeriksa Soal ${finalUnverified.num}...`;
@@ -2699,27 +2809,14 @@
               }
             }
           }
-          this._markExamNeedsVerification(false);
+          if (this._failedQuestionNums.size > 0) {
+            const failedStr = Array.from(this._failedQuestionNums).sort((a, b) => a - b).join(", ");
+            this.isRunning = false;
+            return { isFinished: false, submitted: false, reason: `Soal ${failedStr} belum berhasil dikoreksi AI` };
+          }
           if (statusEl) statusEl.textContent = "Semua kotak soal terverifikasi 100% hijau! Menyelesaikan kuis...";
           Toast.success("Semua kotak nomor soal terverifikasi hijau (terjawab)!");
-          const { mentari_auto_finish_quiz } = await Storage.get("mentari_auto_finish_quiz", { mentari_auto_finish_quiz: false });
-          if (mentari_auto_finish_quiz || isAutoPilot) {
-            await Humanizer.randomDelay(500, 1e3);
-            await Humanizer.naturalClick(finishBtn);
-            await Humanizer.delay(600);
-            const confirmBtn = this._findDialogConfirmButton(finishBtn) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
-            if (confirmBtn) {
-              await Humanizer.naturalClick(confirmBtn);
-            }
-            if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan 100%. Menunggu konfirmasi skor sistem...";
-            await Humanizer.delay(1500);
-            await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
-            this.isRunning = false;
-            return { isFinished: true, submitted: true, reason: "Kuis telah dikumpulkan dan diserahkan" };
-          } else {
-            this.isRunning = false;
-            return { isFinished: true, submitted: false, reason: "Menunggu konfirmasi selesai manual dari pengguna" };
-          }
+          return await this._submitQuizAndAwaitCompletion(finishBtn, statusEl, isAutoPilot);
         } else {
           const postCheck = this._checkIfExamAlreadyCompleted();
           if (postCheck.isCompleted) {
@@ -2748,17 +2845,7 @@
                 delayedFinishBtn = this._findQuizFinishButton(finishKeywords);
               }
               if (delayedFinishBtn) {
-                await Humanizer.naturalClick(delayedFinishBtn);
-                await Humanizer.delay(600);
-                const confirmBtn = this._findDialogConfirmButton(delayedFinishBtn) || DOM.findButtonByText(["ya", "ok", "setuju", "submit", "kirim", "selesaikan", "ya, selesaikan", "akhiri"]);
-                if (confirmBtn) {
-                  await Humanizer.naturalClick(confirmBtn);
-                }
-                if (statusEl) statusEl.textContent = "Kuis berhasil diserahkan 100%.";
-                await Humanizer.delay(1200);
-                await this._evaluateAndSaveSmartMemory("AUTO_QUIZ", document.title);
-                this.isRunning = false;
-                return { isFinished: true, submitted: true, reason: "Kuis telah dikumpulkan dan diserahkan" };
+                return await this._submitQuizAndAwaitCompletion(delayedFinishBtn, statusEl, isAutoPilot);
               }
             }
           }
@@ -2826,7 +2913,7 @@
       this.hudHost = document.createElement("div");
       this.hudHost.id = "mentari-autopilot-hud-host";
       this.hudHost.style.position = "fixed";
-      this.hudHost.style.bottom = "24px";
+      this.hudHost.style.bottom = "72px";
       this.hudHost.style.right = "24px";
       this.hudHost.style.zIndex = "2147483646";
       this.hudShadow = this.hudHost.attachShadow({ mode: "closed" });

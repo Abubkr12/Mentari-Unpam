@@ -46,6 +46,10 @@ Mentari-Unpam-v2.0_2/
    - API Key Gemini wajib disimpan di storage lokal client dan tidak disebarkan.
 3. **Tracking & Dokumentasi**:
    - Selalu perbarui `task.md` jika ada perubahan atau penambahan fitur. Task yang selesai dicentang dan dipindahkan ke Arsip.
+4. **Alur Update, Pengetesan Lokal, & Rilis GitHub (Mandatory)**:
+   - Setiap selesai membuat perubahan/perbaikan fitur, lakukan build lokal (`node build.js` / `npm run release`) dan verifikasi sintaks saja terlebih dahulu.
+   - **JANGAN** langsung `git push`, membuat tag, atau mengunggah/menimpa GitHub Release sebelum user melakukan pengetesan secara menyeluruh (overall testing) di browser dan memberi konfirmasi OK.
+   - Saat rilis disetujui, wajib naikkan versi (bump semver baru) dan buat rilis GitHub baru; **dilarang menimpa** tag atau asset rilis lama.
 
 ## Temuan Audit Arsitektur & Kelemahan Codebase (v2.0)
 1. **Penyimpanan Kredensial Tidak Aman**: Menggunakan `window.localStorage` domain Mentari UNPAM dengan encoding base64 (`atob`/`btoa`). Rentan terhadap pencurian token dan API key via XSS atau script pelacak kampus.

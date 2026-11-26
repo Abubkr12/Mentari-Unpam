@@ -4,6 +4,16 @@
 - Tidak ada task aktif saat ini. Pemilih Thinking Level & perbaikan Light Mode pada modal Auto-Pilot (`token.js`), tema adaptif Terang/Gelap pada panel & HUD Kuis (`quiz.js`), isolasi kuota model ketat + toggle fallback opsional (`service-worker.js`, `token.js`), auto-koreksi soal error sebelum submit & perbaikan false-completed/resume Auto-Pilot (`quiz.js`), serta audit `/antislop` sudah selesai.
 
 ## Arsip
+- [x] Perbaikan Deteksi Selesai Kuis, Pemulihan Error 3-Sumber, Posisi HUD, & Mirror Fork GitLab (`src/content/quiz.js`, `README.md`, `Task.md`):
+  1. **Deteksi Kuis Selesai (`_checkIfExamAlreadyCompleted` di `src/content/quiz.js`)**:
+     - Memprioritaskan pengecekan selesai eksplisit sebelum veto timer (kata kunci selesai pada elemen teks ringkas `<= 180` karakter di luar host ekstensi, seluruh radio button disabled/`aria-disabled`, serta timer `00:00` saat tidak ada radio aktif atau tombol mulai), sehingga tampilan `"Quiz Sudah Selesai"` + `"Waktu tersisa : 00:00"` tidak lagi dianggap kuis aktif.
+     - Memperketat active-exam veto (`hasRunningTimer` mengecualikan `00:00`, `hasActiveRadios`, `hasStartBtn`, `hasUnansweredBadge`) diikuti pengecekan tabel skor non-kosong.
+  2. **Deteksi Error 3-Sumber & Loop Auto-Pilot (`src/content/quiz.js`)**:
+     - Menambahkan `_detectSiteDomError()` untuk memindai alert/snackbar error situs Mentari (di luar shadow host ekstensi) dan `_runQuestionWithChecks()` untuk memastikan radio tercentang serta bebas error DOM sebelum melanjutkan.
+     - Melacak `hadAnySessionError` dalam `runAutoLoop()`, mewajibkan retry + `_recordFailedQuestion`/`_forceSelectFirstOption` tanpa menandai soal gagal sebagai terverifikasi, menyapu balik soal gagal (urutan nomor terendah) sebelum submit dengan veto jika masih gagal, melewati verifikasi ulang saat nol error, mengecek ulang `_checkIfExamAlreadyCompleted()` sebelum klik submit, dan menyatukan pengiriman akhir via `_submitQuizAndAwaitCompletion()`.
+  3. **Posisi HUD/Panel & Mirror Fork GitLab (`src/content/quiz.js`, `README.md`)**:
+     - Menaikkan posisi default bawah `#mentari-quiz-control-host` dan `#mentari-autopilot-hud-host` menjadi `72px` agar tidak bertabrakan dengan toast, serta membersihkan komentar bernomor pada `_executeAutoPilotQuiz()`.
+     - Memperbarui tautan upstream pada `README.md` ke `https://gitlab.com/lukman754/mentari-unpam`, membuat fork GitLab `Abubkr12/mentari-unpam` dari `lukman754/mentari-unpam`, dan menyinkronkan remote `upstream` serta `gitlab`.
 - [x] Audit Total Auto-Pilot, Tema Kuis Light/Dark, & Isolasi Kuota Model AI (`src/content/token.js`, `src/content/quiz.js`, `src/background/service-worker.js`):
   1. **Modal Auto-Pilot (`src/content/token.js`)**:
      - Menambahkan dropdown dinamis `Thinking Level` (`#ap-thinking-select`) di modal Auto-Pilot yang menyesuaikan opsi per model dan tersinkron ke `gemini_thinking_level` serta `AutoPilotState.thinkingLevel`.

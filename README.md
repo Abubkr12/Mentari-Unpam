@@ -104,7 +104,7 @@ Fitur otomatisasi sekuensial cerdas untuk menyelesaikan evaluasi tanpa hambatan 
 ---
 
 ## Lisensi & Kontributor
-- **Original Creator (Upstream)**: [Lukman Muludin](https://github.com/lukman754) ([lukman754/Mentari-Unpam](https://github.com/lukman754/Mentari-Unpam))
+- **Original Creator (Upstream)**: [Lukman Muludin](https://gitlab.com/lukman754) ([lukman754/mentari-unpam](https://gitlab.com/lukman754/mentari-unpam))
 - **Modern Edition Overhaul & Maintainer**: [Abu Bakar Al Adny](https://github.com/Abubkr12) ([Abubkr12/Mentari-Unpam](https://github.com/Abubkr12/Mentari-Unpam))
 
 Dilisensikan di bawah [MIT License](LICENSE).
