@@ -7,6 +7,7 @@ import { Storage } from './storage.js';
 
 export const UnpamAuth = {
   _cachedToken: null,
+  _activeAccountId: null,
   _snifferInjected: false,
 
   /**
@@ -78,10 +79,81 @@ export const UnpamAuth = {
     Storage.remove(['mentari_auth_token', 'access']);
   },
 
+  // Scan native Mentari storage keys before extension cache so account switches take effect immediately.
+  getLiveStorageToken() {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      for (const priorityKey of ['access', 'token']) {
+        const val = localStorage.getItem(priorityKey);
+        const extracted = this._extractJwtFromValue(val, priorityKey);
+        if (extracted && this.isTokenValid(extracted)) {
+          return extracted;
+        }
+      }
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || key.startsWith('mentari_')) continue;
+        const val = localStorage.getItem(key);
+        const extracted = this._extractJwtFromValue(val, key);
+        if (extracted && this.isTokenValid(extracted)) {
+          return extracted;
+        }
+      }
+    } catch (e) {
+      console.log('[UnpamAuth] Live storage scan info:', e.message);
+    }
+    return null;
+  },
+
+  _clearStaleAccountSession() {
+    this._cachedToken = null;
+    if (typeof window !== 'undefined') {
+      delete window.lastAuthToken;
+    }
+    try {
+      localStorage.removeItem('mentari_auth_token');
+      localStorage.removeItem('mentari_user_info');
+      sessionStorage.removeItem('mentari_auth_token');
+    } catch {}
+    Storage.remove(['mentari_auth_token', 'mentari_user_info', 'mentari_cached_courses', 'mentari_cached_forums', 'access']);
+  },
+
+  _detectAccountSwitch(token) {
+    if (!token) return null;
+    const nextId = this.getUserIdentifier(token);
+    if (!nextId || nextId === 'default') return null;
+
+    let prevId = this._activeAccountId;
+    if (!prevId && typeof localStorage !== 'undefined') {
+      try {
+        const prevRaw = localStorage.getItem('mentari_auth_token');
+        if (prevRaw && prevRaw !== token) {
+          const parsedPrevId = this.getUserIdentifier(prevRaw);
+          if (parsedPrevId && parsedPrevId !== 'default') prevId = parsedPrevId;
+        }
+      } catch {}
+    }
+
+    this._activeAccountId = nextId;
+    if (prevId && prevId !== 'default' && prevId !== nextId) {
+      return { prevUserId: prevId, nextUserId: nextId };
+    }
+    return null;
+  },
+
   /**
    * Mengambil token autentikasi (JWT) mahasiswa dari berbagai sumber
    */
   async getAuthToken() {
+    // Prefer active native Mentari session token over cached extension copies.
+    const liveToken = this.getLiveStorageToken();
+    if (liveToken) {
+      if (liveToken !== this._cachedToken) {
+        this._saveCapturedToken(liveToken);
+      }
+      return liveToken;
+    }
+
     // 1. Cek token yang sudah tertangkap di memori
     if (this._cachedToken) {
       if (this.isTokenValid(this._cachedToken)) {
@@ -116,6 +188,7 @@ export const UnpamAuth = {
     if (stored.mentari_auth_token) {
       if (this.isTokenValid(stored.mentari_auth_token)) {
         this._cachedToken = stored.mentari_auth_token;
+        this._activeAccountId = this._activeAccountId || this.getUserIdentifier(stored.mentari_auth_token);
         return this._cachedToken;
       } else {
         Storage.remove('mentari_auth_token');
@@ -124,6 +197,7 @@ export const UnpamAuth = {
     if (stored.access) {
       if (this.isTokenValid(stored.access)) {
         this._cachedToken = stored.access;
+        this._activeAccountId = this._activeAccountId || this.getUserIdentifier(stored.access);
         return this._cachedToken;
       } else {
         Storage.remove('access');
@@ -254,7 +328,8 @@ export const UnpamAuth = {
    * Pasang pendengar event dari Main World Sniffer dan fallback DOM injection
    */
   installLiveSniffer() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || this._listenersInstalled) return;
+    this._listenersInstalled = true;
 
     const self = this;
 
@@ -348,6 +423,27 @@ export const UnpamAuth = {
       if (m) return m[1];
     }
 
+    if (clean.startsWith('[') && clean.endsWith(']')) {
+      try {
+        const arr = JSON.parse(clean);
+        if (Array.isArray(arr)) {
+          for (const item of arr) {
+            if (typeof item === 'string' && item.startsWith('eyJ') && item.split('.').length === 3) {
+              return item;
+            }
+            if (item && typeof item === 'object') {
+              const candidates = [item.token, item.access_token, item.accessToken, item.jwt, item.access, item.authToken];
+              for (const c of candidates) {
+                if (typeof c === 'string' && c.startsWith('eyJ') && c.split('.').length === 3) {
+                  return c;
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
     if (clean.startsWith('{') && clean.endsWith('}')) {
       try {
         const obj = JSON.parse(clean);
@@ -365,6 +461,10 @@ export const UnpamAuth = {
 
   _saveCapturedToken(token) {
     if (!token || !this.isTokenValid(token)) return;
+    const switchInfo = this._detectAccountSwitch(token);
+    if (switchInfo) {
+      this._clearStaleAccountSession();
+    }
     this._cachedToken = token;
     if (typeof window !== 'undefined') {
       window.lastAuthToken = token;
@@ -373,6 +473,11 @@ export const UnpamAuth = {
       localStorage.setItem('mentari_auth_token', token);
     } catch {}
     Storage.set({ mentari_auth_token: token });
+    if (switchInfo && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('mentari-account-switched', { detail: switchInfo }));
+      } catch {}
+    }
   }
 };
 

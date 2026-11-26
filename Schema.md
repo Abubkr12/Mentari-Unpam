@@ -81,3 +81,48 @@ interface SkippedItem {
   reason: string;                  // Deskripsi alasan dilewati (contoh: "Forum Diskusi belum dibuka/dibuat dosen")
 }
 ```
+
+## 4. Skema Cache Mata Kuliah & Mahasiswa (`mentari_cached_data_{userId}`)
+
+Data hasil parsing `course-parser.js` disimpan terisolasi per identitas mahasiswa di `chrome.storage.local`:
+
+```typescript
+interface CourseDetail {
+  courseCode: string;
+  title: string;
+  sks: string;
+  hari: string;
+  kelas: string;
+  progress: {
+    completedMeetings: number;
+    totalMeetings: number;
+    percent: number;
+  };
+  sections: Array<{
+    sectionCode: string;
+    sectionName: string;
+    meetingNum: number | null;
+    materials: Array<{
+      id: string;
+      template: string;
+      typeLabel: string;
+      title: string;
+      downloadUrl: string;
+      externalUrl: string;
+    }>;
+    hasMaterials: boolean;
+    completed: boolean;
+  }>;
+}
+
+interface UniqueStudent {
+  nim: string;                     // Primary deduplication key
+  nama: string;
+  email: string;
+  phone: string;
+  courses: Array<{
+    courseCode: string;
+    courseTitle: string;
+  }>;
+}
+```

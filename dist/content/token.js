@@ -2769,6 +2769,7 @@
   // src/utils/unpam-auth.js
   var UnpamAuth = {
     _cachedToken: null,
+    _activeAccountId: null,
     _snifferInjected: false,
     /**
      * Mendekode payload JWT secara aman dengan normalisasi Base64URL
@@ -2833,10 +2834,76 @@
       }
       Storage.remove(["mentari_auth_token", "access"]);
     },
+    // Scan native Mentari storage keys before extension cache so account switches take effect immediately.
+    getLiveStorageToken() {
+      if (typeof localStorage === "undefined") return null;
+      try {
+        for (const priorityKey of ["access", "token"]) {
+          const val = localStorage.getItem(priorityKey);
+          const extracted = this._extractJwtFromValue(val, priorityKey);
+          if (extracted && this.isTokenValid(extracted)) {
+            return extracted;
+          }
+        }
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key || key.startsWith("mentari_")) continue;
+          const val = localStorage.getItem(key);
+          const extracted = this._extractJwtFromValue(val, key);
+          if (extracted && this.isTokenValid(extracted)) {
+            return extracted;
+          }
+        }
+      } catch (e) {
+        console.log("[UnpamAuth] Live storage scan info:", e.message);
+      }
+      return null;
+    },
+    _clearStaleAccountSession() {
+      this._cachedToken = null;
+      if (typeof window !== "undefined") {
+        delete window.lastAuthToken;
+      }
+      try {
+        localStorage.removeItem("mentari_auth_token");
+        localStorage.removeItem("mentari_user_info");
+        sessionStorage.removeItem("mentari_auth_token");
+      } catch {
+      }
+      Storage.remove(["mentari_auth_token", "mentari_user_info", "mentari_cached_courses", "mentari_cached_forums", "access"]);
+    },
+    _detectAccountSwitch(token) {
+      if (!token) return null;
+      const nextId = this.getUserIdentifier(token);
+      if (!nextId || nextId === "default") return null;
+      let prevId = this._activeAccountId;
+      if (!prevId && typeof localStorage !== "undefined") {
+        try {
+          const prevRaw = localStorage.getItem("mentari_auth_token");
+          if (prevRaw && prevRaw !== token) {
+            const parsedPrevId = this.getUserIdentifier(prevRaw);
+            if (parsedPrevId && parsedPrevId !== "default") prevId = parsedPrevId;
+          }
+        } catch {
+        }
+      }
+      this._activeAccountId = nextId;
+      if (prevId && prevId !== "default" && prevId !== nextId) {
+        return { prevUserId: prevId, nextUserId: nextId };
+      }
+      return null;
+    },
     /**
      * Mengambil token autentikasi (JWT) mahasiswa dari berbagai sumber
      */
     async getAuthToken() {
+      const liveToken = this.getLiveStorageToken();
+      if (liveToken) {
+        if (liveToken !== this._cachedToken) {
+          this._saveCapturedToken(liveToken);
+        }
+        return liveToken;
+      }
       if (this._cachedToken) {
         if (this.isTokenValid(this._cachedToken)) {
           return this._cachedToken;
@@ -2868,6 +2935,7 @@
       if (stored.mentari_auth_token) {
         if (this.isTokenValid(stored.mentari_auth_token)) {
           this._cachedToken = stored.mentari_auth_token;
+          this._activeAccountId = this._activeAccountId || this.getUserIdentifier(stored.mentari_auth_token);
           return this._cachedToken;
         } else {
           Storage.remove("mentari_auth_token");
@@ -2876,6 +2944,7 @@
       if (stored.access) {
         if (this.isTokenValid(stored.access)) {
           this._cachedToken = stored.access;
+          this._activeAccountId = this._activeAccountId || this.getUserIdentifier(stored.access);
           return this._cachedToken;
         } else {
           Storage.remove("access");
@@ -2988,7 +3057,8 @@
      * Pasang pendengar event dari Main World Sniffer dan fallback DOM injection
      */
     installLiveSniffer() {
-      if (typeof window === "undefined") return;
+      if (typeof window === "undefined" || this._listenersInstalled) return;
+      this._listenersInstalled = true;
       const self2 = this;
       window.addEventListener("mentari-token-captured", (e) => {
         const token = e.detail?.token || e.detail;
@@ -3067,6 +3137,27 @@
         const m = clean.match(/Bearer\s+(eyJ[a-zA-Z0-9_\-\.]+)/);
         if (m) return m[1];
       }
+      if (clean.startsWith("[") && clean.endsWith("]")) {
+        try {
+          const arr = JSON.parse(clean);
+          if (Array.isArray(arr)) {
+            for (const item of arr) {
+              if (typeof item === "string" && item.startsWith("eyJ") && item.split(".").length === 3) {
+                return item;
+              }
+              if (item && typeof item === "object") {
+                const candidates = [item.token, item.access_token, item.accessToken, item.jwt, item.access, item.authToken];
+                for (const c of candidates) {
+                  if (typeof c === "string" && c.startsWith("eyJ") && c.split(".").length === 3) {
+                    return c;
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+        }
+      }
       if (clean.startsWith("{") && clean.endsWith("}")) {
         try {
           const obj = JSON.parse(clean);
@@ -3083,6 +3174,10 @@
     },
     _saveCapturedToken(token) {
       if (!token || !this.isTokenValid(token)) return;
+      const switchInfo = this._detectAccountSwitch(token);
+      if (switchInfo) {
+        this._clearStaleAccountSession();
+      }
       this._cachedToken = token;
       if (typeof window !== "undefined") {
         window.lastAuthToken = token;
@@ -3092,6 +3187,12 @@
       } catch {
       }
       Storage.set({ mentari_auth_token: token });
+      if (switchInfo && typeof window !== "undefined") {
+        try {
+          window.dispatchEvent(new CustomEvent("mentari-account-switched", { detail: switchInfo }));
+        } catch {
+        }
+      }
     }
   };
   if (typeof window !== "undefined") {
@@ -4449,6 +4550,173 @@ ${items}
     }
   };
 
+  // src/utils/course-parser.js
+  var MATERIAL_TYPE_LABELS = {
+    POWER_POINT: "Power Point",
+    BUKU_ISBN: "Buku ISBN",
+    VIDEO_AJAR: "Video Ajar",
+    ARTIKEL_RISET: "Artikel Riset",
+    MATERI_LAINNYA: "Materi Lainnya",
+    PENUGASAN_TERSTRUKTUR: "Penugasan"
+  };
+  var MATERIAL_TEMPLATES = new Set(Object.keys(MATERIAL_TYPE_LABELS));
+  function escapeHtml(value) {
+    if (value === null || value === void 0) return "";
+    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function getMaterialTypeLabel(kodeTemplate) {
+    return MATERIAL_TYPE_LABELS[String(kodeTemplate || "").toUpperCase()] || "Materi";
+  }
+  function formatDurationSeconds(sec) {
+    if (sec === null || sec === void 0 || sec === "") return "-";
+    const totalSec = Number(sec);
+    if (!Number.isFinite(totalSec) || totalSec < 0) return "-";
+    const rounded = Math.round(totalSec);
+    const m = Math.floor(rounded / 60);
+    const s = rounded % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m} menit`;
+  }
+  function parseCourseMeta(course) {
+    const courseCode = String(course?.kode_course || course?.kode || course?.course_code || course?.id || "");
+    const rawName = String(course?.coursename || course?.nama_mata_kuliah || course?.name || "").trim();
+    const sksMatch = rawName.match(/^\[(\d+)\]/);
+    const sks = sksMatch ? sksMatch[1] : course?.sks ? String(course.sks) : "";
+    const hariMatch = rawName.match(/\(([^)]+)\)/);
+    const hari = hariMatch ? hariMatch[1].trim() : course?.hari ? String(course.hari).trim() : "";
+    const kelasMatch = rawName.match(/#\s*([^\s(]+)/);
+    const kelas = kelasMatch ? kelasMatch[1].trim() : course?.kode_kelas || course?.kelas ? String(course.kode_kelas || course.kelas).trim() : "";
+    let title = rawName.split("#")[0].replace(/^\[\d+\]\s*/, "").replace(/\([^)]+\)/g, "").replace(/\[[^\]]+\]/g, "").trim();
+    if (!title) {
+      title = String(course?.nama_mata_kuliah || rawName || "Mata Kuliah").trim();
+    }
+    return { courseCode, title, rawName, sks, hari, kelas };
+  }
+  function buildMaterialDownloadUrl(file) {
+    const cleaned = String(file || "").trim().replace(/^\/+/, "");
+    if (!cleaned) return "";
+    if (/^https?:\/\//i.test(cleaned)) return cleaned;
+    const encodedPath = cleaned.split("/").map((seg) => encodeURIComponent(seg)).join("/");
+    return `https://mentari.unpam.ac.id/api/file/${encodedPath}`;
+  }
+  function isSubCompletionTruthy(sub) {
+    return Boolean(
+      sub?.completion === true || sub?.completion === 1 || sub?.completion === "1" || sub?.completion === "true" || sub?.is_completed === true || sub?.completed === true
+    );
+  }
+  function isSectionCompleted(subSections) {
+    if (!Array.isArray(subSections) || subSections.length === 0) return false;
+    const hasDoneKuesioner = subSections.some((sub) => {
+      const kt = String(sub.kode_template || sub.tipe || "").toUpperCase();
+      return (kt.includes("KUES") || kt.includes("QUES")) && isSubCompletionTruthy(sub);
+    });
+    if (hasDoneKuesioner) return true;
+    const trackables = subSections.filter((sub) => {
+      const kt = String(sub.kode_template || "").toUpperCase();
+      return (kt === "FORUM_DISKUSI" || kt === "POST_TEST") && sub.id;
+    });
+    if (trackables.length === 0) return false;
+    return trackables.every((sub) => isSubCompletionTruthy(sub));
+  }
+  function extractCourseDetail(course, cData) {
+    const meta = parseCourseMeta(course);
+    const rawSections = Array.isArray(cData) ? cData : cData?.data || [];
+    const sections = rawSections.map((section, idx) => {
+      const rawSectionName = String(section?.nama_section || "").trim();
+      const match = rawSectionName.match(/(?:Pertemuan|Meeting)\s*(\d+)/i);
+      let meetingNum = null;
+      if (match) {
+        meetingNum = parseInt(match[1], 10);
+      } else if (typeof section?.sort === "number" && section.sort > 0) {
+        meetingNum = section.sort;
+      } else if (typeof section?.urutan === "number" && section.urutan > 0) {
+        meetingNum = section.urutan;
+      }
+      const sectionCode = String(section?.kode_section || `sec-${idx + 1}`);
+      const sectionName = rawSectionName || (meetingNum ? `Pertemuan ${meetingNum}` : `Pertemuan ${idx + 1}`);
+      const subSections = Array.isArray(section?.sub_section) ? section.sub_section : [];
+      const materials = [];
+      for (const sub of subSections) {
+        const kt = String(sub?.kode_template || "").toUpperCase();
+        if (!MATERIAL_TEMPLATES.has(kt)) continue;
+        const rawFile = sub?.file ? String(sub.file).trim() : "";
+        const rawLink = sub?.link ? String(sub.link).trim() : "";
+        if (!rawFile && !rawLink) continue;
+        const externalUrl = /^https?:\/\//i.test(rawLink) ? rawLink : "";
+        const downloadUrl = rawFile ? buildMaterialDownloadUrl(rawFile) : "";
+        if (!downloadUrl && !externalUrl) continue;
+        materials.push({
+          id: String(sub.id || `${sectionCode}-${kt}-${materials.length}`),
+          template: kt,
+          typeLabel: getMaterialTypeLabel(kt),
+          title: String(sub.judul || sub.nama_sub_section || getMaterialTypeLabel(kt)).trim(),
+          file: rawFile,
+          link: rawLink,
+          downloadUrl,
+          externalUrl,
+          completion: sub.completion === true
+        });
+      }
+      const completed = isSectionCompleted(subSections);
+      return {
+        sectionCode,
+        sectionName,
+        meetingNum,
+        materials,
+        hasMaterials: materials.length > 0,
+        hasAnySubSection: subSections.length > 0,
+        completed
+      };
+    });
+    const numberedSections = sections.filter((s) => typeof s.meetingNum === "number" && s.meetingNum > 0);
+    const totalMeetings = numberedSections.length > 0 ? numberedSections.length : sections.length;
+    const completedPool = numberedSections.length > 0 ? numberedSections : sections;
+    const completedMeetings = Math.min(totalMeetings, completedPool.filter((s) => s.completed).length);
+    const percent = totalMeetings > 0 ? Math.round(completedMeetings / totalMeetings * 100) : 0;
+    return {
+      ...meta,
+      progress: { completedMeetings, totalMeetings, percent },
+      sections
+    };
+  }
+  function extractUniqueStudents(courseEntries) {
+    const studentMap = /* @__PURE__ */ new Map();
+    for (const entry of courseEntries || []) {
+      const courseCode = String(entry?.courseCode || "").trim();
+      const courseTitle = String(entry?.courseTitle || "Mata Kuliah").trim();
+      if (!courseCode) continue;
+      if (courseCode.toUpperCase().includes("PKKMB") || courseTitle.toUpperCase().includes("PKKMB")) {
+        continue;
+      }
+      const list = Array.isArray(entry?.peserta) ? entry.peserta : [];
+      for (const p of list) {
+        const nim = String(p?.nim || "").trim();
+        if (!nim) continue;
+        const nama = String(p?.nama_mahasiswa || p?.nama || "Mahasiswa").trim();
+        const rawEmail = String(p?.alamat_email || p?.email || "").trim();
+        const email = rawEmail && rawEmail !== "-" ? rawEmail : "";
+        const rawPhone = String(p?.no_hp_mahasiswa || p?.no_hp || "").trim();
+        const phone = rawPhone && rawPhone !== "-" ? rawPhone : "";
+        let record = studentMap.get(nim);
+        if (!record) {
+          record = { nim, nama, email, phone, courses: [] };
+          studentMap.set(nim, record);
+        } else {
+          if (!record.email && email) record.email = email;
+          if (!record.phone && phone) record.phone = phone;
+        }
+        if (!record.courses.some((c) => c.courseCode === courseCode)) {
+          record.courses.push({ courseCode, courseTitle });
+        }
+      }
+    }
+    const students = Array.from(studentMap.values());
+    students.sort((a, b) => a.nama.localeCompare(b.nama, "id", { sensitivity: "base" }));
+    for (const s of students) {
+      s.courses.sort((a, b) => a.courseTitle.localeCompare(b.courseTitle, "id", { sensitivity: "base" }));
+    }
+    return students;
+  }
+
   // src/content/token.js
   var ALL_MODELS = ACTIVE_FREE_MODELS.map((m) => ({ id: m.id, name: m.label }));
   var MentariDashboard = class {
@@ -4459,6 +4727,19 @@ ${items}
       this.courses = [];
       this.activeForums = [];
       this.evaluations = [];
+      this.courseDetails = {};
+      this.hasSyncedCourseDetails = false;
+      this.students = [];
+      this.courseSearchQuery = "";
+      this.expandedCourseCards = /* @__PURE__ */ new Set();
+      this.expandedCourseSections = /* @__PURE__ */ new Map();
+      this._visibleCourseTabCodes = [];
+      this.studentSearchQuery = "";
+      this.studentCourseFilter = "all";
+      this.expandedStudentNims = /* @__PURE__ */ new Set();
+      this._quizResultCache = /* @__PURE__ */ new Map();
+      this._quizResultInFlight = /* @__PURE__ */ new Set();
+      this._fetchGeneration = 0;
       this.forumFilter = "all";
       this.forumSearchQuery = "";
       this.expandedForumCourses = /* @__PURE__ */ new Set();
@@ -4491,6 +4772,36 @@ ${items}
         this.toggleModal();
       });
       window.addEventListener("mentari-token-captured", () => {
+        this._prefetchData();
+      });
+      window.addEventListener("mentari-account-switched", () => {
+        this._fetchGeneration += 1;
+        this.courses = [];
+        this.activeForums = [];
+        this.evaluations = [];
+        this.courseDetails = {};
+        this.hasSyncedCourseDetails = false;
+        this.students = [];
+        this.courseForumsMeta = {};
+        this.courseSearchQuery = "";
+        this.studentSearchQuery = "";
+        this.studentCourseFilter = "all";
+        this.expandedCourseCards.clear();
+        this.expandedCourseSections.clear();
+        this.expandedStudentNims.clear();
+        this._quizResultCache.clear();
+        this._quizResultInFlight.clear();
+        this._studentName = "";
+        this._studentNim = "";
+        this._currentFetchPromise = null;
+        if (this.isOpen) {
+          this._renderCourses([]);
+          this._renderStudents([]);
+          const evalContainer = this.shadow?.getElementById("eval-list-container");
+          if (evalContainer) evalContainer.innerHTML = '<div class="loading-text">Memuat data akun baru...</div>';
+          const forumContainer = this.shadow?.getElementById("forum-list-container");
+          if (forumContainer) forumContainer.innerHTML = '<div class="loading-text">Memuat forum akun baru...</div>';
+        }
         this._prefetchData();
       });
       window.addEventListener("mentari-route-change", () => {
@@ -5941,9 +6252,606 @@ ${items}
       .modal.theme-light .btn-open-forum:hover {
         background: #1e40af;
       }
+      .modal.theme-light .forum-search-clear:hover { color: #0f172a; }
       .modal.theme-light .eval-summary {
         background: #f8fafc;
         border-color: #e2e8f0;
+      }
+
+      /* Keyboard focus ring and compact tab spacing */
+      .tab-btn:focus-visible,
+      .btn-config:focus-visible,
+      .btn-open-forum:focus-visible,
+      .course-acc-header:focus-visible,
+      .meeting-acc-header:focus-visible,
+      .mat-action-btn:focus-visible,
+      .student-courses-toggle:focus-visible,
+      .close-btn:focus-visible,
+      .theme-toggle-btn:focus-visible,
+      .eval-toggle-all-btn:focus-visible,
+      .forum-toggle-all-btn:focus-visible {
+        outline: 2px solid #f59e0b;
+        outline-offset: 2px;
+      }
+      .modal.theme-light .tab-btn:focus-visible,
+      .modal.theme-light .btn-config:focus-visible,
+      .modal.theme-light .btn-open-forum:focus-visible,
+      .modal.theme-light .course-acc-header:focus-visible,
+      .modal.theme-light .meeting-acc-header:focus-visible,
+      .modal.theme-light .mat-action-btn:focus-visible,
+      .modal.theme-light .student-courses-toggle:focus-visible {
+        outline-color: #1e3a8a;
+      }
+      .tab-btn { padding: 12px 13px; }
+
+      /* Courses tab accordion, progress bar, and materials */
+      .course-acc-card {
+        background: #1a1c23;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        overflow: hidden;
+      }
+      .course-acc-header {
+        width: 100%;
+        background: transparent;
+        border: none;
+        padding: 14px 16px;
+        text-align: left;
+        color: #f1f5f9;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: background-color 0.18s;
+      }
+      .course-acc-header:hover {
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .course-acc-top {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .course-acc-title-wrap {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .course-acc-title {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: #f1f5f9;
+        line-height: 1.35;
+      }
+      .course-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .course-chip {
+        display: inline-flex;
+        align-items: center;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+      .course-chip-sks {
+        background: #172536;
+        color: #93c5fd;
+        border: 1px solid rgba(147, 197, 253, 0.25);
+      }
+      .course-chip-day {
+        background: #142921;
+        color: #6ee7b7;
+        border: 1px solid rgba(110, 231, 183, 0.25);
+      }
+      .course-chip-class {
+        background: #292114;
+        color: #fcd34d;
+        border: 1px solid rgba(252, 211, 77, 0.25);
+      }
+      .course-code-sub {
+        font-size: 11px;
+        color: #94a3b8;
+      }
+      .course-progress-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+      .course-progress-pct {
+        font-size: 13px;
+        font-weight: 800;
+        color: #6ee7b7;
+        font-variant-numeric: tabular-nums;
+      }
+      .course-progress-label {
+        font-size: 11px;
+        color: #94a3b8;
+        font-variant-numeric: tabular-nums;
+      }
+      .course-progress-row {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .course-progress-track {
+        flex: 1;
+        height: 5px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .course-progress-fill {
+        height: 100%;
+        border-radius: 99px;
+        background: #10b981;
+        transition: width 0.25s ease;
+      }
+      .course-acc-chevron {
+        color: #94a3b8;
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+      }
+      .course-acc-chevron.open {
+        transform: rotate(180deg);
+        color: #f59e0b;
+      }
+      .course-acc-body {
+        display: none;
+        padding: 12px 14px 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: #141519;
+      }
+      .course-acc-body.open {
+        display: block;
+      }
+      .course-top-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+      .course-top-stats {
+        font-size: 11.5px;
+        color: #94a3b8;
+      }
+      .meeting-card {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 9px;
+        margin-bottom: 8px;
+        background: #1e2129;
+        overflow: hidden;
+      }
+      .meeting-acc-header {
+        width: 100%;
+        background: transparent;
+        border: none;
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        color: #f1f5f9;
+        cursor: pointer;
+        text-align: left;
+      }
+      .meeting-acc-header:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .meeting-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .meeting-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #f1f5f9;
+      }
+      .meeting-meta-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .meeting-pill {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+      .meeting-pill.has-materi {
+        background: #142921;
+        color: #6ee7b7;
+      }
+      .meeting-pill.is-empty {
+        background: #292114;
+        color: #fcd34d;
+      }
+      .meeting-acc-body {
+        display: none;
+        padding: 10px 12px 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: #141519;
+      }
+      .meeting-acc-body.open {
+        display: block;
+      }
+      .meeting-quick-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .meeting-quick-link {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #fcd34d;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .meeting-quick-link:hover {
+        text-decoration: underline;
+      }
+      .material-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 8px;
+        background: #1e2129;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        margin-bottom: 6px;
+      }
+      .material-row:last-child { margin-bottom: 0; }
+      .material-info {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+        flex: 1;
+      }
+      .material-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        background: #172536;
+        color: #93c5fd;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .material-text {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .material-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #f1f5f9;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .material-type {
+        font-size: 11px;
+        color: #94a3b8;
+      }
+      .material-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .mat-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px 10px;
+        border-radius: 7px;
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .mat-btn-download {
+        background: #142921;
+        color: #6ee7b7;
+        border-color: rgba(110, 231, 183, 0.3);
+      }
+      .mat-btn-download:hover {
+        background: #10b981;
+        color: #0b1410;
+      }
+      .mat-btn-link {
+        background: #292114;
+        color: #fcd34d;
+        border-color: rgba(252, 211, 77, 0.3);
+      }
+      .mat-btn-link:hover {
+        background: #f59e0b;
+        color: #141519;
+      }
+      .meeting-empty-notice {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #292114;
+        border: 1px solid rgba(252, 211, 77, 0.3);
+        color: #fcd34d;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.45;
+      }
+
+      /* Tab Mahasiswa */
+      .student-toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .student-summary-line {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .student-card {
+        background: #1a1c23;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        margin-bottom: 8px;
+        overflow: hidden;
+      }
+      .student-row-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+      }
+      .student-identity {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        flex: 1;
+      }
+      .student-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        background: #172536;
+        color: #93c5fd;
+        border: 1px solid rgba(147, 197, 253, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 13px;
+        flex-shrink: 0;
+      }
+      .student-info {
+        min-width: 0;
+        flex: 1;
+      }
+      .student-name {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #f1f5f9;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .student-meta {
+        font-size: 11px;
+        color: #94a3b8;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+      .student-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .student-courses-toggle {
+        background: #1e2129;
+        color: #cbd5e1;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 7px;
+        padding: 5px 10px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .student-courses-toggle:hover {
+        border-color: #f59e0b;
+        color: #fcd34d;
+      }
+      .student-rank {
+        font-size: 11px;
+        color: #94a3b8;
+        min-width: 24px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .student-courses-panel {
+        display: none;
+        padding: 10px 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: #141519;
+      }
+      .student-courses-panel.open {
+        display: block;
+      }
+      .student-courses-heading {
+        font-size: 11px;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-bottom: 6px;
+      }
+      .student-course-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .student-course-pill {
+        background: #1e2129;
+        color: #cbd5e1;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .eval-quiz-score {
+        font-weight: 600;
+        color: #6ee7b7;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Light theme overrides for Mata Kuliah & Mahasiswa */
+      .modal.theme-light .course-acc-card,
+      .modal.theme-light .student-card {
+        background: #ffffff;
+        border-color: #e2e8f0;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+      }
+      .modal.theme-light .course-acc-header:hover {
+        background: #f8fafc;
+      }
+      .modal.theme-light .course-acc-title,
+      .modal.theme-light .meeting-title,
+      .modal.theme-light .material-title,
+      .modal.theme-light .student-name {
+        color: #0f172a;
+      }
+      .modal.theme-light .course-code-sub,
+      .modal.theme-light .course-progress-label,
+      .modal.theme-light .course-top-stats,
+      .modal.theme-light .material-type,
+      .modal.theme-light .student-summary-line,
+      .modal.theme-light .student-meta,
+      .modal.theme-light .student-rank,
+      .modal.theme-light .student-courses-heading,
+      .modal.theme-light .course-acc-chevron {
+        color: #475569;
+      }
+      .modal.theme-light .course-acc-chevron.open,
+      .modal.theme-light .meeting-quick-link {
+        color: #1e3a8a;
+      }
+      .modal.theme-light .course-progress-pct,
+      .modal.theme-light .eval-quiz-score {
+        color: #047857;
+      }
+      .modal.theme-light .course-chip-sks {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #bfdbfe;
+      }
+      .modal.theme-light .course-chip-day {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .modal.theme-light .course-chip-class {
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
+      }
+      .modal.theme-light .course-progress-track {
+        background: #e2e8f0;
+      }
+      .modal.theme-light .course-acc-body,
+      .modal.theme-light .meeting-acc-body,
+      .modal.theme-light .student-courses-panel {
+        background: #f8fafc;
+        border-top-color: #e2e8f0;
+      }
+      .modal.theme-light .meeting-card,
+      .modal.theme-light .material-row {
+        background: #ffffff;
+        border-color: #e2e8f0;
+      }
+      .modal.theme-light .meeting-acc-header {
+        color: #0f172a;
+      }
+      .modal.theme-light .meeting-acc-header:hover {
+        background: #f1f5f9;
+      }
+      .modal.theme-light .meeting-pill.has-materi,
+      .modal.theme-light .mat-btn-download {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+      }
+      .modal.theme-light .mat-btn-download:hover {
+        background: #047857;
+        color: #ffffff;
+      }
+      .modal.theme-light .meeting-pill.is-empty,
+      .modal.theme-light .mat-btn-link,
+      .modal.theme-light .meeting-empty-notice {
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
+      }
+      .modal.theme-light .mat-btn-link:hover {
+        background: #b45309;
+        color: #ffffff;
+      }
+      .modal.theme-light .material-icon,
+      .modal.theme-light .student-avatar {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #bfdbfe;
+      }
+      .modal.theme-light .student-courses-toggle,
+      .modal.theme-light .student-course-pill {
+        background: #f1f5f9;
+        color: #0f172a;
+        border-color: #cbd5e1;
+      }
+      .modal.theme-light .student-courses-toggle:hover {
+        background: #eff6ff;
+        color: #1e3a8a;
+        border-color: #1e3a8a;
       }
     `;
       const overlay = document.createElement("div");
@@ -5967,21 +6875,25 @@ ${items}
           </div>
         </div>
 
-        <div class="tabs-bar">
-          <button class="tab-btn active" data-tab="tab-forums">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <div class="tabs-bar" role="tablist">
+          <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="tab-forums">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Forum Aktif
           </button>
-          <button class="tab-btn" data-tab="tab-evaluations">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-evaluations">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Kuis & Evaluasi
           </button>
-          <button class="tab-btn" data-tab="tab-courses">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-courses">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
             Mata Kuliah
           </button>
-          <button class="tab-btn" data-tab="tab-settings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-students">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Mahasiswa
+          </button>
+          <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="tab-settings">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Pengaturan
           </button>
         </div>
@@ -6004,8 +6916,16 @@ ${items}
         </div>
 
         <div class="tab-content" id="tab-courses">
+          <div id="course-controls-bar"></div>
           <div id="course-list-container">
             <div class="loading-text">Memuat daftar mata kuliah...</div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-students">
+          <div id="student-controls-bar"></div>
+          <div id="student-list-container">
+            <div class="loading-text">Memuat daftar mahasiswa sekelas...</div>
           </div>
         </div>
 
@@ -6125,6 +7045,11 @@ ${items}
       }
       const close = () => this.closeModal();
       this.shadow.getElementById("btn-close").addEventListener("click", close);
+      this.host.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && this.isOpen) {
+          close();
+        }
+      });
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) close();
         const link = e.target.closest("a[href]");
@@ -6141,12 +7066,20 @@ ${items}
       const tabContents = this.shadow.querySelectorAll(".tab-content");
       tabBtns.forEach((btn) => {
         btn.addEventListener("click", () => {
-          tabBtns.forEach((b) => b.classList.remove("active"));
+          tabBtns.forEach((b) => {
+            b.classList.remove("active");
+            b.setAttribute("aria-selected", "false");
+          });
           tabContents.forEach((c) => c.classList.remove("active"));
           btn.classList.add("active");
+          btn.setAttribute("aria-selected", "true");
           const targetId = btn.getAttribute("data-tab");
           this.shadow.getElementById(targetId)?.classList.add("active");
-          if (targetId === "tab-settings") {
+          if (targetId === "tab-courses") {
+            this._renderCourses(this.courses);
+          } else if (targetId === "tab-students") {
+            this._renderStudents(this.students);
+          } else if (targetId === "tab-settings") {
             this._renderModelStatusPanel();
           }
         });
@@ -6442,15 +7375,19 @@ ${items}
         const cacheKey = `mentari_cached_data_${userId}`;
         const stored = await Storage.get([cacheKey, "mentari_cached_courses", "mentari_cached_forums"]);
         const userCache = stored[cacheKey];
-        const cachedCourses = userCache?.courses || stored.mentari_cached_courses || [];
-        const cachedForums = userCache?.forums || stored.mentari_cached_forums || [];
+        const cachedCourses = userCache?.courses || (userId === "default" ? stored.mentari_cached_courses || [] : []);
+        const cachedForums = userCache?.forums || (userId === "default" ? stored.mentari_cached_forums || [] : []);
         const cachedEvals = userCache?.evaluations || [];
+        this.courseDetails = userCache?.courseDetails && typeof userCache.courseDetails === "object" ? userCache.courseDetails : {};
+        this.hasSyncedCourseDetails = Object.keys(this.courseDetails).length > 0;
+        this.students = Array.isArray(userCache?.students) ? userCache.students : [];
         this.courseForumsMeta = userCache?.courseForumsMeta || {};
         this._lastSyncedAt = userCache?.lastSyncedAt || userCache?.updatedAt || null;
         if (cachedCourses.length > 0) {
           this.courses = cachedCourses;
           this._renderCourses(cachedCourses);
         }
+        this._renderStudents(this.students);
         if (cachedForums.length > 0 || Object.keys(this.courseForumsMeta).length > 0 || cachedCourses.length > 0) {
           this.activeForums = cachedForums;
           this._renderForums(cachedForums, cachedCourses);
@@ -6464,29 +7401,536 @@ ${items}
       }
     }
     // ─── Render: Courses ──────────────────────────────────────────────────────────
-    _renderCourses(list) {
+    _getMaterialSvgIcon(template) {
+      switch (String(template || "").toUpperCase()) {
+        case "POWER_POINT":
+          return '<svg width="15" height="15" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+        case "VIDEO_AJAR":
+          return '<svg width="15" height="15" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        case "BUKU_ISBN":
+          return '<svg width="15" height="15" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+        default:
+          return '<svg width="15" height="15" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+      }
+    }
+    _renderCourseControls() {
+      const controlsBar = this.shadow?.getElementById("course-controls-bar");
+      if (!controlsBar) return;
+      if (!controlsBar.querySelector(".forum-controls")) {
+        controlsBar.innerHTML = `
+        <div class="forum-controls">
+          <div class="forum-search-wrap">
+            <svg class="forum-search-icon" width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" class="forum-search-input" id="course-search-input" placeholder="Cari mata kuliah, hari, pertemuan, atau materi..." value="${escapeHtml(this.courseSearchQuery)}">
+            <button class="forum-search-clear" id="course-search-clear" type="button" aria-label="Hapus pencarian">&times;</button>
+          </div>
+          <button class="forum-toggle-all-btn" id="course-toggle-all-btn" type="button">
+            <svg id="course-toggle-all-icon" width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+            </svg>
+            <span id="course-toggle-all-text">Buka Semua</span>
+          </button>
+        </div>
+      `;
+        const searchInput = controlsBar.querySelector("#course-search-input");
+        const clearBtn = controlsBar.querySelector("#course-search-clear");
+        const toggleBtn = controlsBar.querySelector("#course-toggle-all-btn");
+        if (this.courseSearchQuery) clearBtn.style.display = "block";
+        searchInput.addEventListener("input", (e) => {
+          this.courseSearchQuery = e.target.value.trim().toLowerCase();
+          clearBtn.style.display = this.courseSearchQuery ? "block" : "none";
+          this._renderCourses(this.courses, false);
+        });
+        clearBtn.addEventListener("click", () => {
+          searchInput.value = "";
+          this.courseSearchQuery = "";
+          this.expandedCourseCards.clear();
+          clearBtn.style.display = "none";
+          searchInput.focus();
+          this._renderCourses(this.courses, false);
+        });
+        toggleBtn.addEventListener("click", () => {
+          this._handleToggleAllCourseCards();
+        });
+      }
+      this._updateCourseToggleAllBtn();
+    }
+    _handleToggleAllCourseCards() {
+      if (!this._visibleCourseTabCodes || this._visibleCourseTabCodes.length === 0) return;
+      const allExpanded = this._visibleCourseTabCodes.every((code) => this.expandedCourseCards.has(code));
+      if (allExpanded) {
+        this._visibleCourseTabCodes.forEach((code) => this.expandedCourseCards.delete(code));
+      } else {
+        this._visibleCourseTabCodes.forEach((code) => this.expandedCourseCards.add(code));
+      }
+      this._renderCourses(this.courses, false);
+    }
+    _updateCourseToggleAllBtn() {
+      const toggleText = this.shadow?.getElementById("course-toggle-all-text");
+      const toggleIcon = this.shadow?.getElementById("course-toggle-all-icon");
+      if (!toggleText || !this._visibleCourseTabCodes) return;
+      const hasCourses = this._visibleCourseTabCodes.length > 0;
+      const allExpanded = hasCourses && this._visibleCourseTabCodes.every((code) => this.expandedCourseCards.has(code));
+      toggleText.textContent = allExpanded ? "Tutup Semua" : "Buka Semua";
+      if (toggleIcon) {
+        toggleIcon.innerHTML = allExpanded ? '<path d="M17 11l-5-5-5 5M17 18l-5-5-5 5"/>' : '<path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>';
+      }
+    }
+    _renderCourses(list, updateControls = true) {
       const courseContainer = this.shadow?.getElementById("course-list-container");
-      if (!courseContainer || !list) return;
-      if (list.length === 0) {
-        courseContainer.innerHTML = '<div class="empty-state">Tidak ada mata kuliah aktif.</div>';
+      if (!courseContainer) return;
+      if (updateControls) {
+        this._renderCourseControls();
+      }
+      if (!list || list.length === 0) {
+        this._visibleCourseTabCodes = [];
+        this._updateCourseToggleAllBtn();
+        courseContainer.innerHTML = '<div class="empty-state">Tidak ada mata kuliah aktif pada akun ini.</div>';
+        return;
+      }
+      const q = (this.courseSearchQuery || "").toLowerCase();
+      const filteredCourses = [];
+      for (const c of list) {
+        const meta = parseCourseMeta(c);
+        const detail = this.courseDetails[meta.courseCode] || null;
+        if (q) {
+          const metaMatch = [meta.title, meta.courseCode, meta.hari, meta.kelas].some((v) => v && v.toLowerCase().includes(q));
+          const sectionMatch = detail?.sections?.some(
+            (sec) => sec.sectionName.toLowerCase().includes(q) || sec.materials.some((m) => m.title.toLowerCase().includes(q) || m.typeLabel.toLowerCase().includes(q))
+          );
+          if (!metaMatch && !sectionMatch) continue;
+        }
+        filteredCourses.push({ raw: c, meta, detail });
+      }
+      this._visibleCourseTabCodes = filteredCourses.map((item) => item.meta.courseCode);
+      if (q) {
+        filteredCourses.forEach((item) => this.expandedCourseCards.add(item.meta.courseCode));
+      }
+      this._updateCourseToggleAllBtn();
+      if (filteredCourses.length === 0) {
+        courseContainer.innerHTML = `
+        <div class="empty-state">
+          <p>Tidak ada mata kuliah atau materi yang cocok dengan kata kunci "${escapeHtml(this.courseSearchQuery)}".</p>
+          <button class="btn-config" id="btn-reset-course-search" type="button" style="margin-top:12px;">Reset Pencarian</button>
+        </div>
+      `;
+        courseContainer.querySelector("#btn-reset-course-search")?.addEventListener("click", () => {
+          this.courseSearchQuery = "";
+          const input = this.shadow?.getElementById("course-search-input");
+          if (input) input.value = "";
+          const clear = this.shadow?.getElementById("course-search-clear");
+          if (clear) clear.style.display = "none";
+          this._renderCourses(this.courses, false);
+        });
         return;
       }
       courseContainer.innerHTML = "";
-      list.forEach((c) => {
-        const courseCode = c.kode_course || c.kode || c.course_code || c.id;
-        const courseTitle = c.nama_mata_kuliah || c.coursename || c.name || "Mata Kuliah";
-        const sks = c.sks || "-";
-        const item = document.createElement("div");
-        item.className = "forum-card";
-        item.innerHTML = `
-        <div>
-          <div class="forum-title">${courseTitle}</div>
-          <div class="forum-course">Kode: ${courseCode} | SKS: ${sks}</div>
+      filteredCourses.forEach(({ meta, detail }) => {
+        const { courseCode, title, sks, hari, kelas } = meta;
+        const isExpanded = this.expandedCourseCards.has(courseCode);
+        const progress = detail?.progress || { completedMeetings: 0, totalMeetings: 0, percent: 0 };
+        const sections = detail?.sections || [];
+        const totalMaterials = sections.reduce((sum, s) => sum + s.materials.length, 0);
+        const card = document.createElement("div");
+        card.className = "course-acc-card";
+        const chipsHtml = [
+          sks ? `<span class="course-chip course-chip-sks">${escapeHtml(sks)} SKS</span>` : "",
+          hari ? `<span class="course-chip course-chip-day">${escapeHtml(hari)}</span>` : "",
+          kelas ? `<span class="course-chip course-chip-class">Kelas ${escapeHtml(kelas)}</span>` : ""
+        ].filter(Boolean).join("");
+        const progressRightHtml = progress.totalMeetings > 0 ? `
+          <div class="course-progress-meta">
+            <span class="course-progress-pct">${progress.percent}%</span>
+            <span class="course-progress-label">Pertemuan ${progress.completedMeetings} / ${progress.totalMeetings}</span>
+          </div>
+        ` : "";
+        const headerBtn = document.createElement("button");
+        headerBtn.type = "button";
+        headerBtn.className = "course-acc-header";
+        headerBtn.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+        headerBtn.innerHTML = `
+        <div class="course-acc-top">
+          <div class="course-acc-title-wrap">
+            <div class="course-acc-title">${escapeHtml(title)}</div>
+            ${chipsHtml ? `<div class="course-chips">${chipsHtml}</div>` : ""}
+            <div class="course-code-sub">Kode Course: ${escapeHtml(courseCode)}</div>
+          </div>
+          ${progressRightHtml}
         </div>
+        <div class="course-progress-row">
+          <div class="course-progress-track">
+            <div class="course-progress-fill" style="width:${progress.percent}%;"></div>
+          </div>
+          <svg class="course-acc-chevron ${isExpanded ? "open" : ""}" width="16" height="16" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      `;
+        const bodyDiv = document.createElement("div");
+        bodyDiv.className = `course-acc-body ${isExpanded ? "open" : ""}`;
+        const topBar = document.createElement("div");
+        topBar.className = "course-top-bar";
+        topBar.innerHTML = `
+        <span class="course-top-stats">${sections.length} Pertemuan &bull; ${totalMaterials} Materi Tersedia</span>
         <a class="btn-open-forum" target="_self" href="https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}">Buka Kelas</a>
       `;
-        courseContainer.appendChild(item);
+        bodyDiv.appendChild(topBar);
+        if (!detail && !this.hasSyncedCourseDetails) {
+          const loadingBox = document.createElement("div");
+          loadingBox.className = "loading-text";
+          loadingBox.style.padding = "14px";
+          loadingBox.textContent = "Memuat rincian pertemuan dan materi...";
+          bodyDiv.appendChild(loadingBox);
+        } else if (sections.length === 0) {
+          const emptySec = document.createElement("div");
+          emptySec.className = "meeting-empty-notice";
+          emptySec.innerHTML = `
+          <svg width="15" height="15" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Belum ada pertemuan yang dibuat dosen untuk mata kuliah ini.</span>
+        `;
+          bodyDiv.appendChild(emptySec);
+        } else {
+          const activeSectionCode = this.expandedCourseSections.get(courseCode) || "";
+          sections.forEach((sec) => {
+            const secMatchesSearch = Boolean(q) && (sec.sectionName.toLowerCase().includes(q) || sec.materials.some((m) => m.title.toLowerCase().includes(q) || m.typeLabel.toLowerCase().includes(q)));
+            const secExpanded = activeSectionCode === sec.sectionCode || secMatchesSearch;
+            const secCard = document.createElement("div");
+            secCard.className = "meeting-card";
+            const secBtn = document.createElement("button");
+            secBtn.type = "button";
+            secBtn.className = "meeting-acc-header";
+            secBtn.setAttribute("aria-expanded", secExpanded ? "true" : "false");
+            secBtn.innerHTML = `
+            <span class="meeting-title-group">
+              <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              <span class="meeting-title">${escapeHtml(sec.sectionName)}</span>
+            </span>
+            <span class="meeting-meta-group">
+              <span class="meeting-pill ${sec.materials.length > 0 ? "has-materi" : "is-empty"}">
+                ${sec.materials.length > 0 ? `${sec.materials.length} Materi` : "Kosong"}
+              </span>
+              <svg class="course-acc-chevron ${secExpanded ? "open" : ""}" width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          `;
+            const secBody = document.createElement("div");
+            secBody.className = `meeting-acc-body ${secExpanded ? "open" : ""}`;
+            const sectionUrl = `https://mentari.unpam.ac.id/u-courses/${encodeURIComponent(courseCode)}?accord_pertemuan=${encodeURIComponent(sec.sectionCode)}`;
+            const quickRow = document.createElement("div");
+            quickRow.className = "meeting-quick-row";
+            quickRow.innerHTML = `
+            <a class="meeting-quick-link" target="_self" href="${sectionUrl}">
+              <svg width="13" height="13" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Buka Pertemuan di Mentari
+            </a>
+          `;
+            secBody.appendChild(quickRow);
+            if (sec.materials.length > 0) {
+              sec.materials.forEach((mat) => {
+                const matRow = document.createElement("div");
+                matRow.className = "material-row";
+                const actionsHtml = [
+                  mat.downloadUrl ? `<a class="mat-action-btn mat-btn-download" href="${escapeHtml(mat.downloadUrl)}" target="_blank" rel="noopener noreferrer" download>Unduh</a>` : "",
+                  mat.externalUrl ? `<a class="mat-action-btn mat-btn-link" href="${escapeHtml(mat.externalUrl)}" target="_blank" rel="noopener noreferrer">Buka Link</a>` : ""
+                ].filter(Boolean).join("");
+                matRow.innerHTML = `
+                <div class="material-info">
+                  <div class="material-icon">${this._getMaterialSvgIcon(mat.template)}</div>
+                  <div class="material-text">
+                    <div class="material-title" title="${escapeHtml(mat.title)}">${escapeHtml(mat.title)}</div>
+                    <div class="material-type">${escapeHtml(mat.typeLabel)}</div>
+                  </div>
+                </div>
+                <div class="material-actions">${actionsHtml}</div>
+              `;
+                secBody.appendChild(matRow);
+              });
+            } else {
+              const emptyNotice = document.createElement("div");
+              emptyNotice.className = "meeting-empty-notice";
+              emptyNotice.innerHTML = `
+              <svg width="15" height="15" aria-hidden="true" style="flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span>Pertemuan ini masih kosong dan belum memiliki materi dari dosen.</span>
+            `;
+              secBody.appendChild(emptyNotice);
+            }
+            secBtn.addEventListener("click", () => {
+              const opening = !secBody.classList.contains("open");
+              bodyDiv.querySelectorAll(".meeting-card").forEach((other) => {
+                other.querySelector(".meeting-acc-body")?.classList.remove("open");
+                other.querySelector(".meeting-acc-header")?.setAttribute("aria-expanded", "false");
+                other.querySelector(".meeting-acc-header .course-acc-chevron")?.classList.remove("open");
+              });
+              if (opening) {
+                secBody.classList.add("open");
+                secBtn.setAttribute("aria-expanded", "true");
+                secBtn.querySelector(".course-acc-chevron")?.classList.add("open");
+                this.expandedCourseSections.set(courseCode, sec.sectionCode);
+              } else {
+                this.expandedCourseSections.delete(courseCode);
+              }
+            });
+            secCard.appendChild(secBtn);
+            secCard.appendChild(secBody);
+            bodyDiv.appendChild(secCard);
+          });
+        }
+        headerBtn.addEventListener("click", () => {
+          const opening = !bodyDiv.classList.contains("open");
+          bodyDiv.classList.toggle("open", opening);
+          headerBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+          headerBtn.querySelector(".course-acc-chevron")?.classList.toggle("open", opening);
+          if (opening) this.expandedCourseCards.add(courseCode);
+          else this.expandedCourseCards.delete(courseCode);
+          this._updateCourseToggleAllBtn();
+        });
+        card.appendChild(headerBtn);
+        card.appendChild(bodyDiv);
+        courseContainer.appendChild(card);
       });
+    }
+    _renderStudentControls() {
+      const controlsBar = this.shadow?.getElementById("student-controls-bar");
+      if (!controlsBar) return;
+      const nonPkkmbCourses = (this.courses || []).map((c) => parseCourseMeta(c)).filter((m) => m.courseCode && !m.courseCode.toUpperCase().includes("PKKMB") && !m.title.toUpperCase().includes("PKKMB"));
+      const optionsHtml = [
+        `<option value="all">Semua Mata Kuliah (${this.students.length} Mhs)</option>`,
+        ...nonPkkmbCourses.map((m) => {
+          const count = this.students.filter((s) => s.courses.some((c) => c.courseCode === m.courseCode)).length;
+          return `<option value="${escapeHtml(m.courseCode)}">${escapeHtml(m.title)} (${count})</option>`;
+        })
+      ].join("");
+      if (!controlsBar.querySelector(".student-toolbar")) {
+        controlsBar.innerHTML = `
+        <div class="student-toolbar">
+          <div class="forum-search-wrap">
+            <svg class="forum-search-icon" width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" class="forum-search-input" id="student-search-input" placeholder="Cari nama atau NIM mahasiswa..." value="${escapeHtml(this.studentSearchQuery)}">
+            <button class="forum-search-clear" id="student-search-clear" type="button" aria-label="Hapus pencarian">&times;</button>
+          </div>
+          <select class="eval-type-select" id="student-course-filter" aria-label="Filter mata kuliah">${optionsHtml}</select>
+          <button class="forum-toggle-all-btn" id="btn-copy-students" type="button">
+            <svg width="14" height="14" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Salin Daftar</span>
+          </button>
+        </div>
+      `;
+        const searchInput = controlsBar.querySelector("#student-search-input");
+        const clearBtn = controlsBar.querySelector("#student-search-clear");
+        const courseFilter = controlsBar.querySelector("#student-course-filter");
+        const copyBtn = controlsBar.querySelector("#btn-copy-students");
+        if (this.studentSearchQuery) clearBtn.style.display = "block";
+        courseFilter.value = this.studentCourseFilter;
+        searchInput.addEventListener("input", (e) => {
+          this.studentSearchQuery = e.target.value.trim().toLowerCase();
+          clearBtn.style.display = this.studentSearchQuery ? "block" : "none";
+          this._renderStudents(this.students, false);
+        });
+        clearBtn.addEventListener("click", () => {
+          searchInput.value = "";
+          this.studentSearchQuery = "";
+          clearBtn.style.display = "none";
+          searchInput.focus();
+          this._renderStudents(this.students, false);
+        });
+        courseFilter.addEventListener("change", (e) => {
+          this.studentCourseFilter = e.target.value;
+          this._renderStudents(this.students, false);
+        });
+        copyBtn.addEventListener("click", async () => {
+          const listToCopy = this._getFilteredStudents();
+          if (listToCopy.length === 0) {
+            Toast.warning("Tidak ada daftar mahasiswa untuk disalin.");
+            return;
+          }
+          const activeCourses = (this.courses || []).map((c) => parseCourseMeta(c));
+          const selectedCourse = activeCourses.find((c) => c.courseCode === this.studentCourseFilter);
+          const headerLine = selectedCourse ? `Daftar Mahasiswa - ${selectedCourse.title} (${listToCopy.length})
+` : `Daftar Mahasiswa Sekelas (${listToCopy.length})
+`;
+          const bodyLines = listToCopy.map((s, idx) => `${idx + 1}. ${s.nama} (${s.nim})`).join("\n");
+          try {
+            await navigator.clipboard.writeText(headerLine + bodyLines);
+            Toast.success(`${listToCopy.length} data mahasiswa berhasil disalin.`);
+          } catch {
+            Toast.error("Gagal menyalin ke clipboard.");
+          }
+        });
+      } else {
+        const courseFilter = controlsBar.querySelector("#student-course-filter");
+        if (courseFilter) {
+          courseFilter.innerHTML = optionsHtml;
+          if (!Array.from(courseFilter.options).some((opt) => opt.value === this.studentCourseFilter)) {
+            this.studentCourseFilter = "all";
+          }
+          courseFilter.value = this.studentCourseFilter;
+        }
+      }
+    }
+    _getFilteredStudents() {
+      const q = (this.studentSearchQuery || "").toLowerCase();
+      return (this.students || []).filter((s) => {
+        if (this.studentCourseFilter !== "all") {
+          if (!s.courses.some((c) => c.courseCode === this.studentCourseFilter)) return false;
+        }
+        if (q) {
+          const nameMatch = s.nama.toLowerCase().includes(q);
+          const nimMatch = s.nim.toLowerCase().includes(q);
+          const courseMatch = s.courses.some((c) => c.courseTitle.toLowerCase().includes(q));
+          if (!nameMatch && !nimMatch && !courseMatch) return false;
+        }
+        return true;
+      });
+    }
+    _renderStudents(list, updateControls = true) {
+      const container = this.shadow?.getElementById("student-list-container");
+      if (!container) return;
+      if (updateControls) {
+        this._renderStudentControls();
+      }
+      if (!list || list.length === 0) {
+        container.innerHTML = this.hasSyncedCourseDetails ? '<div class="empty-state">Tidak ada data mahasiswa peserta dari mata kuliah aktif.</div>' : '<div class="loading-text">Memuat data mahasiswa dari seluruh mata kuliah...</div>';
+        return;
+      }
+      const filtered = this._getFilteredStudents();
+      if (filtered.length === 0) {
+        container.innerHTML = `
+        <div class="empty-state">
+          <p>Tidak ada mahasiswa yang cocok dengan filter atau pencarian saat ini.</p>
+          <button class="btn-config" id="btn-reset-student-filters" type="button" style="margin-top:12px;">Reset Filter</button>
+        </div>
+      `;
+        container.querySelector("#btn-reset-student-filters")?.addEventListener("click", () => {
+          this.studentSearchQuery = "";
+          this.studentCourseFilter = "all";
+          const input = this.shadow?.getElementById("student-search-input");
+          if (input) input.value = "";
+          const clear = this.shadow?.getElementById("student-search-clear");
+          if (clear) clear.style.display = "none";
+          const sel = this.shadow?.getElementById("student-course-filter");
+          if (sel) sel.value = "all";
+          this._renderStudents(this.students, false);
+        });
+        return;
+      }
+      container.innerHTML = `
+      <div class="student-summary-line">
+        <span>Menampilkan <strong>${filtered.length}</strong> dari <strong>${list.length}</strong> mahasiswa unik (tanpa duplikasi NIM)</span>
+      </div>
+    `;
+      filtered.forEach((student, idx) => {
+        const isExpanded = this.expandedStudentNims.has(student.nim);
+        const initial = (student.nama || "?").charAt(0).toUpperCase();
+        const card = document.createElement("div");
+        card.className = "student-card";
+        const mainRow = document.createElement("div");
+        mainRow.className = "student-row-main";
+        const metaParts = [
+          `<span>NIM: ${escapeHtml(student.nim)}</span>`,
+          student.email ? `<span>${escapeHtml(student.email)}</span>` : "",
+          student.phone ? `<span>${escapeHtml(student.phone)}</span>` : ""
+        ].filter(Boolean).join("");
+        mainRow.innerHTML = `
+        <div class="student-identity">
+          <div class="student-avatar">${escapeHtml(initial)}</div>
+          <div class="student-info">
+            <div class="student-name" title="${escapeHtml(student.nama)}">${escapeHtml(student.nama)}</div>
+            <div class="student-meta">${metaParts}</div>
+          </div>
+        </div>
+        <div class="student-actions">
+          <button type="button" class="student-courses-toggle" aria-expanded="${isExpanded ? "true" : "false"}">
+            ${student.courses.length} Matkul
+          </button>
+          <span class="student-rank">${idx + 1}</span>
+        </div>
+      `;
+        const coursesPanel = document.createElement("div");
+        coursesPanel.className = `student-courses-panel ${isExpanded ? "open" : ""}`;
+        coursesPanel.innerHTML = `
+        <div class="student-courses-heading">Terdaftar bersama di ${student.courses.length} mata kuliah:</div>
+        <div class="student-course-pills">
+          ${student.courses.map((c) => `<span class="student-course-pill">${escapeHtml(c.courseTitle)}</span>`).join("")}
+        </div>
+      `;
+        const toggleBtn = mainRow.querySelector(".student-courses-toggle");
+        toggleBtn.addEventListener("click", () => {
+          const opening = !coursesPanel.classList.contains("open");
+          coursesPanel.classList.toggle("open", opening);
+          toggleBtn.setAttribute("aria-expanded", opening ? "true" : "false");
+          if (opening) this.expandedStudentNims.add(student.nim);
+          else this.expandedStudentNims.delete(student.nim);
+        });
+        card.appendChild(mainRow);
+        card.appendChild(coursesPanel);
+        container.appendChild(card);
+      });
+    }
+    async _hydrateQuizResultsForCourse(courseCode, containerEl) {
+      if (!courseCode || !containerEl) return;
+      const completedQuizzes = (this.evaluations || []).filter(
+        (e) => e.courseCode === courseCode && e.completion && e.type !== "KUESIONER" && e.subId
+      );
+      if (completedQuizzes.length === 0) return;
+      const applyScore = (subId, info) => {
+        const targets = this.shadow?.querySelectorAll(`.eval-quiz-score[data-quiz-id="${CSS.escape(String(subId))}"]`) || [];
+        if (!info) return;
+        const parts = [];
+        if (info.grade !== null && info.grade !== void 0 && info.grade !== "") {
+          parts.push(`Nilai: ${info.grade}`);
+        }
+        if (info.duration && info.duration !== "-") {
+          parts.push(info.duration);
+        }
+        const text = parts.length > 0 ? ` (${parts.join(" | ")})` : "";
+        targets.forEach((el) => {
+          el.textContent = text;
+        });
+      };
+      const toFetch = [];
+      for (const q of completedQuizzes) {
+        if (this._quizResultCache.has(q.subId)) {
+          applyScore(q.subId, this._quizResultCache.get(q.subId));
+        } else if (!this._quizResultInFlight.has(q.subId)) {
+          this._quizResultInFlight.add(q.subId);
+          toFetch.push(q.subId);
+        }
+      }
+      if (toFetch.length === 0) return;
+      const options = await UnpamAuth.getFetchOptions();
+      if (!options?.headers?.Authorization) {
+        toFetch.forEach((id) => this._quizResultInFlight.delete(id));
+        return;
+      }
+      const fetchGen = this._fetchGeneration;
+      const chunkSize = 3;
+      for (let i = 0; i < toFetch.length; i += chunkSize) {
+        const chunk = toFetch.slice(i, i + chunkSize);
+        await Promise.allSettled(chunk.map(async (quizId) => {
+          try {
+            const res = await fetch(`https://mentari.unpam.ac.id/api/quiz/peserta/${encodeURIComponent(quizId)}`, {
+              ...options,
+              cache: "no-store"
+            });
+            if (!res.ok || fetchGen !== this._fetchGeneration) return;
+            const data = await res.json();
+            const quiz = data?.quiz;
+            if (!quiz) return;
+            const info = {
+              grade: quiz.grade ?? null,
+              duration: formatDurationSeconds(quiz.end_in_second)
+            };
+            this._quizResultCache.set(quizId, info);
+            applyScore(quizId, info);
+          } catch {
+          } finally {
+            this._quizResultInFlight.delete(quizId);
+          }
+        }));
+      }
     }
     // ─── Render: Forums with Filter ───────────────────────────────────────────────
     /**
@@ -7082,7 +8526,7 @@ ${rawText}`;
       const existing = this.shadow.getElementById("mentari-docx-export-overlay");
       if (existing) existing.remove();
       const isLight = this.shadow.querySelector(".modal")?.classList.contains("theme-light") || false;
-      const escapeHtml = (str) => String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const escapeHtml2 = (str) => String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
       const safeForums = Array.isArray(pendingForums) ? pendingForums : [];
       const totalPending = safeForums.length || Number(pendingCount) || 0;
       const orderedEntries = safeForums.map((forum, idx) => ({
@@ -7946,8 +9390,8 @@ ${rawText}`;
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
               <div>
-                <div class="docx-student-name">${escapeHtml(studentName || "Mahasiswa UNPAM")}</div>
-                <div class="docx-student-nim">NIM: ${escapeHtml(studentNim || "-")}</div>
+                <div class="docx-student-name">${escapeHtml2(studentName || "Mahasiswa UNPAM")}</div>
+                <div class="docx-student-nim">NIM: ${escapeHtml2(studentNim || "-")}</div>
               </div>
             </div>
             <div class="docx-count-badge" id="docx-selected-badge">${totalPending} / ${totalPending} Dipilih</div>
@@ -8135,7 +9579,7 @@ ${rawText}`;
               const stateClass = grp.checked === grp.total ? "active" : grp.checked > 0 ? "partial" : "";
               chipBtn.className = `docx-course-chip ${stateClass}`;
               chipBtn.title = `Klik untuk mengaktifkan / menonaktifkan semua forum ${grp.title}`;
-              chipBtn.innerHTML = `<span class="chip-name">${escapeHtml(grp.title)}</span><span>(${grp.checked}/${grp.total})</span>`;
+              chipBtn.innerHTML = `<span class="chip-name">${escapeHtml2(grp.title)}</span><span>(${grp.checked}/${grp.total})</span>`;
               chipBtn.addEventListener("click", () => {
                 const nextState = grp.checked < grp.total;
                 orderedEntries.forEach((entry) => {
@@ -8162,10 +9606,10 @@ ${rawText}`;
           row.className = `docx-forum-row ${entry.checked ? "is-checked" : "is-unchecked"}`;
           row.innerHTML = `
           <label class="docx-forum-left">
-            <input type="checkbox" class="docx-forum-check" ${entry.checked ? "checked" : ""} aria-label="Pilih ${escapeHtml(f.courseTitle)} ${escapeHtml(meetingLabel)}">
+            <input type="checkbox" class="docx-forum-check" ${entry.checked ? "checked" : ""} aria-label="Pilih ${escapeHtml2(f.courseTitle)} ${escapeHtml2(meetingLabel)}">
             <div class="docx-forum-text">
-              <div class="docx-forum-course-name" title="${escapeHtml(f.courseTitle)}">${escapeHtml(f.courseTitle || "Mata Kuliah")}</div>
-              <div class="docx-forum-meta" title="${escapeHtml(f.forumName)}">${escapeHtml(meetingLabel)} &middot; ${escapeHtml(f.forumName || "Forum Diskusi")} (${topicsCount} topik)</div>
+              <div class="docx-forum-course-name" title="${escapeHtml2(f.courseTitle)}">${escapeHtml2(f.courseTitle || "Mata Kuliah")}</div>
+              <div class="docx-forum-meta" title="${escapeHtml2(f.forumName)}">${escapeHtml2(meetingLabel)} &middot; ${escapeHtml2(f.forumName || "Forum Diskusi")} (${topicsCount} topik)</div>
             </div>
           </label>
           <div class="docx-forum-right">
@@ -10518,6 +11962,7 @@ ${rawText}`;
               btnHtml = `<span class="eval-btn-action ${st.buttonClass || "eval-btn-blocked"}" title="${st.reason || "Terkunci"}">${st.buttonLabel}</span>`;
             }
             const hintHtml = st.reason ? ` &bull; <span class="eval-status-hint ${st.hintClass || ""}">${st.reason}</span>` : "";
+            const scoreHtml = e.completion && e.type !== "KUESIONER" && e.subId ? `<span class="eval-quiz-score" data-quiz-id="${escapeHtml(e.subId)}"></span>` : "";
             itemDiv.innerHTML = `
             <div class="eval-item-info">
               <div class="eval-item-title">
@@ -10525,12 +11970,15 @@ ${rawText}`;
                 ${typeLabels[e.type] || e.type}
                 <span class="badge ${st.badgeClass}">${st.badgeLabel}</span>
               </div>
-              <div class="eval-item-meta">${e.name} &bull; ${secName}${hintHtml}</div>
+              <div class="eval-item-meta">${e.name} &bull; ${secName}${hintHtml}${scoreHtml}</div>
             </div>
             ${btnHtml}
           `;
             content.appendChild(itemDiv);
           });
+        }
+        if (isExpanded) {
+          this._hydrateQuizResultsForCourse(courseCode, content);
         }
         header.addEventListener("click", () => {
           this._userModifiedAccordion = true;
@@ -10544,6 +11992,7 @@ ${rawText}`;
             content.classList.add("open");
             header.querySelector(".eval-accordion-chevron")?.classList.add("open");
             this.expandedCourses.add(courseCode);
+            this._hydrateQuizResultsForCourse(courseCode, content);
           }
           this._updateToggleAllBtn();
         });
@@ -10641,9 +12090,11 @@ ${rawText}`;
       if (this._currentFetchPromise) {
         return this._currentFetchPromise;
       }
+      const fetchGen = this._fetchGeneration;
       this._currentFetchPromise = (async () => {
         const forumContainer = this.shadow?.getElementById("forum-list-container");
         const courseContainer = this.shadow?.getElementById("course-list-container");
+        const studentContainer = this.shadow?.getElementById("student-list-container");
         try {
           let options = await UnpamAuth.getFetchOptions();
           if (!options.headers["Authorization"]) {
@@ -10664,12 +12115,14 @@ ${rawText}`;
             `;
               forumContainer.innerHTML = notFoundHtml;
               if (courseContainer) courseContainer.innerHTML = notFoundHtml;
+              if (studentContainer) studentContainer.innerHTML = notFoundHtml;
               const handleRetry = async () => {
                 UnpamAuth._cachedToken = null;
                 await this._loadCoursesAndForums();
               };
               forumContainer.querySelector("#btn-retry-scan")?.addEventListener("click", handleRetry);
               courseContainer?.querySelector("#btn-retry-scan")?.addEventListener("click", handleRetry);
+              studentContainer?.querySelector("#btn-retry-scan")?.addEventListener("click", handleRetry);
             }
             return;
           }
@@ -10687,6 +12140,9 @@ ${rawText}`;
               if (courseContainer && (!this.courses || this.courses.length === 0)) {
                 courseContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#f59e0b;">Sesi perlu disegarkan. Silakan klik tombol Pindai Ulang di tab Forum atau buka menu perkuliahan.</div>';
               }
+              if (studentContainer && (!this.students || this.students.length === 0)) {
+                studentContainer.innerHTML = '<div style="text-align:center; padding:30px; color:#f59e0b;">Sesi perlu disegarkan untuk memuat daftar mahasiswa.</div>';
+              }
             }
             return;
           }
@@ -10697,9 +12153,13 @@ ${rawText}`;
           const list = Array.isArray(resData) ? resData : resData.data || [];
           this.courses = list;
           if (list.length === 0) {
+            this.hasSyncedCourseDetails = true;
+            this.courseDetails = {};
+            this.students = [];
             if (!silent) {
               if (forumContainer) forumContainer.innerHTML = '<div class="empty-state">Tidak ada forum aktif saat ini.</div>';
               if (courseContainer) courseContainer.innerHTML = '<div class="empty-state">Tidak ada mata kuliah aktif.</div>';
+              if (studentContainer) studentContainer.innerHTML = '<div class="empty-state">Tidak ada data mahasiswa.</div>';
             }
             return;
           }
@@ -10708,6 +12168,8 @@ ${rawText}`;
           }
           const forumItems = [];
           const evalItems = [];
+          const courseDetailsMap = {};
+          const studentSourceEntries = [];
           const chunkSize = 3;
           const storeComp = await Storage.get("mentari_completed_quiz_ids");
           const completedQuizIds = Array.isArray(storeComp?.mentari_completed_quiz_ids) ? storeComp.mentari_completed_quiz_ids : [];
@@ -10728,8 +12190,22 @@ ${rawText}`;
               }
               try {
                 const cRes = await fetch(`https://mentari.unpam.ac.id/api/user-course/${encodeURIComponent(courseCode)}`, options);
-                if (!cRes.ok) return;
+                if (!cRes.ok) {
+                  if (this.courseDetails[courseCode]) {
+                    courseDetailsMap[courseCode] = this.courseDetails[courseCode];
+                  }
+                  return;
+                }
                 const cData = await cRes.json();
+                const parsedDetail = extractCourseDetail(c, cData);
+                courseDetailsMap[courseCode] = parsedDetail;
+                if (Array.isArray(cData?.peserta)) {
+                  studentSourceEntries.push({
+                    courseCode,
+                    courseTitle: parsedDetail.title,
+                    peserta: cData.peserta
+                  });
+                }
                 if (!courseLecturer && cData && typeof cData === "object") {
                   const cRawDosen = cData.nama_dosen || cData.dosen || cData.dosen_pengampu || cData.pengampu;
                   if (typeof cRawDosen === "string" && cRawDosen.trim()) {
@@ -10931,12 +12407,20 @@ ${rawText}`;
             await Storage.set({ mentari_completed_quiz_ids: cleanedCompletedIds });
             console.log(`[Mentari] Auto-pruned ${staleCompletedQuizIds.size} uncompleted quiz ID(s) from local storage. Server UNPAM authoritative status: Incomplete.`);
           }
+          if (fetchGen !== this._fetchGeneration) return;
           this.activeForums = forumItems;
           this.evaluations = evalItems;
+          this.courseDetails = courseDetailsMap;
+          this.hasSyncedCourseDetails = true;
+          if (studentSourceEntries.length > 0 || list.length === 0) {
+            this.students = extractUniqueStudents(studentSourceEntries);
+          }
           this._lastSyncedAt = Date.now();
           if (this.isOpen) {
             this._renderForums(forumItems, list);
             this._renderEvaluations(evalItems);
+            this._renderCourses(list);
+            this._renderStudents(this.students);
           }
           const currentToken = await UnpamAuth.getAuthToken();
           const userId = UnpamAuth.getUserIdentifier(currentToken);
@@ -10946,6 +12430,8 @@ ${rawText}`;
               courses: list,
               forums: forumItems,
               evaluations: evalItems,
+              courseDetails: this.courseDetails,
+              students: this.students,
               courseForumsMeta: this.courseForumsMeta,
               lastSyncedAt: this._lastSyncedAt,
               updatedAt: Date.now()
@@ -10957,6 +12443,7 @@ ${rawText}`;
           if (!silent && forumContainer && (!this.courses || this.courses.length === 0)) {
             forumContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Error: ${e.message}</div>`;
             if (courseContainer) courseContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Error: ${e.message}</div>`;
+            if (studentContainer) studentContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Error: ${e.message}</div>`;
           }
         } finally {
           this._currentFetchPromise = null;

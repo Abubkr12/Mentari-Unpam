@@ -63,10 +63,12 @@ Mentari-Unpam-v2.0_2/
 │   │   └── script.js                    # Logika popup
 │   └── utils/
 │       ├── autopilot-sync.js            # Engine sinkronisasi real-time antrean kuesioner
+│       ├── course-parser.js             # Parser metadata matkul, materi, progres, dan peserta unik
 │       ├── docx-generator.js            # Generator file Word DOCX draf tugas/forum
 │       ├── md-generator.js              # Generator file Markdown terstruktur
 │       ├── dom.js                       # Utilitas manipulasi DOM aman
 │       ├── humanizer.js                 # Algoritma jitter delay anti-deteksi bot
+│       ├── unpam-auth.js                # Interceptor JWT (string, object, dan array Mentari)
 │       └── storage.js                   # Abstraksi chrome.storage.local
 ├── build.js                             # Script bundler esbuild
 ├── package.json                         # Dependensi (esbuild, docx)
@@ -101,3 +103,9 @@ Mentari-Unpam-v2.0_2/
 - Sistem antrean membaca data mentah dari API course UNPAM (`/api/user-course/{courseCode}`).
 - Status kuis dan kuesioner dievaluasi secara berjenjang berdasarkan matriks prasyarat forum dan pre-test.
 - Antrean kuesioner disinkronkan secara real-time melalui polling mikro setelah setiap batch post-test tuntas dieksekusi.
+
+### 3.5. ADR v2.1.4: Pertahanan Opsi A, Tolak Gimmick Pet, & Jalur Auto-Pilot DOM
+- **Context**: Evaluasi terhadap upstream `Mentari Mod v2.0 Sunset` (GitLab) menunjukkan beberapa fitur praktis (daftar materi per pertemuan, daftar mahasiswa sekelas, skor quiz) beserta gimmick `pet.html` dan submit API kuis headless.
+- **Decision**: Mempertahankan **Opsi A** (satu hub UI terpadu di Closed Shadow DOM) dengan memperluas Tab `Mata Kuliah` (accordion pertemuan + unduh materi + inline notice kosong), menambah Tab `Mahasiswa` (dedup by NIM + daftar matkul per mahasiswa + filter matkul), menambah lazy fetch skor quiz (`GET /api/quiz/peserta/{id}`), dan memperketat `UnpamAuth` untuk format array `[{role, token}]` + reset cache saat ganti akun.
+- **Alternatives Considered & Rejected**: Dual-mode popover (ditolak agar tidak menggandakan logika UI), gimmick `pet.html`/`pet.js` (ditolak karena loop `requestAnimationFrame` boros CPU dan bug tema malam), serta submit API kuis/forum instan headless (ditolak demi menjaga keaslian alur Auto-Pilot DOM + Humanizer serta fitur Rekap Tugas `.docx`/`.md`).
+- **Consequences**: Seluruh fitur baru bekerja tanpa request jaringan tambahan pada data dasar (memanfaatkan response `/api/user-course/{kode}` yang sudah diambil).

@@ -1,9 +1,14 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Seluruh perbaikan pasca-audit rekaman layar 2026-11-26 (overhaul tema Light/Dark & kontrol minimize/tutup Kuesioner/QuickSurvey, kontras tombol `#eval-autopilot-btn` di Light Mode, format warning `quiz.js`, serta persiapan rilis ganda `v2.1.3` di GitHub & GitLab) sudah diselesaikan dan siap diverifikasi.
+- Tidak ada task aktif saat ini. Rilis ganda `v2.1.4` (`Mentari-Unpam-v2.1.4-extension.zip`) telah lolos verifikasi build lokal, pengetesan langsung Chrome, serta dipublikasikan ke GitHub dan GitLab.
 
 ## Arsip
+- [x] Pengetesan lokal `v2.1.4` di Chrome oleh user & rilis paket `.zip` ke GitHub + GitLab.
+- [x] Upgrade `v2.1.4` Opsi A (`unpam-auth.js`, `main-sniffer.js`, `course-parser.js`, `token.js`, `package.json`, `Design.md`, `Architecture.md`, `Schema.md`):
+  1. **Auth Array Mentari & Reset Ganti Akun (`unpam-auth.js`, `main-sniffer.js`)**: Dukungan ekstraksi JWT format array `[{role, token}]` pada `localStorage["access"]`, prioritas token live Mentari, serta pembersihan cache sesi saat akun berganti tanpa menghapus API Key Gemini.
+  2. **Tab `Mata Kuliah` Accordion & Materi (`course-parser.js`, `token.js`)**: Kartu mata kuliah dengan chip SKS/Hari/Kelas, progress bar pertemuan monotonik, accordion per pertemuan, unduhan langsung materi/PPT (`/api/file/...`) atau buka link, pencarian materi/matkul, dan inline notice saat pertemuan masih kosong (tanpa `alert()`).
+  3. **Tab `Mahasiswa` Sekelas & Lazy Badge Nilai Quiz (`course-parser.js`, `token.js`)**: Direktori mahasiswa unik terdeduplikasi ketat by `nim` (mengecualikan `PKKMB`), detail daftar mata kuliah bersama per mahasiswa, filter per mata kuliah, pencarian nama/NIM, salin daftar, serta lazy fetch nilai & durasi quiz (`GET /api/quiz/peserta/{id}`).
 - [x] Audit Rekaman Layar 2026-11-26, Overhaul UI Kuesioner/QuickSurvey Light/Dark, Kontras Tombol Auto-Pilot, & Persiapan Rilis `v2.1.3` (`src/content/kuisioner.js`, `src/content/QuickSurvey.js`, `src/content/token.js`, `src/content/quiz.js`, `package.json`, `README.md`, `Task.md`):
   1. **Overhaul Tema Light/Dark & Kontrol HUD/Kartu Kuesioner (`src/content/kuisioner.js`, `src/content/QuickSurvey.js`)**:
      - Menghubungkan `ThemeHelper` (`getEffectiveTheme()`, `watchTheme()`, `_applyTheme()`) pada panel manual Kuesioner, HUD Auto-Pilot Kuesioner, dan tombol `QuickSurvey.js` agar konsisten dengan tema Terang/Gelap ekstensi.

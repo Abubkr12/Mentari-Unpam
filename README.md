@@ -1,10 +1,10 @@
 <div align="center">
   <img src="./src/assets/icon.png" width="128" alt="Mentari Mod Modern Edition Logo">
   
-  # MENTARI MOD - Modern Edition v2.1.3
+  # MENTARI MOD - Modern Edition v2.1.4
   ### *Asisten Pembelajaran Daring Cerdas & Terpadu LMS Universitas Pamulang*
   
-  [![Version](https://img.shields.io/badge/version-2.1.3-blue?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)
+  [![Version](https://img.shields.io/badge/version-2.1.4-blue?style=for-the-badge)](https://github.com/Abubkr12/Mentari-Unpam/releases/latest)
   [![Manifest](https://img.shields.io/badge/Manifest-V3-amber?style=for-the-badge)](https://developer.chrome.com/docs/extensions/mv3/)
   [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
@@ -31,6 +31,7 @@
 
 ### 3. Tab Kuis & Evaluasi (Evaluation Matrix Hub)
 Tab ini dirancang khusus untuk mengurai kebingungan mahasiswa terkait kuis dan kuesioner yang belum selesai:
+- **Badge Nilai & Durasi Quiz (Lazy-Load)**: Saat accordion mata kuliah dibuka, item Pre-Test dan Post-Test yang telah selesai otomatis menampilkan skor (`Nilai`) dan durasi pengerjaan langsung dari server.
 - **Filter Pills Cerdas**:
   - `Semua`: Menampilkan seluruh evaluasi semester berjalan.
   - `Siap Dikerjakan`: Memfilter hanya kuis yang seluruh prasyaratnya telah terpenuhi dan siap dikerjakan langsung.
@@ -63,7 +64,17 @@ Fitur otomatisasi sekuensial cerdas untuk menyelesaikan evaluasi tanpa hambatan 
 - **AI Response Drafter**: Menghasilkan draf jawaban akademik berkualitas tinggi berdasarkan materi modul perkuliahan.
 - **Ekspor Rekap Forum Selektif & Prioritas (`.docx` / `.md` / Clipboard)**: Memilih forum yang diinginkan, mengatur urutan prioritas mata kuliah maupun pertemuan, lalu mengekspor ke format Microsoft Word (`.docx`) dan Markdown terstruktur.
 
-### 6. Tab Pengaturan & AI Engine
+### 6. Tab Mata Kuliah (Accordion Pertemuan & Unduh Materi)
+- Menampilkan seluruh mata kuliah aktif beserta metadata SKS, jadwal hari, kelas, dan progress bar pertemuan secara monotonik (pertemuan kosong tidak menurunkan progres).
+- **Accordion per Pertemuan**: Menyajikan tautan langsung ke pertemuan Mentari serta tombol 1-klik **Unduh** file materi (Power Point, Buku ISBN, Artikel Riset, Video Ajar, Penugasan) atau **Buka Link** eksternal.
+- **Inline Notice Pertemuan Kosong**: Memberikan keterangan jelas di dalam kartu pertemuan apabila dosen belum mengunggah materi tanpa mengganggu layar dengan popup bawaan browser.
+
+### 7. Tab Mahasiswa Sekelas (Direktori Kelas Unik)
+- Menghimpun daftar teman sekelas unik dari peserta seluruh mata kuliah aktif (mengecualikan PKKMB) dengan deduplikasi ketat berdasarkan NIM sehingga tidak ada nama ganda.
+- **Filter Mata Kuliah & Detail Bersama**: Menyediakan pencarian nama/NIM, filter dropdown per mata kuliah, panel detail mata kuliah apa saja seorang mahasiswa terdaftar bersama Anda, serta tombol `Salin Daftar`.
+
+### 8. Tab Pengaturan, Auth Multi-Akun & AI Engine
+- **Multi-Format Auth & Auto-Reset Ganti Akun**: Mendukung pembacaan token JWT format array Mentari dan otomatis menyegarkan cache data dasbor saat mahasiswa berganti akun tanpa menghapus API Key Gemini.
 - **Multi-Key Pool Manager**: Memasukkan beberapa Google Gemini API Key sekaligus dengan mekanisme rotasi otomatis saat kuota limit tercapai.
 - **Thinking Level Dinamis per Model**: Menyesuaikan opsi reasoning (`minimal`, `low`, `medium`, `high`, `xhigh`) secara otomatis mengikuti spesifikasi model yang aktif.
 - **Kunci Kuota Model Ketat & Toggle Fallback**: Menjaga agar model cadangan tidak dipanggil diam-diam saat model pilihan utama timeout, dengan opsi toggle fallback otomatis bila diperlukan.
@@ -74,7 +85,7 @@ Fitur otomatisasi sekuensial cerdas untuk menyelesaikan evaluasi tanpa hambatan 
 ## Panduan Instalasi (Step-by-Step)
 
 ### Opsi A: Dari Paket Rilis Resmi (`.zip`) - Direkomendasikan
-1. Buka halaman [GitHub Releases](https://github.com/Abubkr12/Mentari-Unpam/releases/latest) atau [GitLab Releases](https://gitlab.com/Abubkr12/mentari-unpam/-/releases) dan unduh file **`Mentari-Unpam-v2.1.3-extension.zip`**.
+1. Buka halaman [GitHub Releases](https://github.com/Abubkr12/Mentari-Unpam/releases/latest) atau [GitLab Releases](https://gitlab.com/Abubkr12/mentari-unpam/-/releases) dan unduh file **`Mentari-Unpam-v2.1.4-extension.zip`**.
 2. Ekstrak file `.zip` tersebut ke sebuah folder permanen di komputer Anda (misal `C:\Extensions\Mentari-Unpam`).
 3. Buka browser Chromium (Chrome/Edge/Brave) lalu ketik `chrome://extensions/` di address bar.
 4. Nyalakan toggle **"Developer mode"** (Mode pengembang) di pojok kanan atas.

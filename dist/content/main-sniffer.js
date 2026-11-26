@@ -55,26 +55,57 @@
       }
       console.log(`[Mentari Mod] Token JWT berhasil ditangkap dari: ${source}`);
     }
+    function extractJwtFromRaw(val) {
+      if (!val || typeof val !== "string") return null;
+      try {
+        const parsed = JSON.parse(val);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            const candidate = typeof item === "string" ? item : item && (item.token || item.access_token || item.accessToken || item.jwt || item.access);
+            if (typeof candidate === "string") {
+              const match = candidate.match(/eyJ[a-zA-Z0-9_\-\.]+/);
+              if (match && isJwtValid(match[0])) return match[0];
+            }
+          }
+        } else if (parsed && typeof parsed === "object") {
+          const candidate = parsed.token || parsed.access_token || parsed.accessToken || parsed.jwt || parsed.access;
+          if (typeof candidate === "string") {
+            const match = candidate.match(/eyJ[a-zA-Z0-9_\-\.]+/);
+            if (match && isJwtValid(match[0])) return match[0];
+          }
+        }
+      } catch (e) {
+      }
+      if (val.includes("eyJ")) {
+        const match = val.match(/eyJ[a-zA-Z0-9_\-\.]+/);
+        if (match && isJwtValid(match[0])) return match[0];
+      }
+      return null;
+    }
     function initialStorageScan() {
       try {
         if (typeof localStorage !== "undefined") {
+          for (const priorityKey of ["access", "token"]) {
+            const val = localStorage.getItem(priorityKey);
+            const jwt = extractJwtFromRaw(val);
+            if (jwt) {
+              extractAndBroadcastToken(jwt, `localStorage(${priorityKey})`);
+              return;
+            }
+          }
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            const val = localStorage.getItem(key);
-            if (val && val.includes("eyJ")) {
-              const match = val.match(/eyJ[a-zA-Z0-9_\-\.]+/);
-              if (match) extractAndBroadcastToken(match[0], `localStorage(${key})`);
-            }
+            if (!key || key.startsWith("mentari_")) continue;
+            const jwt = extractJwtFromRaw(localStorage.getItem(key));
+            if (jwt) extractAndBroadcastToken(jwt, `localStorage(${key})`);
           }
         }
         if (typeof sessionStorage !== "undefined") {
           for (let i = 0; i < sessionStorage.length; i++) {
             const key = sessionStorage.key(i);
-            const val = sessionStorage.getItem(key);
-            if (val && val.includes("eyJ")) {
-              const match = val.match(/eyJ[a-zA-Z0-9_\-\.]+/);
-              if (match) extractAndBroadcastToken(match[0], `sessionStorage(${key})`);
-            }
+            if (!key || key.startsWith("mentari_")) continue;
+            const jwt = extractJwtFromRaw(sessionStorage.getItem(key));
+            if (jwt) extractAndBroadcastToken(jwt, `sessionStorage(${key})`);
           }
         }
         if (typeof document !== "undefined" && document.cookie) {

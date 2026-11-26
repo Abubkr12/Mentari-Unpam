@@ -38,10 +38,11 @@ Mentari Mod Modern Edition mengusung gaya antarmuka **Modern Clean SaaS** yang d
   - Branding: Logo Mentari Mod bertuliskan badge "Modern Edition".
   - Quick Controls: Dark/light mode toggle dan tombol close modal.
 - **Tab Navigasi Utama**:
-  1. **Forum Aktif**: Tampilan kartu forum diskusi yang sedang berlangsung dengan indikator batas waktu dan tombol draf respons.
-  2. **Kuis & Evaluasi**: Matriks evaluasi terlengkap yang memilah kuis siap dikerjakan versus kuis yang tertahan prasyarat.
-  3. **Mata Kuliah**: Kartu ringkasan tiap kelas semester berjalan.
-  4. **Pengaturan**: Panel pengelolaan API Key Gemini, pemilihan model AI, dan parameter humanizer.
+  1. **Forum Aktif**: Tampilan kartu forum diskusi yang sedang berlangsung dengan indikator batas waktu, filter pencarian, dan ekspor Rekap Tugas (.docx dan .md).
+  2. **Kuis & Evaluasi**: Matriks evaluasi terlengkap yang memilah kuis siap dikerjakan versus kuis yang tertahan prasyarat, serta badge nilai dan durasi pengerjaan untuk kuis yang telah selesai.
+  3. **Mata Kuliah**: Kartu ringkasan dengan metadata SKS/Hari/Kelas, progress bar pertemuan monotonik, accordion per pertemuan, unduhan langsung materi (PPT, buku, video, tugas), serta inline notice saat pertemuan masih kosong.
+  4. **Mahasiswa**: Direktori teman sekelas unik tanpa duplikasi NIM lintas mata kuliah, lengkap dengan filter mata kuliah, pencarian nama/NIM, panel detail daftar mata kuliah per mahasiswa, dan salin daftar.
+  5. **Pengaturan**: Panel pengelolaan API Key Gemini, pemilihan model AI, Thinking Level, dan parameter humanizer.
 
 ### 3.3. Dashboard Kuis & Evaluasi
 - **Filter Pills Bar**:

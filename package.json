@@ -1,6 +1,6 @@
 {
   "name": "mentari-mod-modern",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Ekstensi modern untuk meningkatkan pengalaman belajar di MENTARI UNPAM dengan asisten AI Gemini generasi baru, anti-deteksi, dan manajemen presensi.",
   "type": "module",
   "scripts": {
