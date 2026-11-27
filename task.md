@@ -1,9 +1,11 @@
 # Task List: Investigasi & Audit Ekstensi Mentari Unpam v2.0
 
 ## Aktif / Rencana Mendatang
-- Tidak ada task aktif saat ini. Rilis ganda `v2.1.4` (`Mentari-Unpam-v2.1.4-extension.zip`) telah lolos verifikasi build lokal, pengetesan langsung Chrome, serta dipublikasikan ke GitHub dan GitLab.
+- Tidak ada task aktif saat ini. Hotfix `v2.1.5` (`apiKeyManager.js` scroll & pinned footer modal setup) telah dibangun, diverifikasi isi `.zip`-nya, dan dirilis ke GitHub serta GitLab.
 
 ## Arsip
+- [x] Hotfix Modal Setup API Key (`v2.1.5` di `src/content/apiKeyManager.js`, `package.json`, `README.md`, `Task.md`):
+  - Memperbaiki flexbox constraint pada `.view-section` (`flex: 1 1 auto; min-height: 0; overflow: hidden`), `.content` / `.welcome-body` (`flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain`), dan `.header` / `.footer` (`flex-shrink: 0`) agar isi modal dapat di-scroll dan tombol footer (`Tutup`, `Tambah & Uji Key`, `Simpan & Selesai`) selalu terlihat di semua ukuran layar.
 - [x] Pengetesan lokal `v2.1.4` di Chrome oleh user & rilis paket `.zip` ke GitHub + GitLab.
 - [x] Upgrade `v2.1.4` Opsi A (`unpam-auth.js`, `main-sniffer.js`, `course-parser.js`, `token.js`, `package.json`, `Design.md`, `Architecture.md`, `Schema.md`):
   1. **Auth Array Mentari & Reset Ganti Akun (`unpam-auth.js`, `main-sniffer.js`)**: Dukungan ekstraksi JWT format array `[{role, token}]` pada `localStorage["access"]`, prioritas token live Mentari, serta pembersihan cache sesi saat akun berganti tanpa menghapus API Key Gemini.

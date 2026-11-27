@@ -150,7 +150,8 @@ class ApiKeyManager {
         box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
         overflow: hidden;
         color: #f1f5f9;
-        max-height: 90vh;
+        max-height: calc(100vh - 32px);
+        max-height: calc(100dvh - 32px);
         display: flex;
         flex-direction: column;
         opacity: 0;
@@ -177,6 +178,7 @@ class ApiKeyManager {
         align-items: center;
         justify-content: space-between;
         background: #18191e;
+        flex-shrink: 0;
       }
       .modal.theme-light .header {
         background: #f8fafc;
@@ -217,10 +219,13 @@ class ApiKeyManager {
         background: #e2e8f0;
       }
 
-      /* Onboarding / Welcome View */
+      /* Constrain nested flex views so body scrolls while footer stays pinned. */
       .view-section {
         display: none;
         flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
       }
       .view-section.active {
         display: flex;
@@ -232,6 +237,12 @@ class ApiKeyManager {
         display: flex;
         flex-direction: column;
         gap: 20px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
       }
       .welcome-hero {
         display: flex;
@@ -333,7 +344,33 @@ class ApiKeyManager {
         display: flex;
         flex-direction: column;
         gap: 15px;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+      }
+      .content::-webkit-scrollbar,
+      .welcome-body::-webkit-scrollbar,
+      .keys-list::-webkit-scrollbar {
+        width: 6px;
+      }
+      .content::-webkit-scrollbar-track,
+      .welcome-body::-webkit-scrollbar-track,
+      .keys-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .content::-webkit-scrollbar-thumb,
+      .welcome-body::-webkit-scrollbar-thumb,
+      .keys-list::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.35);
+        border-radius: 4px;
+      }
+      .modal.theme-light .content::-webkit-scrollbar-thumb,
+      .modal.theme-light .welcome-body::-webkit-scrollbar-thumb,
+      .modal.theme-light .keys-list::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.35);
       }
       .info-box {
         font-size: 12px;
@@ -392,6 +429,7 @@ class ApiKeyManager {
         max-height: 180px;
         overflow-y: auto;
         padding-right: 4px;
+        flex-shrink: 0;
       }
       .key-item {
         display: flex;
@@ -543,6 +581,7 @@ class ApiKeyManager {
         justify-content: space-between;
         align-items: center;
         gap: 10px;
+        flex-shrink: 0;
       }
       .modal.theme-light .footer {
         background: #f8fafc;
